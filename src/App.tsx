@@ -1,21 +1,19 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
 import './App.css'
-import { Button } from './components/ui/button'
 import { ThemeProvider } from './components/theme-provider'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable'
 import { Timeline } from './components/Timeline'
 import type { Player } from './components/types/player'
+import { useState } from 'react'
+import VideoPreview from './components/VideoPreview'
 
 
 function App() {
-
   const players: Player[] = [
-    {id: "player1", name: "Player 1", handSize: 7, librarySize: 53, lifeTotal: 20},
-    {id: "player2", name: "Player 2", handSize: 7, librarySize: 53, lifeTotal: 20},
+    { id: "player1", name: "Player 1", handSize: 7, librarySize: 53, lifeTotal: 20 },
+    { id: "player2", name: "Player 2", handSize: 7, librarySize: 53, lifeTotal: 20 },
   ]
+
+  const [isPlaying, setIsPlaying] = useState(false);
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
@@ -23,8 +21,8 @@ function App() {
         <ResizablePanelGroup orientation="vertical">
           <ResizablePanel minSize={100} defaultSize="70%">
             <ResizablePanelGroup orientation="horizontal">
-              <ResizablePanel minSize={100} defaultSize="75%">
-                <p>Video Preview</p>
+              <ResizablePanel minSize={100} defaultSize="75%" className="p-8 bg-muted/20">
+                <VideoPreview />
               </ResizablePanel>
               <ResizableHandle />
               <ResizablePanel minSize={100} defaultSize="25%">
@@ -34,7 +32,7 @@ function App() {
           </ResizablePanel>
           <ResizableHandle />
           <ResizablePanel minSize={100} defaultSize="30%">
-            <Timeline playerData={players}/>
+            <Timeline playerData={players} duration={100} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />
           </ResizablePanel>
         </ResizablePanelGroup>
       </section>

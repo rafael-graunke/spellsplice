@@ -48,13 +48,18 @@ function ZoomControls({ zoom, onZoomChange }: ZoomControlsProps) {
   );
 }
 
-function CreateControls() {
+interface CreateControlsProps {
+  setIsPlaying: (playing: React.SetStateAction<boolean>) => void;
+}
+
+function CreateControls({ setIsPlaying }: CreateControlsProps) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const downHandler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
+        setIsPlaying(false);
         setOpen((prev) => !prev);
       }
     };
@@ -168,7 +173,7 @@ export function TimelineControls({
   return (
     <div className="border-b timeline w-full flex flex-row justify-between gap-4 p-2 px-4">
       <div className="w-250 flex flex-row justify-start">
-        <CreateControls />
+        <CreateControls setIsPlaying={setIsPlaying}/>
       </div>
       <div className="w-250 flex flex-row justify-center">
         <PlaybackControls

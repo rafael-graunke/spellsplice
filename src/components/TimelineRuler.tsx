@@ -1,6 +1,7 @@
 interface TimelineRulerProps {
   duration: number; // seconds
   zoom: number; // pixels per second
+  onSeek: (time: number) => void;
 }
 
 function formatTime(seconds: number): string {
@@ -9,9 +10,17 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-function TimelineRuler({ duration, zoom }: TimelineRulerProps) {
+function TimelineRuler({ duration, zoom, onSeek }: TimelineRulerProps) {
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const parent = e.currentTarget.parentElement!;
+    // parent is innerRef which moves with scroll, so rect.left already encodes scroll offset
+    const x = e.clientX - parent.getBoundingClientRect().left;
+    const time = Math.max(0, Math.min(duration, x / zoom));
+    onSeek(time);
+  };
+
   return (
-    <div className="overflow-x-auto">
+    <div className="relative h-10 cursor-pointer" style={{ width: duration * zoom }} onClick={handleClick}>
       {Array.from({ length: duration }).map((_, i) =>
         i % 5 === 0 ? (
           <div

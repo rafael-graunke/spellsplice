@@ -33,10 +33,12 @@ export function Timeline({
 
     const lastTimeRef = useRef<number | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const trackRef = useRef<HTMLDivElement>(null);
-    const zoomAnchorRef = useRef<{ time: number; x: number } | null>(null);
+    const trackRef = useRef<HTMLDivElement>(null);  // scroll container
+    const innerRef = useRef<HTMLDivElement>(null);  // positioning context
+    const zoomRef = useRef(zoom);
 
     const handleZoomChange = (newZoom: number) => {
+        zoomRef.current = newZoom;
         setZoom(newZoom);
     };
 
@@ -52,35 +54,34 @@ export function Timeline({
         const handler = (e: WheelEvent) => {
             e.preventDefault();
 
-            const container = containerRef.current;
             const track = trackRef.current;
-            if (!container || !track) return;
+            const inner = innerRef.current;
+            if (!track || !inner) return;
 
             const trackRect = track.getBoundingClientRect();
+            const innerRect = inner.getBoundingClientRect();
             const trackX = e.clientX - trackRect.left;
+            const scrollLeft = track.scrollLeft;
+            const oldZoom = zoomRef.current;
 
-            setZoom((oldZoom) => {
-                const contentX = container.scrollLeft + trackX;
+            // padding offset between scroll container and positioning context
+            const padding = innerRect.left - trackRect.left + scrollLeft;
 
-                const time = contentX / oldZoom;
+            const contentX = scrollLeft + trackX - padding;
+            const time = contentX / oldZoom;
 
-                const zoomIntensity = 0.001;
-                const delta = -e.deltaY;
+            const zoomIntensity = 0.001;
+            const delta = -e.deltaY;
+            const newZoom = Math.min(
+                Math.max(5, oldZoom * (1 + delta * zoomIntensity)),
+                200
+            );
 
-                const newZoom = Math.min(
-                    Math.max(5, oldZoom * (1 + delta * zoomIntensity)),
-                    200
-                );
+            const newScrollLeft = time * newZoom + padding - trackX;
 
-                const newContentX = time * newZoom;
-                const newScrollLeft = newContentX - trackX;
-
-                requestAnimationFrame(() => {
-                    container.scrollLeft = newScrollLeft;
-                });
-
-                return newZoom;
-            });
+            zoomRef.current = newZoom;
+            setZoom(newZoom);
+            track.scrollLeft = newScrollLeft;
         };
 
         el.addEventListener('wheel', handler, { passive: false });
@@ -128,16 +129,13 @@ export function Timeline({
         if (!isDragging) return;
 
         const handleMouseMove = (e: MouseEvent) => {
-            const el = trackRef.current; // THIS must be the scroll container
-            if (!el) return;
+            const inner = innerRef.current;
+            if (!inner) return;
 
-            const rect = el.getBoundingClientRect();
+            // innerRef moves with scroll, so rect.left already encodes scroll offset
+            const x = e.clientX - inner.getBoundingClientRect().left;
 
-            const x = e.clientX - rect.left + el.scrollLeft;
-
-            const newTime = x / zoom;
-
-            setCurrentTime(Math.max(0, Math.min(duration, newTime)));
+            setCurrentTime(Math.max(0, Math.min(duration, x / zoom)));
         };
 
         const handleMouseUp = () => {
@@ -176,17 +174,18 @@ export function Timeline({
                 </ResizablePanel>
                 <ResizableHandle />
                 <ResizablePanel
-                    className="relative"
                     minSize={100}
                     defaultSize="80%"
                 >
-                    <div ref={trackRef} className="pl-4">
-                        <TimelineCursor
-                            currentPosition={currentTime * zoom}
-                            setIsDragging={setIsDragging}
-                            setIsPlaying={setIsPlaying}
-                        />
-                        <TimelineRuler duration={duration} zoom={zoom} />
+                    <div ref={trackRef} className="pl-4 overflow-x-auto h-full">
+                        <div ref={innerRef} className="relative h-full">
+                            <TimelineCursor
+                                currentPosition={currentTime * zoom}
+                                setIsDragging={setIsDragging}
+                                setIsPlaying={setIsPlaying}
+                            />
+                            <TimelineRuler duration={duration} zoom={zoom} onSeek={setCurrentTime} />
+                        </div>
                     </div>
                 </ResizablePanel>
             </ResizablePanelGroup>

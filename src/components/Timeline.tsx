@@ -9,6 +9,7 @@ import type { Player } from './types/player';
 import TimelineTrackControl from './TimelineTrackControl';
 import TimelineRuler from './TimelineRuler';
 import TimelineCursor from './TimelineCursor';
+import TimelineTrack from './TimelineTrack';
 
 interface TimelineProps {
     playerData: Player[];
@@ -185,6 +186,7 @@ export function Timeline({
                                 setIsPlaying={setIsPlaying}
                             />
                             <TimelineRuler duration={duration} zoom={zoom} onSeek={setCurrentTime} />
+                            <TimelineTrack />
                         </div>
                     </div>
                 </ResizablePanel>

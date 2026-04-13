@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 import {
     Empty,
@@ -27,17 +27,15 @@ function VideoPreview({
 }: VideoPreviewProps) {
     const inputRef = useRef<HTMLInputElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
-
+    const videoRef = useRef<HTMLVideoElement>(null);
     const handleFile = (file: File) => {
         if (!file) return;
 
         const url = URL.createObjectURL(file);
-
-        const videoEl = document.createElement('video');
+        const videoEl = videoRef.current!;
         videoEl.src = url;
         videoEl.preload = 'auto';
-        videoEl.crossOrigin = 'anonymous';
-        videoEl.muted = true;
+        videoEl.muted = false;
 
         videoEl.onloadedmetadata = () => {
             setVideo({
@@ -132,15 +130,18 @@ function VideoPreview({
     }, [isPlaying, video]);
 
     useEffect(() => {
-        if (!video || isPlaying) return;
+        if (!video) return;
 
         const v = video.videoEl;
+        const threshold = isPlaying ? 0.5 : 0.01;
 
-        if (Math.abs(v.currentTime - currentTime) > 0.01) {
+        if (Math.abs(v.currentTime - currentTime) > threshold) {
             v.currentTime = currentTime;
 
-            const handler = () => drawFrame();
-            v.addEventListener('seeked', handler, { once: true });
+            if (!isPlaying) {
+                const handler = () => drawFrame();
+                v.addEventListener('seeked', handler, { once: true });
+            }
         }
     }, [currentTime, video, isPlaying]);
 
@@ -152,41 +153,46 @@ function VideoPreview({
         };
     }, [video]);
 
-    return video ? (
-        <canvas ref={canvasRef} className="w-full h-full" />
-    ) : (
-        <Empty className="h-full">
-            <EmptyHeader>
-                <EmptyMedia>
-                    <img src="/assets/logo.svg" width={200} />
-                </EmptyMedia>
-                <EmptyTitle className="text-xl">Start with a video</EmptyTitle>
-                <EmptyDescription>
-                    Drop a file here or select one to begin editing
-                </EmptyDescription>
-            </EmptyHeader>
+    return (
+        <>
+            <video ref={videoRef} style={{ position: 'absolute', width: 0, height: 0 }} />
+            {video ? (
+                <canvas ref={canvasRef} className="w-full h-full" />
+            ) : (
+                <Empty className="h-full">
+                    <EmptyHeader>
+                        <EmptyMedia>
+                            <img src="/assets/logo.svg" width={200} />
+                        </EmptyMedia>
+                        <EmptyTitle className="text-xl">Start with a video</EmptyTitle>
+                        <EmptyDescription>
+                            Drop a file here or select one to begin editing
+                        </EmptyDescription>
+                    </EmptyHeader>
 
-            <EmptyContent>
-                <Button
-                    size="lg"
-                    className="text-md"
-                    onClick={() => inputRef.current?.click()}
-                >
-                    Select video
-                </Button>
+                    <EmptyContent>
+                        <Button
+                            size="lg"
+                            className="text-md"
+                            onClick={() => inputRef.current?.click()}
+                        >
+                            Select video
+                        </Button>
 
-                <input
-                    ref={inputRef}
-                    type="file"
-                    accept="video/*"
-                    className="hidden"
-                    onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleFile(file);
-                    }}
-                />
-            </EmptyContent>
-        </Empty>
+                        <input
+                            ref={inputRef}
+                            type="file"
+                            accept="video/*"
+                            className="hidden"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleFile(file);
+                            }}
+                        />
+                    </EmptyContent>
+                </Empty>
+            )}
+        </>
     );
 }
 

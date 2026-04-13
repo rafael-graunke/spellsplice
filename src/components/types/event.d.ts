@@ -1,6 +1,12 @@
-interface Event {
-  time: number;
-  duration?: number;
+export interface TrackEvent {
+    id: number;
+    time: number;
+    duration: number;
+    color: string;
 }
 
-export interface DrawEvent extends Event {}
+export interface Track {
+    id: string;
+    playerId: string;
+    events: TrackEvent[];
+}

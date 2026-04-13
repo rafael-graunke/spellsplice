@@ -1,0 +1,73 @@
+import { useEffect, useRef } from 'react';
+import { cn } from '@/lib/utils';
+
+interface TimelineEventProps {
+    color: string;
+    time: number;
+    duration: number;
+    zoom: number;
+    onUpdate: (time: number, duration: number) => void;
+}
+
+type DragMode = 'move' | 'resize-left' | 'resize-right';
+
+function TimelineEvent({ color, time, duration, zoom, onUpdate }: TimelineEventProps) {
+    const dragRef = useRef<{
+        mode: DragMode;
+        startX: number;
+        startTime: number;
+        startDuration: number;
+    } | null>(null);
+
+    const handleMouseDown = (e: React.MouseEvent, mode: DragMode) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragRef.current = { mode, startX: e.clientX, startTime: time, startDuration: duration };
+    };
+
+    useEffect(() => {
+        const onMouseMove = (e: MouseEvent) => {
+            if (!dragRef.current) return;
+            const { mode, startX, startTime, startDuration } = dragRef.current;
+            const deltaTime = (e.clientX - startX) / zoom;
+
+            if (mode === 'move') {
+                onUpdate(Math.max(0, startTime + deltaTime), startDuration);
+            } else if (mode === 'resize-left') {
+                const newTime = Math.max(0, startTime + deltaTime);
+                const newDuration = Math.max(0.1, startDuration - (newTime - startTime));
+                onUpdate(newTime, newDuration);
+            } else if (mode === 'resize-right') {
+                onUpdate(startTime, Math.max(0.1, startDuration + deltaTime));
+            }
+        };
+
+        const onMouseUp = () => { dragRef.current = null; };
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+        };
+    }, [zoom, onUpdate]);
+
+    return (
+        <div
+            className={cn('absolute cursor-grab active:cursor-grabbing overflow-hidden h-full rounded-sm select-none', color)}
+            style={{ left: time * zoom, width: duration * zoom }}
+            onMouseDown={(e) => handleMouseDown(e, 'move')}
+        >
+            <div
+                className="absolute cursor-col-resize h-full w-2 bg-white/30 left-0"
+                onMouseDown={(e) => handleMouseDown(e, 'resize-left')}
+            />
+            <div
+                className="absolute cursor-col-resize h-full w-2 bg-white/30 right-0"
+                onMouseDown={(e) => handleMouseDown(e, 'resize-right')}
+            />
+        </div>
+    );
+}
+
+export default TimelineEvent;

@@ -6,6 +6,8 @@ import {
 } from './ui/resizable';
 import { TimelineControls } from './TimelineControls';
 import type { Player } from './types/player';
+import type { Track } from './types/event';
+
 import TimelineTrackControl from './TimelineTrackControl';
 import TimelineRuler from './TimelineRuler';
 import TimelineCursor from './TimelineCursor';
@@ -29,13 +31,15 @@ export function Timeline({
     setIsPlaying,
 }: TimelineProps) {
     const [zoom, setZoom] = useState(50);
-    const [selectedPlayer, setSelectedPlayer] = useState<Player>(playerData[0]);
     const [isDragging, setIsDragging] = useState(false);
+    const [tracks, setTracks] = useState<Track[]>(() =>
+        playerData.map((player) => ({ id: player.id, playerId: player.id, events: [] }))
+    );
 
     const lastTimeRef = useRef<number | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const trackRef = useRef<HTMLDivElement>(null);  // scroll container
-    const innerRef = useRef<HTMLDivElement>(null);  // positioning context
+    const trackRef = useRef<HTMLDivElement>(null);
+    const innerRef = useRef<HTMLDivElement>(null);
     const zoomRef = useRef(zoom);
 
     const handleZoomChange = (newZoom: number) => {
@@ -43,8 +47,30 @@ export function Timeline({
         setZoom(newZoom);
     };
 
-    const handlePlayerChange = (player: Player) => {
-        setSelectedPlayer(player);
+    const nextEventId = useRef(1);
+
+    const handleCreateEvent = () => {
+        setTracks((prev) => {
+            if (prev.length === 0) return prev;
+            const [first, ...rest] = prev;
+            const newEvent = {
+                id: nextEventId.current++,
+                time: currentTime,
+                duration: 2,
+                color: 'bg-blue-500',
+            };
+            return [{ ...first, events: [...first.events, newEvent] }, ...rest];
+        });
+    };
+
+    const handleUpdateEvent = (trackId: string, eventId: number, time: number, duration: number) => {
+        setTracks((prev) =>
+            prev.map((track) =>
+                track.id === trackId
+                    ? { ...track, events: track.events.map((e) => (e.id === eventId ? { ...e, time, duration } : e)) }
+                    : track
+            )
+        );
     };
 
     // Handle Zoom
@@ -65,19 +91,13 @@ export function Timeline({
             const scrollLeft = track.scrollLeft;
             const oldZoom = zoomRef.current;
 
-            // padding offset between scroll container and positioning context
             const padding = innerRect.left - trackRect.left + scrollLeft;
-
             const contentX = scrollLeft + trackX - padding;
             const time = contentX / oldZoom;
 
             const zoomIntensity = 0.001;
             const delta = -e.deltaY;
-            const newZoom = Math.min(
-                Math.max(5, oldZoom * (1 + delta * zoomIntensity)),
-                200
-            );
-
+            const newZoom = Math.min(Math.max(5, oldZoom * (1 + delta * zoomIntensity)), 200);
             const newScrollLeft = time * newZoom + padding - trackX;
 
             zoomRef.current = newZoom;
@@ -86,10 +106,7 @@ export function Timeline({
         };
 
         el.addEventListener('wheel', handler, { passive: false });
-
-        return () => {
-            el.removeEventListener('wheel', handler);
-        };
+        return () => el.removeEventListener('wheel', handler);
     }, []);
 
     // Handle running
@@ -102,11 +119,9 @@ export function Timeline({
         let rafId: number;
 
         const tick = (now: number) => {
-            if (lastTimeRef.current === null) {
-                lastTimeRef.current = now;
-            }
+            if (lastTimeRef.current === null) lastTimeRef.current = now;
 
-            const delta = (now - lastTimeRef.current) / 1000; // ms → seconds
+            const delta = (now - lastTimeRef.current) / 1000;
             lastTimeRef.current = now;
 
             setCurrentTime((prev) => {
@@ -122,7 +137,6 @@ export function Timeline({
         };
 
         rafId = requestAnimationFrame(tick);
-
         return () => cancelAnimationFrame(rafId);
     }, [isPlaying, duration]);
 
@@ -132,10 +146,7 @@ export function Timeline({
         const handleMouseMove = (e: MouseEvent) => {
             const inner = innerRef.current;
             if (!inner) return;
-
-            // innerRef moves with scroll, so rect.left already encodes scroll offset
             const x = e.clientX - inner.getBoundingClientRect().left;
-
             setCurrentTime(Math.max(0, Math.min(duration, x / zoom)));
         };
 
@@ -145,7 +156,6 @@ export function Timeline({
         };
 
         document.body.style.userSelect = 'none';
-
         window.addEventListener('mousemove', handleMouseMove);
         window.addEventListener('mouseup', handleMouseUp);
 
@@ -164,29 +174,33 @@ export function Timeline({
                 isPlaying={isPlaying}
                 setCurrentTime={setCurrentTime}
                 setIsPlaying={setIsPlaying}
+                onCreateEvent={handleCreateEvent}
             />
             <ResizablePanelGroup orientation="horizontal">
                 <ResizablePanel minSize={100} defaultSize="20%">
-                    <TimelineTrackControl
-                        playerData={playerData}
-                        currentPlayer={selectedPlayer}
-                        onPlayerChange={handlePlayerChange}
-                    />
+                    <TimelineTrackControl playerData={playerData} tracks={tracks} />
                 </ResizablePanel>
                 <ResizableHandle />
-                <ResizablePanel
-                    minSize={100}
-                    defaultSize="80%"
-                >
+                <ResizablePanel minSize={100} defaultSize="80%">
                     <div ref={trackRef} className="pl-4 overflow-x-auto h-full">
-                        <div ref={innerRef} className="relative h-full">
+                        <div ref={innerRef} className="relative h-full w-full">
                             <TimelineCursor
                                 currentPosition={currentTime * zoom}
                                 setIsDragging={setIsDragging}
                                 setIsPlaying={setIsPlaying}
                             />
                             <TimelineRuler duration={duration} zoom={zoom} onSeek={setCurrentTime} />
-                            <TimelineTrack />
+                            {tracks.map((track) => (
+                                <TimelineTrack
+                                    key={track.id}
+                                    width={duration * zoom}
+                                    zoom={zoom}
+                                    events={track.events}
+                                    onUpdateEvent={(eventId, time, duration) =>
+                                        handleUpdateEvent(track.id, eventId, time, duration)
+                                    }
+                                />
+                            ))}
                         </div>
                     </div>
                 </ResizablePanel>

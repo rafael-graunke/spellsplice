@@ -50,9 +50,10 @@ function ZoomControls({ zoom, onZoomChange }: ZoomControlsProps) {
 
 interface CreateControlsProps {
   setIsPlaying: (playing: React.SetStateAction<boolean>) => void;
+  onCreateEvent: () => void;
 }
 
-function CreateControls({ setIsPlaying }: CreateControlsProps) {
+function CreateControls({ setIsPlaying, onCreateEvent }: CreateControlsProps) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -68,6 +69,11 @@ function CreateControls({ setIsPlaying }: CreateControlsProps) {
     return () => window.removeEventListener("keydown", downHandler);
   }, []);
 
+  const handleSelect = () => {
+    onCreateEvent();
+    setOpen(false);
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <Button onClick={() => setOpen(true)} variant="outline" className="w-fit">
@@ -79,30 +85,30 @@ function CreateControls({ setIsPlaying }: CreateControlsProps) {
           <CommandList>
             <CommandEmpty>No actions found.</CommandEmpty>
             <CommandGroup heading="Draw">
-              <CommandItem>Draw</CommandItem>
-              <CommandItem>Opening Hand</CommandItem>
+              <CommandItem onSelect={handleSelect}>Draw</CommandItem>
+              <CommandItem onSelect={handleSelect}>Opening Hand</CommandItem>
             </CommandGroup>
             <CommandSeparator />
             <CommandGroup heading="Hand Disruption">
-              <CommandItem>Discard</CommandItem>
-              <CommandItem>Discard Hand</CommandItem>
-              <CommandItem>Reveal</CommandItem>
-              <CommandItem>Reveal Hand</CommandItem>
-              <CommandItem>Reveal and Discard</CommandItem>
+              <CommandItem onSelect={handleSelect}>Discard</CommandItem>
+              <CommandItem onSelect={handleSelect}>Discard Hand</CommandItem>
+              <CommandItem onSelect={handleSelect}>Reveal</CommandItem>
+              <CommandItem onSelect={handleSelect}>Reveal Hand</CommandItem>
+              <CommandItem onSelect={handleSelect}>Reveal and Discard</CommandItem>
             </CommandGroup>
             <CommandSeparator />
             <CommandGroup heading="Life">
-              <CommandItem>Gain Life</CommandItem>
-              <CommandItem>Lose Life</CommandItem>
-              <CommandItem>Infinite Life</CommandItem>
-              <CommandItem>Death</CommandItem>
+              <CommandItem onSelect={handleSelect}>Gain Life</CommandItem>
+              <CommandItem onSelect={handleSelect}>Lose Life</CommandItem>
+              <CommandItem onSelect={handleSelect}>Infinite Life</CommandItem>
+              <CommandItem onSelect={handleSelect}>Death</CommandItem>
             </CommandGroup>
             <CommandSeparator />
             <CommandGroup heading="Special Events">
-              <CommandItem>Brainstorm</CommandItem>
-              <CommandItem>Ponder</CommandItem>
-              <CommandItem>Thoughtseize</CommandItem>
-              <CommandItem>Fetch</CommandItem>
+              <CommandItem onSelect={handleSelect}>Brainstorm</CommandItem>
+              <CommandItem onSelect={handleSelect}>Ponder</CommandItem>
+              <CommandItem onSelect={handleSelect}>Thoughtseize</CommandItem>
+              <CommandItem onSelect={handleSelect}>Fetch</CommandItem>
             </CommandGroup>
           </CommandList>
         </Command>
@@ -160,6 +166,7 @@ function PlaybackControls({
 interface TimelineControlsProps
   extends ZoomControlsProps, PlaybackControlsProps {
   duration: number;
+  onCreateEvent: () => void;
 }
 
 export function TimelineControls({
@@ -169,11 +176,12 @@ export function TimelineControls({
   zoom,
   onZoomChange: handleZoomChange,
   isPlaying,
+  onCreateEvent,
 }: TimelineControlsProps) {
   return (
     <div className="border-b timeline w-full flex flex-row justify-between gap-4 p-2 px-4">
       <div className="w-250 flex flex-row justify-start">
-        <CreateControls setIsPlaying={setIsPlaying}/>
+        <CreateControls setIsPlaying={setIsPlaying} onCreateEvent={onCreateEvent} />
       </div>
       <div className="w-250 flex flex-row justify-center">
         <PlaybackControls

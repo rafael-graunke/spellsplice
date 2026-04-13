@@ -1,45 +1,24 @@
-import type { Player } from "./types/player";
-import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
-
-interface PlayerTabProps {
-    players: Player[],
-    currentPlayer: Player,
-    onPlayerChange: (player: Player) => void,
-}
-
-function PlayerTab({ players, currentPlayer, onPlayerChange }: PlayerTabProps) {
-    return (
-        <Tabs
-            value={currentPlayer.name}
-            onValueChange={
-                (name) => onPlayerChange(players.find((p) => p.name === name) || players[0])
-            }
-        >
-            <TabsList variant="line">
-                {players.map((player) => (
-                    <TabsTrigger key={player.name} value={player.name}>
-                        {player.name}
-                    </TabsTrigger>
-                ))}
-            </TabsList>
-        </Tabs>
-    )
-}
-
+import type { Player } from './types/player';
+import type { Track } from './types/event';
 
 interface TimelineTrackControlProps {
-    playerData: Player[],
-    currentPlayer: Player,
-    onPlayerChange: (player: Player) => void,
+    playerData: Player[];
+    tracks: Track[];
 }
 
-function TimelineTrackControl({ playerData, currentPlayer, onPlayerChange }: TimelineTrackControlProps) {
-
+function TimelineTrackControl({ playerData, tracks }: TimelineTrackControlProps) {
     return (
         <div className="flex flex-col">
-            <PlayerTab players={playerData} currentPlayer={currentPlayer} onPlayerChange={onPlayerChange} />
+            {tracks.map((track) => {
+                const player = playerData.find((p) => p.id === track.playerId);
+                return (
+                    <div key={track.id} className="h-12 flex items-center px-3 border-b border-gray-600 border-dashed text-sm text-gray-300 truncate">
+                        {player?.name ?? track.playerId}
+                    </div>
+                );
+            })}
         </div>
-    )
+    );
 }
 
 export default TimelineTrackControl;

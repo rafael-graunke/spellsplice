@@ -158,7 +158,9 @@ function PlaybackControls({
     useEffect(() => {
         const downHandler = (e: KeyboardEvent) => {
             if (e.code === 'Space') {
-                if (e.repeat) return; // 🧠 THIS FIXES IT
+                if (e.repeat) return;
+                const target = e.target as HTMLElement;
+                if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
 
                 e.preventDefault();
                 setIsPlaying((prev) => !prev);

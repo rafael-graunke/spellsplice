@@ -6,11 +6,23 @@ interface TimelineTrackProps {
     zoom: number;
     events: TrackEvent[];
     onUpdateEvent: (id: number, time: number, duration: number) => void;
+    onDeleteEvent?: (id: number) => void;
+    onMoveStart?: (eventId: number, e: React.MouseEvent, time: number, duration: number) => void;
+    draggingEventId?: number | null;
 }
 
-function TimelineTrack({ width, zoom, events, onUpdateEvent }: TimelineTrackProps) {
+function TimelineTrack({ width, zoom, events, onUpdateEvent, onDeleteEvent, onMoveStart, draggingEventId }: TimelineTrackProps) {
     return (
-        <div className="h-12 py-1 border-b border-gray-600 border-dashed" style={{ width: `max(100%, ${width}px)` }}>
+        <div
+            className="h-12 py-1"
+            style={{
+                width: `max(100%, ${width}px)`,
+                backgroundImage: 'repeating-linear-gradient(to right, #4B5563 0px, #4B5563 4px, transparent 4px, transparent 12px)',
+                backgroundPosition: 'bottom',
+                backgroundSize: '100% 1px',
+                backgroundRepeat: 'no-repeat',
+            }}
+        >
             <div className="relative h-full" style={{ width }}>
                 {events.map((event) => (
                     <TimelineEvent
@@ -20,6 +32,9 @@ function TimelineTrack({ width, zoom, events, onUpdateEvent }: TimelineTrackProp
                         duration={event.duration}
                         zoom={zoom}
                         onUpdate={(time, duration) => onUpdateEvent(event.id, time, duration)}
+                        onDelete={() => onDeleteEvent?.(event.id)}
+                        onMoveStart={(e, time, duration) => onMoveStart?.(event.id, e, time, duration)}
+                        isBeingDragged={draggingEventId === event.id}
                     />
                 ))}
             </div>

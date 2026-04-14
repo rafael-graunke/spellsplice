@@ -51,6 +51,7 @@ function App() {
                                     video={video}
                                     setVideo={setVideo}
                                     setCurrentTime={setCurrentTime}
+                                    setIsPlaying={setIsPlaying}
                                 />
                             </ResizablePanel>
                             <ResizableHandle />

@@ -14,6 +14,7 @@ interface VideoPreviewProps {
     isPlaying: boolean;
     currentTime: number;
     setCurrentTime: React.Dispatch<React.SetStateAction<number>>;
+    setIsPlaying: (playing: boolean) => void;
     video: VideoState | null;
     setVideo: React.Dispatch<React.SetStateAction<VideoState | null>>;
 }
@@ -22,6 +23,7 @@ function VideoPreview({
     isPlaying,
     currentTime,
     setCurrentTime,
+    setIsPlaying,
     video,
     setVideo,
 }: VideoPreviewProps) {
@@ -102,10 +104,18 @@ function VideoPreview({
     useEffect(() => {
         if (!video) return;
 
+        const v = video.videoEl;
+
         if (isPlaying) {
-            video.videoEl.play();
+            v.play();
+            const handleEnded = () => {
+                setIsPlaying(false);
+                setCurrentTime(v.duration);
+            };
+            v.addEventListener('ended', handleEnded, { once: true });
+            return () => v.removeEventListener('ended', handleEnded);
         } else {
-            video.videoEl.pause();
+            v.pause();
         }
     }, [isPlaying, video]);
 

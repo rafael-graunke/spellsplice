@@ -1,5 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 
 interface TimelineEventProps {
     color: string;
@@ -7,11 +13,14 @@ interface TimelineEventProps {
     duration: number;
     zoom: number;
     onUpdate: (time: number, duration: number) => void;
+    onMoveStart?: (e: React.MouseEvent, time: number, duration: number) => void;
+    onDelete?: () => void;
+    isBeingDragged?: boolean;
 }
 
-type DragMode = 'move' | 'resize-left' | 'resize-right';
+type DragMode = 'resize-left' | 'resize-right';
 
-function TimelineEvent({ color, time, duration, zoom, onUpdate }: TimelineEventProps) {
+function TimelineEvent({ color, time, duration, zoom, onUpdate, onMoveStart, onDelete, isBeingDragged }: TimelineEventProps) {
     const dragRef = useRef<{
         mode: DragMode;
         startX: number;
@@ -19,9 +28,15 @@ function TimelineEvent({ color, time, duration, zoom, onUpdate }: TimelineEventP
         startDuration: number;
     } | null>(null);
 
-    const handleMouseDown = (e: React.MouseEvent, mode: DragMode) => {
+    const handleMouseDown = (e: React.MouseEvent, mode: 'move' | DragMode) => {
         e.preventDefault();
         e.stopPropagation();
+
+        if (mode === 'move') {
+            onMoveStart?.(e, time, duration);
+            return;
+        }
+
         dragRef.current = { mode, startX: e.clientX, startTime: time, startDuration: duration };
     };
 
@@ -31,9 +46,7 @@ function TimelineEvent({ color, time, duration, zoom, onUpdate }: TimelineEventP
             const { mode, startX, startTime, startDuration } = dragRef.current;
             const deltaTime = (e.clientX - startX) / zoom;
 
-            if (mode === 'move') {
-                onUpdate(Math.max(0, startTime + deltaTime), startDuration);
-            } else if (mode === 'resize-left') {
+            if (mode === 'resize-left') {
                 const newTime = Math.max(0, startTime + deltaTime);
                 const newDuration = Math.max(0.1, startDuration - (newTime - startTime));
                 onUpdate(newTime, newDuration);
@@ -53,20 +66,33 @@ function TimelineEvent({ color, time, duration, zoom, onUpdate }: TimelineEventP
     }, [zoom, onUpdate]);
 
     return (
-        <div
-            className={cn('absolute cursor-grab active:cursor-grabbing overflow-hidden h-full rounded-sm select-none', color)}
-            style={{ left: time * zoom, width: duration * zoom }}
-            onMouseDown={(e) => handleMouseDown(e, 'move')}
-        >
-            <div
-                className="absolute cursor-col-resize h-full w-2 bg-white/30 left-0"
-                onMouseDown={(e) => handleMouseDown(e, 'resize-left')}
-            />
-            <div
-                className="absolute cursor-col-resize h-full w-2 bg-white/30 right-0"
-                onMouseDown={(e) => handleMouseDown(e, 'resize-right')}
-            />
-        </div>
+        <ContextMenu>
+            <ContextMenuTrigger asChild>
+                <div
+                    className={cn(
+                        'absolute cursor-grab active:cursor-grabbing overflow-hidden h-full rounded-sm select-none',
+                        color,
+                        isBeingDragged && 'opacity-0'
+                    )}
+                    style={{ left: time * zoom, width: duration * zoom }}
+                    onMouseDown={(e) => handleMouseDown(e, 'move')}
+                >
+                    <div
+                        className="absolute cursor-col-resize h-full w-2 bg-white/30 left-0"
+                        onMouseDown={(e) => handleMouseDown(e, 'resize-left')}
+                    />
+                    <div
+                        className="absolute cursor-col-resize h-full w-2 bg-white/30 right-0"
+                        onMouseDown={(e) => handleMouseDown(e, 'resize-right')}
+                    />
+                </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+                <ContextMenuItem variant="destructive" onClick={onDelete}>
+                    Delete
+                </ContextMenuItem>
+            </ContextMenuContent>
+        </ContextMenu>
     );
 }
 

@@ -1,17 +1,19 @@
-import type { TrackEvent } from './types/event';
+import type { TrackEvent } from '../types/event';
 import TimelineEvent from './TimelineEvent';
 
 interface TimelineTrackProps {
     width?: number;
     zoom: number;
     events: TrackEvent[];
+    selectedEventId?: number | null;
+    onSelectEvent?: (event: TrackEvent) => void;
     onUpdateEvent: (id: number, time: number, duration: number) => void;
     onDeleteEvent?: (id: number) => void;
     onMoveStart?: (eventId: number, e: React.MouseEvent, time: number, duration: number) => void;
     draggingEventId?: number | null;
 }
 
-function TimelineTrack({ width, zoom, events, onUpdateEvent, onDeleteEvent, onMoveStart, draggingEventId }: TimelineTrackProps) {
+function TimelineTrack({ width, zoom, events, selectedEventId, onSelectEvent, onUpdateEvent, onDeleteEvent, onMoveStart, draggingEventId }: TimelineTrackProps) {
     return (
         <div
             className="h-12 py-1"
@@ -31,6 +33,8 @@ function TimelineTrack({ width, zoom, events, onUpdateEvent, onDeleteEvent, onMo
                         time={event.time}
                         duration={event.duration}
                         zoom={zoom}
+                        isSelected={selectedEventId === event.id}
+                        onSelect={() => onSelectEvent?.(event)}
                         onUpdate={(time, duration) => onUpdateEvent(event.id, time, duration)}
                         onDelete={() => onDeleteEvent?.(event.id)}
                         onMoveStart={(e, time, duration) => onMoveStart?.(event.id, e, time, duration)}

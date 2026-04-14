@@ -12,6 +12,8 @@ interface TimelineEventProps {
     time: number;
     duration: number;
     zoom: number;
+    isSelected?: boolean;
+    onSelect?: () => void;
     onUpdate: (time: number, duration: number) => void;
     onMoveStart?: (e: React.MouseEvent, time: number, duration: number) => void;
     onDelete?: () => void;
@@ -20,17 +22,19 @@ interface TimelineEventProps {
 
 type DragMode = 'resize-left' | 'resize-right';
 
-function TimelineEvent({ color, time, duration, zoom, onUpdate, onMoveStart, onDelete, isBeingDragged }: TimelineEventProps) {
+function TimelineEvent({ color, time, duration, zoom, isSelected, onSelect, onUpdate, onMoveStart, onDelete, isBeingDragged }: TimelineEventProps) {
     const dragRef = useRef<{
         mode: DragMode;
         startX: number;
         startTime: number;
         startDuration: number;
     } | null>(null);
+    const hasDragged = useRef(false);
 
     const handleMouseDown = (e: React.MouseEvent, mode: 'move' | DragMode) => {
         e.preventDefault();
         e.stopPropagation();
+        hasDragged.current = false;
 
         if (mode === 'move') {
             onMoveStart?.(e, time, duration);
@@ -43,6 +47,7 @@ function TimelineEvent({ color, time, duration, zoom, onUpdate, onMoveStart, onD
     useEffect(() => {
         const onMouseMove = (e: MouseEvent) => {
             if (!dragRef.current) return;
+            hasDragged.current = true;
             const { mode, startX, startTime, startDuration } = dragRef.current;
             const deltaTime = (e.clientX - startX) / zoom;
 
@@ -72,10 +77,12 @@ function TimelineEvent({ color, time, duration, zoom, onUpdate, onMoveStart, onD
                     className={cn(
                         'absolute cursor-grab active:cursor-grabbing overflow-hidden h-full rounded-sm select-none',
                         color,
-                        isBeingDragged && 'opacity-0'
+                        isBeingDragged && 'opacity-0',
+                        isSelected && 'ring-2 ring-white ring-inset',
                     )}
                     style={{ left: time * zoom, width: duration * zoom }}
                     onMouseDown={(e) => handleMouseDown(e, 'move')}
+                    onClick={() => { if (!hasDragged.current) onSelect?.(); }}
                 >
                     <div
                         className="absolute cursor-col-resize h-full w-2 bg-white/30 left-0"

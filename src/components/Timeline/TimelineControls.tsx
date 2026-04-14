@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Minus, Pause, Play, Plus, SkipBack, SkipForward } from 'lucide-react';
-import { Slider } from './ui/slider';
-import { Input } from './ui/input';
-import { Button } from './ui/button';
+import { Slider } from '../ui/slider';
+import { Input } from '../ui/input';
+import { Button } from '../ui/button';
 import {
     Command,
     CommandDialog,
@@ -11,8 +11,8 @@ import {
     CommandInput,
     CommandItem,
     CommandList,
-} from './ui/command';
-import { EventType } from './types/event';
+} from '../ui/command';
+import { EventType, type TrackEvent } from '../types/event';
 
 interface ZoomControlsProps {
     zoom: number;
@@ -50,7 +50,7 @@ function ZoomControls({ zoom, onZoomChange }: ZoomControlsProps) {
 
 interface CreateControlsProps {
     setIsPlaying: (playing: React.SetStateAction<boolean>) => void;
-    onCreateEvent: (eventType: EventType) => void;
+    onCreateEvent: (partial: Partial<TrackEvent>) => void;
 }
 
 function CreateControls({ setIsPlaying, onCreateEvent }: CreateControlsProps) {
@@ -69,8 +69,8 @@ function CreateControls({ setIsPlaying, onCreateEvent }: CreateControlsProps) {
         return () => window.removeEventListener('keydown', downHandler);
     }, []);
 
-    const handleSelect = (eventType: EventType) => {
-        onCreateEvent(eventType);
+    const handleSelect = (partial: Partial<TrackEvent>) => {
+        onCreateEvent(partial);
         setOpen(false);
     };
 
@@ -90,49 +90,37 @@ function CreateControls({ setIsPlaying, onCreateEvent }: CreateControlsProps) {
                         <CommandEmpty>No actions found.</CommandEmpty>
                         <CommandGroup heading="Basic Actions">
                             <CommandItem
-                                onSelect={() =>
-                                    handleSelect(EventType.AddToHand)
-                                }
+                                onSelect={() => handleSelect({ type: EventType.AddToHand })}
                             >
                                 Add to Hand
                             </CommandItem>
                             <CommandItem
-                                onSelect={() =>
-                                    handleSelect(EventType.RemoveFromHand)
-                                }
+                                onSelect={() => handleSelect({ type: EventType.RemoveFromHand })}
                             >
                                 Remove from Hand
                             </CommandItem>
                             <CommandItem
-                                onSelect={() =>
-                                    handleSelect(EventType.LoseLife)
-                                }
+                                onSelect={() => handleSelect({ type: EventType.LoseLife })}
                             >
                                 Lose Life
                             </CommandItem>
                             <CommandItem
-                                onSelect={() =>
-                                    handleSelect(EventType.GainLife)
-                                }
+                                onSelect={() => handleSelect({ type: EventType.GainLife })}
                             >
                                 Gain Life
                             </CommandItem>
                             <CommandItem
-                                onSelect={() =>
-                                    handleSelect(EventType.RevealFromHand)
-                                }
+                                onSelect={() => handleSelect({ type: EventType.RevealFromHand })}
                             >
                                 Reveal from Hand
                             </CommandItem>
                             <CommandItem
-                                onSelect={() =>
-                                    handleSelect(EventType.StackTop)
-                                }
+                                onSelect={() => handleSelect({ type: EventType.StackTop })}
                             >
                                 Stack Top
                             </CommandItem>
                             <CommandItem
-                                onSelect={() => handleSelect(EventType.Shuffle)}
+                                onSelect={() => handleSelect({ type: EventType.Shuffle })}
                             >
                                 Shuffle
                             </CommandItem>
@@ -197,7 +185,7 @@ function PlaybackControls({
 
 interface TimelineControlsProps
     extends ZoomControlsProps, PlaybackControlsProps {
-    onCreateEvent: (eventType: EventType) => void;
+    onCreateEvent: (partial: Partial<TrackEvent>) => void;
 }
 
 export function TimelineControls({

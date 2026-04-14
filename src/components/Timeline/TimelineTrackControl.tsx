@@ -1,5 +1,5 @@
-import type { Player } from './types/player';
-import type { Track } from './types/event';
+import type { Player } from '../types/player';
+import type { Track } from '../types/event';
 
 interface TimelineTrackControlProps {
     playerData: Player[];

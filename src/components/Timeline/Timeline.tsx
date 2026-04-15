@@ -6,13 +6,12 @@ import {
 } from '../ui/resizable';
 import { TimelineControls } from './TimelineControls';
 import type { Player } from '../types/player';
-import type { TrackEvent } from '../types/event';
+import type { Track, TrackEvent } from '../types/event';
 import { cn } from '@/lib/utils';
 import TimelineTrackControl from './TimelineTrackControl';
 import TimelineRuler from './TimelineRuler';
 import TimelineCursor from './TimelineCursor';
 import TimelineTrack from './TimelineTrack';
-import { useTrackEvents } from './hooks/useTrackEvents';
 import { useZoom } from './hooks/useZoom';
 import { useSeekDrag } from './hooks/useSeekDrag';
 import { useEventMoveDrag } from './hooks/useEventMoveDrag';
@@ -27,6 +26,11 @@ interface TimelineProps {
     setIsPlaying: (playing: boolean) => void;
     selectedEvent: TrackEvent | null;
     setSelectedEvent: React.Dispatch<React.SetStateAction<TrackEvent | null>>;
+    tracks: Track[];
+    handleCreateEvent: (partial: Partial<TrackEvent>) => void;
+    handleDeleteEvent: (trackId: string, eventId: number) => void;
+    handleUpdateEvent: (trackId: string, eventId: number, time: number, duration: number) => void;
+    handleMoveEvent: (fromTrackId: string, toTrackId: string, eventId: number, newTime: number) => void;
 }
 
 export function Timeline({
@@ -38,13 +42,16 @@ export function Timeline({
     setIsPlaying,
     selectedEvent,
     setSelectedEvent,
+    tracks,
+    handleCreateEvent,
+    handleDeleteEvent,
+    handleUpdateEvent,
+    handleMoveEvent,
 }: TimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const trackRef = useRef<HTMLDivElement>(null);
     const innerRef = useRef<HTMLDivElement>(null);
 
-    const { tracks, handleCreateEvent, handleDeleteEvent, handleUpdateEvent, handleMoveEvent } =
-        useTrackEvents(playerData, currentTime);
     const { zoom, zoomRef, handleZoomChange } = useZoom(containerRef, trackRef, innerRef);
     const { setIsDragging } = useSeekDrag(innerRef, zoom, duration, setCurrentTime);
     const { ghostPos, moveDragRef, handleMoveStart } = useEventMoveDrag(innerRef, zoomRef, tracks, handleMoveEvent);

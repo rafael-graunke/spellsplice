@@ -17,7 +17,7 @@ export function useTrackEvents(playerData: Player[], currentTime: number) {
                 time: currentTime,
                 duration: 1,
                 color: EventColorMap[partial.type] ?? 'bg-blue-500',
-                resizable: true,
+                resizable: false,
                 ...partial,
             };
             return [{ ...first, events: [...first.events, newEvent] }, ...rest];

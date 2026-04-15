@@ -9,6 +9,9 @@ import {
     EmptyTitle,
 } from './ui/empty';
 import type { VideoState } from './types/video';
+import type { Track } from './types/event';
+import type { Player } from './types/player';
+import { derivePlayerState, getActiveWindowedEvents, getNextChangeTime } from '@/lib/deriveState';
 
 interface VideoPreviewProps {
     isPlaying: boolean;
@@ -17,6 +20,8 @@ interface VideoPreviewProps {
     setIsPlaying: (playing: boolean) => void;
     video: VideoState | null;
     setVideo: React.Dispatch<React.SetStateAction<VideoState | null>>;
+    tracks: Track[];
+    players: Player[];
 }
 
 function VideoPreview({
@@ -26,10 +31,27 @@ function VideoPreview({
     setIsPlaying,
     video,
     setVideo,
+    tracks,
+    players,
 }: VideoPreviewProps) {
     const inputRef = useRef<HTMLInputElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
+    const tracksRef = useRef(tracks);
+    const playersRef = useRef(players);
+    const prevTimeRef = useRef(-1);
+    const derivedCacheRef = useRef<{
+        playerStates: ReturnType<typeof derivePlayerState>[];
+        activeEvents: ReturnType<typeof getActiveWindowedEvents>[];
+        validUntil: number;
+    } | null>(null);
+
+    useEffect(() => {
+        tracksRef.current = tracks;
+        derivedCacheRef.current = null; // invalidate when tracks change
+    }, [tracks]);
+    useEffect(() => { playersRef.current = players; }, [players]);
+
     const handleFile = (file: File) => {
         if (!file) return;
 
@@ -57,24 +79,104 @@ function VideoPreview({
         if (!ctx) return;
 
         const v = video.videoEl;
-
         const canvasW = canvas.width;
         const canvasH = canvas.height;
-
         const videoW = v.videoWidth;
         const videoH = v.videoHeight;
 
-        const scale = Math.min(canvasW / videoW, canvasH / videoH);
+        if (!videoW || !videoH) return;
 
+        const scale = Math.min(canvasW / videoW, canvasH / videoH);
         const drawW = videoW * scale;
         const drawH = videoH * scale;
-
         const offsetX = (canvasW - drawW) / 2;
         const offsetY = (canvasH - drawH) / 2;
 
         ctx.clearRect(0, 0, canvasW, canvasH);
-
         ctx.drawImage(v, offsetX, offsetY, drawW, drawH);
+
+        const time = v.currentTime;
+
+        const cache = derivedCacheRef.current;
+        const needsRederive =
+            !cache ||
+            time >= cache.validUntil ||
+            time < prevTimeRef.current; // seek backwards
+
+        if (needsRederive) {
+            const playerStates = tracksRef.current.map((track) => {
+                const player = playersRef.current.find((p) => p.id === track.playerId);
+                return player ? derivePlayerState(player, track.events, time) : null;
+            });
+            const activeEvents = tracksRef.current.map((track) =>
+                getActiveWindowedEvents(track.events, time)
+            );
+            derivedCacheRef.current = {
+                playerStates,
+                activeEvents,
+                validUntil: getNextChangeTime(tracksRef.current, time),
+            };
+        }
+        prevTimeRef.current = time;
+
+        const { playerStates, activeEvents } = derivedCacheRef.current!;
+
+        // Player state boxes
+        tracksRef.current.forEach((track, i) => {
+            const state = playerStates[i];
+            if (!state) return;
+
+
+            const boxW = 140;
+            const boxH = 72;
+            const boxX = i === 0 ? offsetX + 12 : offsetX + drawW - boxW - 12;
+            const boxY = offsetY + 12;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+            ctx.roundRect(boxX, boxY, boxW, boxH, 6);
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 13px sans-serif';
+            ctx.fillText(state.name, boxX + 10, boxY + 20);
+
+            ctx.font = '13px sans-serif';
+            ctx.fillStyle = '#f87171';
+            ctx.fillText(`♥  ${state.lifeTotal}`, boxX + 10, boxY + 42);
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillText(`✋  ${state.handSize}`, boxX + 10, boxY + 62);
+            ctx.restore();
+        });
+
+        // Active windowed event banners
+        let bannerOffset = 0;
+        activeEvents.forEach((events) => {
+            events.forEach((event) => {
+                const bannerH = 36;
+                const bannerY = offsetY + drawH - bannerH - 12 - bannerOffset;
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.fillStyle = 'rgba(236, 72, 153, 0.85)';
+                ctx.roundRect(offsetX + 12, bannerY, drawW - 24, bannerH, 6);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(
+                    event.type.replace(/_/g, ' '),
+                    offsetX + drawW / 2,
+                    bannerY + 24,
+                );
+                ctx.textAlign = 'left';
+                ctx.restore();
+
+                bannerOffset += bannerH + 6;
+            });
+        });
     };
 
     useEffect(() => {
@@ -86,10 +188,8 @@ function VideoPreview({
 
         const resize = () => {
             const rect = parent.getBoundingClientRect();
-
             canvas.width = rect.width;
             canvas.height = rect.height;
-
             drawFrame();
         };
 
@@ -126,9 +226,6 @@ function VideoPreview({
 
         const loop = () => {
             drawFrame();
-
-            setCurrentTime(video.videoEl.currentTime);
-
             raf = requestAnimationFrame(loop);
         };
 
@@ -154,6 +251,14 @@ function VideoPreview({
             }
         }
     }, [currentTime, video, isPlaying]);
+
+    useEffect(() => {
+        if (!video) return;
+        const v = video.videoEl;
+        const handler = () => setCurrentTime(v.currentTime);
+        v.addEventListener('timeupdate', handler);
+        return () => v.removeEventListener('timeupdate', handler);
+    }, [video]);
 
     useEffect(() => {
         return () => {

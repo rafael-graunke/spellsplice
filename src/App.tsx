@@ -12,7 +12,7 @@ import { useState } from 'react';
 import VideoPreview from './components/VideoPreview';
 import type { VideoState } from './components/types/video';
 import { Inspector } from './components/Inspector';
-
+import { useTrackEvents } from './components/Timeline/hooks/useTrackEvents';
 
 function App() {
     const players: Player[] = [
@@ -36,7 +36,9 @@ function App() {
     const [currentTime, setCurrentTime] = useState(0);
     const [video, setVideo] = useState<VideoState | null>(null);
     const [selectedEvent, setSelectedEvent] = useState<TrackEvent | null>(null);
-    
+
+    const { tracks, handleCreateEvent, handleDeleteEvent, handleUpdateEvent, handleMoveEvent } =
+        useTrackEvents(players, currentTime);
 
     return (
         <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
@@ -56,11 +58,13 @@ function App() {
                                     setVideo={setVideo}
                                     setCurrentTime={setCurrentTime}
                                     setIsPlaying={setIsPlaying}
+                                    tracks={tracks}
+                                    players={players}
                                 />
                             </ResizablePanel>
                             <ResizableHandle />
                             <ResizablePanel minSize={100} defaultSize="25%">
-                                <Inspector /> 
+                                <Inspector />
                             </ResizablePanel>
                         </ResizablePanelGroup>
                     </ResizablePanel>
@@ -75,6 +79,11 @@ function App() {
                             setIsPlaying={setIsPlaying}
                             selectedEvent={selectedEvent}
                             setSelectedEvent={setSelectedEvent}
+                            tracks={tracks}
+                            handleCreateEvent={handleCreateEvent}
+                            handleDeleteEvent={handleDeleteEvent}
+                            handleUpdateEvent={handleUpdateEvent}
+                            handleMoveEvent={handleMoveEvent}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>

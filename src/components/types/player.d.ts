@@ -3,5 +3,5 @@ export interface Player {
     name: string;
     lifeTotal: number;
     handSize: number;
-    librarySize: number;
+    cards: string[];
 }

@@ -11,7 +11,12 @@ import {
 import type { VideoState } from './types/video';
 import type { Track } from './types/event';
 import type { Player } from './types/player';
-import { derivePlayerState, getActiveWindowedEvents, getNextChangeTime } from '@/lib/deriveState';
+import {
+    derivePlayerState,
+    getActiveWindowedEvents,
+    getNextChangeTime,
+} from '@/lib/deriveState';
+import { renderPlayerState } from '@/renders/renderPlayerState';
 
 interface VideoPreviewProps {
     isPlaying: boolean;
@@ -50,7 +55,9 @@ function VideoPreview({
         tracksRef.current = tracks;
         derivedCacheRef.current = null; // invalidate when tracks change
     }, [tracks]);
-    useEffect(() => { playersRef.current = players; }, [players]);
+    useEffect(() => {
+        playersRef.current = players;
+    }, [players]);
 
     const handleFile = (file: File) => {
         if (!file) return;
@@ -99,14 +106,16 @@ function VideoPreview({
 
         const cache = derivedCacheRef.current;
         const needsRederive =
-            !cache ||
-            time >= cache.validUntil ||
-            time < prevTimeRef.current; // seek backwards
+            !cache || time >= cache.validUntil || time < prevTimeRef.current; // seek backwards
 
         if (needsRederive) {
             const playerStates = tracksRef.current.map((track) => {
-                const player = playersRef.current.find((p) => p.id === track.playerId);
-                return player ? derivePlayerState(player, track.events, time) : null;
+                const player = playersRef.current.find(
+                    (p) => p.id === track.playerId
+                );
+                return player
+                    ? derivePlayerState(player, track.events, time)
+                    : null;
             });
             const activeEvents = tracksRef.current.map((track) =>
                 getActiveWindowedEvents(track.events, time)
@@ -121,34 +130,7 @@ function VideoPreview({
 
         const { playerStates, activeEvents } = derivedCacheRef.current!;
 
-        // Player state boxes
-        tracksRef.current.forEach((track, i) => {
-            const state = playerStates[i];
-            if (!state) return;
-
-
-            const boxW = 140;
-            const boxH = 72;
-            const boxX = i === 0 ? offsetX + 12 : offsetX + drawW - boxW - 12;
-            const boxY = offsetY + 12;
-
-            ctx.save();
-            ctx.beginPath();
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-            ctx.roundRect(boxX, boxY, boxW, boxH, 6);
-            ctx.fill();
-
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 13px sans-serif';
-            ctx.fillText(state.name, boxX + 10, boxY + 20);
-
-            ctx.font = '13px sans-serif';
-            ctx.fillStyle = '#f87171';
-            ctx.fillText(`♥  ${state.lifeTotal}`, boxX + 10, boxY + 42);
-            ctx.fillStyle = '#94a3b8';
-            ctx.fillText(`✋  ${state.handSize}`, boxX + 10, boxY + 62);
-            ctx.restore();
-        });
+        renderPlayerState(ctx, playerStates, offsetX, offsetY, drawW);
 
         // Active windowed event banners
         let bannerOffset = 0;
@@ -169,7 +151,7 @@ function VideoPreview({
                 ctx.fillText(
                     event.type.replace(/_/g, ' '),
                     offsetX + drawW / 2,
-                    bannerY + 24,
+                    bannerY + 24
                 );
                 ctx.textAlign = 'left';
                 ctx.restore();
@@ -270,7 +252,10 @@ function VideoPreview({
 
     return (
         <>
-            <video ref={videoRef} style={{ position: 'absolute', width: 0, height: 0 }} />
+            <video
+                ref={videoRef}
+                style={{ position: 'absolute', width: 0, height: 0 }}
+            />
             {video ? (
                 <canvas ref={canvasRef} className="w-full h-full" />
             ) : (
@@ -279,7 +264,9 @@ function VideoPreview({
                         <EmptyMedia>
                             <img src="/assets/logo.svg" width={200} />
                         </EmptyMedia>
-                        <EmptyTitle className="text-xl">Start with a video</EmptyTitle>
+                        <EmptyTitle className="text-xl">
+                            Start with a video
+                        </EmptyTitle>
                         <EmptyDescription>
                             Drop a file here or select one to begin editing
                         </EmptyDescription>

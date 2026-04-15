@@ -19,16 +19,16 @@ function App() {
         {
             id: 'player1',
             name: 'Player 1',
-            handSize: 7,
-            librarySize: 53,
+            handSize: 0,
             lifeTotal: 20,
+            cards: [],
         },
         {
             id: 'player2',
             name: 'Player 2',
-            handSize: 7,
-            librarySize: 53,
+            handSize: 0,
             lifeTotal: 20,
+            cards: [],
         },
     ];
 
@@ -38,7 +38,7 @@ function App() {
     const [selectedEvent, setSelectedEvent] = useState<TrackEvent | null>(null);
 
     const { tracks, handleCreateEvent, handleDeleteEvent, handleUpdateEvent, handleMoveEvent } =
-        useTrackEvents(players, currentTime);
+        useTrackEvents(players, currentTime, setSelectedEvent);
 
     return (
         <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">

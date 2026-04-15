@@ -1,5 +1,14 @@
 import type { TrackEvent } from '../components/types/event';
 import type { Player } from '../components/types/player';
+import {
+    applyGainLife,
+    applyLoseLife,
+    applyAddToHand,
+    applyRemoveFromHand,
+    applyRevealFromHand,
+    applyStackTop,
+    applyShuffle,
+} from './stateHandlers';
 
 export function derivePlayerState(player: Player, events: TrackEvent[], time: number): Player {
     const persistent = events
@@ -34,13 +43,19 @@ export function getNextChangeTime(tracks: { events: TrackEvent[] }[], time: numb
 function applyEvent(state: Player, event: TrackEvent): Player {
     switch (event.type) {
         case 'GAIN_LIFE':
-            return { ...state, lifeTotal: state.lifeTotal + 1 };
+            return applyGainLife(state, event);
         case 'LOSE_LIFE':
-            return { ...state, lifeTotal: state.lifeTotal - 1 };
+            return applyLoseLife(state, event);
         case 'ADD_TO_HAND':
-            return { ...state, handSize: state.handSize + 1 };
+            return applyAddToHand(state, event);
         case 'REMOVE_FROM_HAND':
-            return { ...state, handSize: Math.max(0, state.handSize - 1) };
+            return applyRemoveFromHand(state, event);
+        case 'REVEAL_FROM_HAND':
+            return applyRevealFromHand(state, event);
+        case 'STACK_TOP':
+            return applyStackTop(state, event);
+        case 'SHUFFLE':
+            return applyShuffle(state, event);
         default:
             return state;
     }

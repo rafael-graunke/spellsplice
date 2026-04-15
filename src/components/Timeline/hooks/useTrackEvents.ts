@@ -2,26 +2,31 @@ import { useRef, useState } from 'react';
 import type { Player } from '../../types/player';
 import { EventColorMap, type Track, type TrackEvent } from '../../types/event';
 
-export function useTrackEvents(playerData: Player[], currentTime: number) {
+export function useTrackEvents(
+    playerData: Player[],
+    currentTime: number,
+    setSelectedEvent: React.Dispatch<React.SetStateAction<TrackEvent | null>>,
+) {
     const [tracks, setTracks] = useState<Track[]>(() =>
         playerData.map((player) => ({ id: player.id, playerId: player.id, events: [] }))
     );
     const nextEventId = useRef(1);
 
     const handleCreateEvent = (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => {
+        const newEvent: TrackEvent = {
+            id: nextEventId.current++,
+            time: currentTime,
+            duration: 1,
+            color: EventColorMap[partial.type] ?? 'bg-blue-500',
+            resizable: false,
+            ...partial,
+        };
         setTracks((prev) => {
             if (prev.length === 0) return prev;
             const [first, ...rest] = prev;
-            const newEvent: TrackEvent = {
-                id: nextEventId.current++,
-                time: currentTime,
-                duration: 1,
-                color: EventColorMap[partial.type] ?? 'bg-blue-500',
-                resizable: false,
-                ...partial,
-            };
             return [{ ...first, events: [...first.events, newEvent] }, ...rest];
         });
+        setSelectedEvent(newEvent);
     };
 
     const handleDeleteEvent = (trackId: string, eventId: number) => {

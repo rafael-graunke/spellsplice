@@ -25,10 +25,11 @@ export const EventColorMap: Record<EventType, string> = {
 export interface TrackEvent {
     id: number;
     time: number;
-    duration: number;
     color: string;
     type: EventType;
     resizable: boolean;
+    duration?: number;
+    meta?: Record<string, any>;
 }
 
 export interface Track {

@@ -6,6 +6,7 @@ export const EventType = {
     RevealFromHand: 'REVEAL_FROM_HAND',
     StackTop: 'STACK_TOP',
     Shuffle: 'SHUFFLE',
+    DisplayCard: 'DISPLAY_CARD'
 } as const;
 
 export type EventType = (typeof EventType)[keyof typeof EventType];
@@ -18,6 +19,7 @@ export const EventColorMap: Record<EventType, string> = {
     REVEAL_FROM_HAND: 'bg-yellow-500',
     STACK_TOP: 'bg-blue-400',
     SHUFFLE: 'bg-gray-500',
+    DISPLAY_CARD: 'bg-pink-500',
 };
 
 export interface TrackEvent {
@@ -26,6 +28,7 @@ export interface TrackEvent {
     duration: number;
     color: string;
     type: EventType;
+    resizable: boolean;
 }
 
 export interface Track {

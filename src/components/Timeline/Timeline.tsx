@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import {
     ResizableHandle,
     ResizablePanel,
@@ -25,6 +25,8 @@ interface TimelineProps {
     currentTime: number;
     setCurrentTime: (state: React.SetStateAction<number>) => void;
     setIsPlaying: (playing: boolean) => void;
+    selectedEvent: TrackEvent | null;
+    setSelectedEvent: React.Dispatch<React.SetStateAction<TrackEvent | null>>;
 }
 
 export function Timeline({
@@ -34,6 +36,8 @@ export function Timeline({
     currentTime,
     setCurrentTime,
     setIsPlaying,
+    selectedEvent,
+    setSelectedEvent,
 }: TimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const trackRef = useRef<HTMLDivElement>(null);
@@ -41,7 +45,6 @@ export function Timeline({
 
     const { tracks, handleCreateEvent, handleDeleteEvent, handleUpdateEvent, handleMoveEvent } =
         useTrackEvents(playerData, currentTime);
-    const [selectedEvent, setSelectedEvent] = useState<TrackEvent | null>(null);
     const { zoom, zoomRef, handleZoomChange } = useZoom(containerRef, trackRef, innerRef);
     const { setIsDragging } = useSeekDrag(innerRef, zoom, duration, setCurrentTime);
     const { ghostPos, moveDragRef, handleMoveStart } = useEventMoveDrag(innerRef, zoomRef, tracks, handleMoveEvent);

@@ -34,6 +34,7 @@ function TimelineTrack({ width, zoom, events, selectedEventId, onSelectEvent, on
                         duration={event.duration}
                         zoom={zoom}
                         isSelected={selectedEventId === event.id}
+                        resizable={event.resizable}
                         onSelect={() => onSelectEvent?.(event)}
                         onUpdate={(time, duration) => onUpdateEvent(event.id, time, duration)}
                         onDelete={() => onDeleteEvent?.(event.id)}

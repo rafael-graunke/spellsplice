@@ -90,43 +90,89 @@ function CreateControls({ setIsPlaying, onCreateEvent }: CreateControlsProps) {
                         <CommandEmpty>No actions found.</CommandEmpty>
                         <CommandGroup heading="Basic Actions">
                             <CommandItem
-                                onSelect={() => handleSelect({ type: EventType.AddToHand })}
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.AddToHand,
+                                        duration: 1,
+                                    })
+                                }
                             >
                                 Add to Hand
                             </CommandItem>
                             <CommandItem
-                                onSelect={() => handleSelect({ type: EventType.RemoveFromHand })}
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.RemoveFromHand,
+                                        duration: 1,
+                                    })
+                                }
                             >
                                 Remove from Hand
                             </CommandItem>
                             <CommandItem
-                                onSelect={() => handleSelect({ type: EventType.LoseLife })}
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.LoseLife,
+                                        duration: 1,
+                                    })
+                                }
                             >
                                 Lose Life
                             </CommandItem>
                             <CommandItem
-                                onSelect={() => handleSelect({ type: EventType.GainLife })}
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.GainLife,
+                                        duration: 1,
+                                    })
+                                }
                             >
                                 Gain Life
                             </CommandItem>
                             <CommandItem
-                                onSelect={() => handleSelect({ type: EventType.RevealFromHand })}
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.RevealFromHand,
+                                        duration: 1,
+                                    })
+                                }
                             >
                                 Reveal from Hand
                             </CommandItem>
                             <CommandItem
-                                onSelect={() => handleSelect({ type: EventType.StackTop })}
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.StackTop,
+                                        duration: 1,
+                                    })
+                                }
                             >
                                 Stack Top
                             </CommandItem>
                             <CommandItem
-                                onSelect={() => handleSelect({ type: EventType.Shuffle })}
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.Shuffle,
+                                        duration: 1,
+                                    })
+                                }
                             >
                                 Shuffle
                             </CommandItem>
+                            <CommandItem
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.DisplayCard,
+                                        duration: 5,
+                                        resizable: true,
+                                    })
+                                }
+                            >
+                                Display Card
+                            </CommandItem>
                         </CommandGroup>
                     </CommandList>
-              </Command>
+                </Command>
             </CommandDialog>
         </div>
     );
@@ -148,7 +194,12 @@ function PlaybackControls({
             if (e.code === 'Space') {
                 if (e.repeat) return;
                 const target = e.target as HTMLElement;
-                if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+                if (
+                    target.tagName === 'INPUT' ||
+                    target.tagName === 'TEXTAREA' ||
+                    target.isContentEditable
+                )
+                    return;
 
                 e.preventDefault();
                 setIsPlaying((prev) => !prev);

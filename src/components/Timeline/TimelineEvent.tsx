@@ -12,6 +12,7 @@ interface TimelineEventProps {
     time: number;
     duration: number;
     zoom: number;
+    resizable?: boolean;
     isSelected?: boolean;
     onSelect?: () => void;
     onUpdate: (time: number, duration: number) => void;
@@ -22,7 +23,7 @@ interface TimelineEventProps {
 
 type DragMode = 'resize-left' | 'resize-right';
 
-function TimelineEvent({ color, time, duration, zoom, isSelected, onSelect, onUpdate, onMoveStart, onDelete, isBeingDragged }: TimelineEventProps) {
+function TimelineEvent({ color, time, duration, zoom, resizable = false, isSelected, onSelect, onUpdate, onMoveStart, onDelete, isBeingDragged }: TimelineEventProps) {
     const dragRef = useRef<{
         mode: DragMode;
         startX: number;
@@ -41,6 +42,7 @@ function TimelineEvent({ color, time, duration, zoom, isSelected, onSelect, onUp
             return;
         }
 
+        if (!resizable) return;
         dragRef.current = { mode, startX: e.clientX, startTime: time, startDuration: duration };
     };
 
@@ -84,14 +86,18 @@ function TimelineEvent({ color, time, duration, zoom, isSelected, onSelect, onUp
                     onMouseDown={(e) => handleMouseDown(e, 'move')}
                     onClick={() => { if (!hasDragged.current) onSelect?.(); }}
                 >
-                    <div
-                        className="absolute cursor-col-resize h-full w-2 bg-white/30 left-0"
-                        onMouseDown={(e) => handleMouseDown(e, 'resize-left')}
-                    />
-                    <div
-                        className="absolute cursor-col-resize h-full w-2 bg-white/30 right-0"
-                        onMouseDown={(e) => handleMouseDown(e, 'resize-right')}
-                    />
+                    {resizable && (
+                        <>
+                            <div
+                                className="absolute cursor-col-resize h-full w-2 bg-white/30 left-0"
+                                onMouseDown={(e) => handleMouseDown(e, 'resize-left')}
+                            />
+                            <div
+                                className="absolute cursor-col-resize h-full w-2 bg-white/30 right-0"
+                                onMouseDown={(e) => handleMouseDown(e, 'resize-right')}
+                            />
+                        </>
+                    )}
                 </div>
             </ContextMenuTrigger>
             <ContextMenuContent>

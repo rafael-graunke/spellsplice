@@ -7,9 +7,11 @@ import {
 } from './components/ui/resizable';
 import { Timeline } from './components/Timeline';
 import type { Player } from './components/types/player';
+import type { TrackEvent } from './components/types/event';
 import { useState } from 'react';
 import VideoPreview from './components/VideoPreview';
 import type { VideoState } from './components/types/video';
+import { Inspector } from './components/Inspector';
 
 
 function App() {
@@ -33,6 +35,8 @@ function App() {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [video, setVideo] = useState<VideoState | null>(null);
+    const [selectedEvent, setSelectedEvent] = useState<TrackEvent | null>(null);
+    
 
     return (
         <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
@@ -56,7 +60,7 @@ function App() {
                             </ResizablePanel>
                             <ResizableHandle />
                             <ResizablePanel minSize={100} defaultSize="25%">
-                                <p>Inspector</p>
+                                <Inspector /> 
                             </ResizablePanel>
                         </ResizablePanelGroup>
                     </ResizablePanel>
@@ -69,6 +73,8 @@ function App() {
                             duration={video ? video.duration || 120 : 120}
                             isPlaying={isPlaying}
                             setIsPlaying={setIsPlaying}
+                            selectedEvent={selectedEvent}
+                            setSelectedEvent={setSelectedEvent}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>

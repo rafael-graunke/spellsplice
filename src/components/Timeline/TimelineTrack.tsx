@@ -11,12 +11,14 @@ interface TimelineTrackProps {
     onDeleteEvent?: (id: number) => void;
     onMoveStart?: (eventId: number, e: React.MouseEvent, time: number, duration: number) => void;
     draggingEventId?: number | null;
+    onDeselect?: () => void;
 }
 
-function TimelineTrack({ width, zoom, events, selectedEventId, onSelectEvent, onUpdateEvent, onDeleteEvent, onMoveStart, draggingEventId }: TimelineTrackProps) {
+function TimelineTrack({ width, zoom, events, selectedEventId, onSelectEvent, onUpdateEvent, onDeleteEvent, onMoveStart, draggingEventId, onDeselect }: TimelineTrackProps) {
     return (
         <div
             className="h-12 py-1"
+            onMouseDown={() => onDeselect?.()}
             style={{
                 width: `max(100%, ${width}px)`,
                 backgroundImage: 'repeating-linear-gradient(to right, #4B5563 0px, #4B5563 4px, transparent 4px, transparent 12px)',

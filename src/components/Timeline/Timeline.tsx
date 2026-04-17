@@ -108,6 +108,7 @@ export function Timeline({
                                     onMoveStart={(eventId, e, time, dur) =>
                                         handleMoveStart(track.id, eventId, e, time, dur)
                                     }
+                                    onDeselect={() => setSelectedEvent(null)}
                                 />
                             ))}
                             {ghostPos && (

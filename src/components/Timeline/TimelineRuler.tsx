@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { zoomToPercent } from './hooks/useZoom';
 
 interface TimelineRulerProps {
     duration: number;
@@ -55,25 +56,30 @@ function TimelineRuler({ duration, zoom, onSeek, onScrollDelta }: TimelineRulerP
             style={{ width: duration * zoom }}
             onMouseDown={handleMouseDown}
         >
-            {Array.from({ length: duration }).map((_, i) =>
-                i % 5 === 0 ? (
-                    <div
-                        key={i}
-                        className="absolute top-0 h-5 border-l border-zinc-700 text-xs text-zinc-400"
-                        style={{ left: i * zoom }}
-                    >
-                        <span className="absolute top-5 left-1/2 transform -translate-x-1/2">
-                            {formatTime(i)}
-                        </span>
-                    </div>
-                ) : (
-                    <div
-                        key={i}
-                        className="absolute top-0 h-3 border-l border-zinc-700 text-xs text-zinc-400"
-                        style={{ left: i * zoom }}
-                    />
-                )
-            )}
+            {(() => {
+                const zp = zoomToPercent(zoom);
+                const tickInterval = zp < 15 ? 5 : 1;
+                const labelInterval = zp < 15 ? 10 : zp < 80 ? 5 : 1;
+                return Array.from(
+                    { length: Math.floor(duration / tickInterval) + 1 },
+                    (_, i) => i * tickInterval,
+                ).map((t) => {
+                    const hasLabel = t % labelInterval === 0;
+                    return (
+                        <div
+                            key={t}
+                            className={`absolute top-0 border-l border-zinc-700 text-xs text-zinc-400 ${hasLabel ? 'h-5' : 'h-3'}`}
+                            style={{ left: t * zoom }}
+                        >
+                            {hasLabel && (
+                                <span className="absolute top-5 left-1/2 -translate-x-1/2">
+                                    {formatTime(t)}
+                                </span>
+                            )}
+                        </div>
+                    );
+                });
+            })()}
         </div>
     );
 }

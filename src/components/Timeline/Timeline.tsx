@@ -60,7 +60,7 @@ export function Timeline({
     return (
         <div className="timeline flex flex-col h-full" ref={containerRef}>
             <TimelineControls
-                zoom={zoomPercent}
+                zoom={Math.round(zoomPercent)}
                 onZoomChange={handleZoomChange}
                 isPlaying={isPlaying}
                 setCurrentTime={setCurrentTime}

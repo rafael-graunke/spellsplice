@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { MIN_ZOOM, MAX_ZOOM } from '../constants';
 
-const percentToZoom = (p: number): number =>
+export const percentToZoom = (p: number): number =>
     MIN_ZOOM + (p / 100) * (MAX_ZOOM - MIN_ZOOM);
 
-const zoomToPercent = (z: number): number =>
+export const zoomToPercent = (z: number): number =>
     ((z - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)) * 100;
 
 export function useZoom(

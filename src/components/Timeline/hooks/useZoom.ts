@@ -1,17 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
+import { MIN_ZOOM, MAX_ZOOM } from '../constants';
+
+const percentToZoom = (p: number): number =>
+    MIN_ZOOM + (p / 100) * (MAX_ZOOM - MIN_ZOOM);
+
+const zoomToPercent = (z: number): number =>
+    ((z - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)) * 100;
 
 export function useZoom(
     containerRef: RefObject<HTMLDivElement>,
     trackRef: RefObject<HTMLDivElement>,
     innerRef: RefObject<HTMLDivElement>,
 ) {
-    const [zoom, setZoom] = useState(50);
+    const [zoomPercent, setZoomPercent] = useState(zoomToPercent(50));
+    const zoom = percentToZoom(zoomPercent);
     const zoomRef = useRef(zoom);
+    zoomRef.current = zoom;
 
-    const handleZoomChange = (newZoom: number) => {
+    const handleZoomChange = (newPercent: number) => {
+        const clamped = Math.min(Math.max(0, newPercent), 100);
+        const newZoom = percentToZoom(clamped);
         zoomRef.current = newZoom;
-        setZoom(newZoom);
+        setZoomPercent(clamped);
     };
 
     useEffect(() => {
@@ -37,11 +48,11 @@ export function useZoom(
 
             const zoomIntensity = 0.001;
             const delta = -e.deltaY;
-            const newZoom = Math.min(Math.max(5, oldZoom * (1 + delta * zoomIntensity)), 200);
+            const newZoom = Math.min(Math.max(MIN_ZOOM, oldZoom * (1 + delta * zoomIntensity)), MAX_ZOOM);
             const newScrollLeft = time * newZoom + padding - trackX;
 
             zoomRef.current = newZoom;
-            setZoom(newZoom);
+            setZoomPercent(zoomToPercent(newZoom));
             track.scrollLeft = newScrollLeft;
         };
 
@@ -49,5 +60,5 @@ export function useZoom(
         return () => el.removeEventListener('wheel', handler);
     }, []);
 
-    return { zoom, zoomRef, handleZoomChange };
+    return { zoom, zoomPercent, zoomRef, handleZoomChange };
 }

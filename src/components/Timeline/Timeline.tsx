@@ -53,14 +53,14 @@ export function Timeline({
     const trackRef = useRef<HTMLDivElement>(null);
     const innerRef = useRef<HTMLDivElement>(null);
 
-    const { zoom, zoomRef, handleZoomChange } = useZoom(containerRef, trackRef, innerRef);
+    const { zoom, zoomPercent, zoomRef, handleZoomChange } = useZoom(containerRef, trackRef, innerRef);
     const { setIsDragging } = useSeekDrag(innerRef, zoom, duration, setCurrentTime);
     const { ghostPos, moveDragRef, handleMoveStart } = useEventMoveDrag(innerRef, zoomRef, tracks, handleMoveEvent);
 
     return (
         <div className="timeline flex flex-col h-full" ref={containerRef}>
             <TimelineControls
-                zoom={zoom}
+                zoom={zoomPercent}
                 onZoomChange={handleZoomChange}
                 isPlaying={isPlaying}
                 setCurrentTime={setCurrentTime}

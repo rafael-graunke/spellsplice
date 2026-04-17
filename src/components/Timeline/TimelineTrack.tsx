@@ -9,19 +9,36 @@ interface TimelineTrackProps {
     onSelectEvent?: (event: TrackEvent) => void;
     onUpdateEvent: (id: number, time: number, duration: number) => void;
     onDeleteEvent?: (id: number) => void;
-    onMoveStart?: (eventId: number, e: React.MouseEvent, time: number, duration: number) => void;
+    onMoveStart?: (
+        eventId: number,
+        e: React.MouseEvent,
+        time: number,
+        duration: number
+    ) => void;
     draggingEventId?: number | null;
     onDeselect?: () => void;
 }
 
-function TimelineTrack({ width, zoom, events, selectedEventId, onSelectEvent, onUpdateEvent, onDeleteEvent, onMoveStart, draggingEventId, onDeselect }: TimelineTrackProps) {
+function TimelineTrack({
+    width,
+    zoom,
+    events,
+    selectedEventId,
+    onSelectEvent,
+    onUpdateEvent,
+    onDeleteEvent,
+    onMoveStart,
+    draggingEventId,
+    onDeselect,
+}: TimelineTrackProps) {
     return (
         <div
             className="h-12 py-1"
             onMouseDown={() => onDeselect?.()}
             style={{
                 width: `max(100%, ${width}px)`,
-                backgroundImage: 'repeating-linear-gradient(to right, #4B5563 0px, #4B5563 4px, transparent 4px, transparent 12px)',
+                backgroundImage:
+                    'repeating-linear-gradient(to right, #4B5563 0px, #4B5563 4px, transparent 4px, transparent 12px)',
                 backgroundPosition: 'bottom',
                 backgroundSize: '100% 1px',
                 backgroundRepeat: 'no-repeat',
@@ -39,9 +56,13 @@ function TimelineTrack({ width, zoom, events, selectedEventId, onSelectEvent, on
                         isSelected={selectedEventId === event.id}
                         resizable={event.resizable}
                         onSelect={() => onSelectEvent?.(event)}
-                        onUpdate={(time, duration) => onUpdateEvent(event.id, time, duration)}
+                        onUpdate={(time, duration) =>
+                            onUpdateEvent(event.id, time, duration)
+                        }
                         onDelete={() => onDeleteEvent?.(event.id)}
-                        onMoveStart={(e, time, duration) => onMoveStart?.(event.id, e, time, duration)}
+                        onMoveStart={(e, time, duration) =>
+                            onMoveStart?.(event.id, e, time, duration)
+                        }
                         isBeingDragged={draggingEventId === event.id}
                     />
                 ))}

@@ -5,7 +5,7 @@ export function useSeekDrag(
     innerRef: RefObject<HTMLDivElement>,
     zoom: number,
     duration: number,
-    setCurrentTime: (t: SetStateAction<number>) => void,
+    setCurrentTime: (t: SetStateAction<number>) => void
 ) {
     const [isDragging, setIsDragging] = useState(false);
 

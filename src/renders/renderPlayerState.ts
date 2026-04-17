@@ -5,7 +5,7 @@ export function renderPlayerState(
     playerStates: (ReturnType<typeof derivePlayerState> | null)[],
     offsetX: number,
     offsetY: number,
-    drawW: number,
+    drawW: number
 ) {
     playerStates.forEach((state, i) => {
         if (!state) return;

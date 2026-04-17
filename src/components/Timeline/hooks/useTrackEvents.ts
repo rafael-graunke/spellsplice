@@ -5,14 +5,20 @@ import { EventColorMap, type Track, type TrackEvent } from '../../types/event';
 export function useTrackEvents(
     playerData: Player[],
     currentTime: number,
-    setSelectedEvent: React.Dispatch<React.SetStateAction<TrackEvent | null>>,
+    setSelectedEvent: React.Dispatch<React.SetStateAction<TrackEvent | null>>
 ) {
     const [tracks, setTracks] = useState<Track[]>(() =>
-        playerData.map((player) => ({ id: player.id, playerId: player.id, events: [] }))
+        playerData.map((player) => ({
+            id: player.id,
+            playerId: player.id,
+            events: [],
+        }))
     );
     const nextEventId = useRef(1);
 
-    const handleCreateEvent = (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => {
+    const handleCreateEvent = (
+        partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>
+    ) => {
         const newEvent: TrackEvent = {
             id: nextEventId.current++,
             time: currentTime,
@@ -33,23 +39,41 @@ export function useTrackEvents(
         setTracks((prev) =>
             prev.map((track) =>
                 track.id === trackId
-                    ? { ...track, events: track.events.filter((e) => e.id !== eventId) }
+                    ? {
+                          ...track,
+                          events: track.events.filter((e) => e.id !== eventId),
+                      }
                     : track
             )
         );
     };
 
-    const handleUpdateEvent = (trackId: string, eventId: number, time: number, duration: number) => {
+    const handleUpdateEvent = (
+        trackId: string,
+        eventId: number,
+        time: number,
+        duration: number
+    ) => {
         setTracks((prev) =>
             prev.map((track) =>
                 track.id === trackId
-                    ? { ...track, events: track.events.map((e) => e.id === eventId ? { ...e, time, duration } : e) }
+                    ? {
+                          ...track,
+                          events: track.events.map((e) =>
+                              e.id === eventId ? { ...e, time, duration } : e
+                          ),
+                      }
                     : track
             )
         );
     };
 
-    const handleMoveEvent = (fromTrackId: string, toTrackId: string, eventId: number, newTime: number) => {
+    const handleMoveEvent = (
+        fromTrackId: string,
+        toTrackId: string,
+        eventId: number,
+        newTime: number
+    ) => {
         setTracks((prev) => {
             const sourceTrack = prev.find((t) => t.id === fromTrackId);
             const event = sourceTrack?.events.find((e) => e.id === eventId);
@@ -58,18 +82,35 @@ export function useTrackEvents(
 
             return prev.map((track) => {
                 if (fromTrackId === toTrackId && track.id === fromTrackId) {
-                    return { ...track, events: track.events.map((e) => e.id === eventId ? updatedEvent : e) };
+                    return {
+                        ...track,
+                        events: track.events.map((e) =>
+                            e.id === eventId ? updatedEvent : e
+                        ),
+                    };
                 }
                 if (track.id === fromTrackId) {
-                    return { ...track, events: track.events.filter((e) => e.id !== eventId) };
+                    return {
+                        ...track,
+                        events: track.events.filter((e) => e.id !== eventId),
+                    };
                 }
                 if (track.id === toTrackId) {
-                    return { ...track, events: [...track.events, updatedEvent] };
+                    return {
+                        ...track,
+                        events: [...track.events, updatedEvent],
+                    };
                 }
                 return track;
             });
         });
     };
 
-    return { tracks, handleCreateEvent, handleDeleteEvent, handleUpdateEvent, handleMoveEvent };
+    return {
+        tracks,
+        handleCreateEvent,
+        handleDeleteEvent,
+        handleUpdateEvent,
+        handleMoveEvent,
+    };
 }

@@ -16,7 +16,12 @@ export function useEventMoveDrag(
     innerRef: RefObject<HTMLDivElement>,
     zoomRef: RefObject<number>,
     tracks: Track[],
-    onMoveEvent: (fromTrackId: string, toTrackId: string, eventId: number, newTime: number) => void,
+    onMoveEvent: (
+        fromTrackId: string,
+        toTrackId: string,
+        eventId: number,
+        newTime: number
+    ) => void
 ) {
     const [ghostPos, setGhostPos] = useState<GhostPos | null>(null);
     const moveDragRef = useRef<{
@@ -35,7 +40,7 @@ export function useEventMoveDrag(
         eventId: number,
         e: ReactMouseEvent,
         time: number,
-        duration: number | undefined,
+        duration: number | undefined
     ) => {
         const inner = innerRef.current;
         if (!inner) return;
@@ -80,18 +85,28 @@ export function useEventMoveDrag(
 
             const rect = inner.getBoundingClientRect();
             const deltaX = e.clientX - drag.startX;
-            const newTime = Math.max(0, drag.startTime + deltaX / zoomRef.current!);
+            const newTime = Math.max(
+                0,
+                drag.startTime + deltaX / zoomRef.current!
+            );
 
             const yInInner = e.clientY - rect.top;
-            const rawIndex = Math.floor((yInInner - RULER_HEIGHT) / TRACK_HEIGHT);
-            const trackIndex = Math.max(0, Math.min(tracks.length - 1, rawIndex));
+            const rawIndex = Math.floor(
+                (yInInner - RULER_HEIGHT) / TRACK_HEIGHT
+            );
+            const trackIndex = Math.max(
+                0,
+                Math.min(tracks.length - 1, rawIndex)
+            );
 
             setGhostPos({
                 left: newTime * zoomRef.current!,
                 top: drag.isWaypoint
                     ? RULER_HEIGHT + trackIndex * TRACK_HEIGHT
                     : RULER_HEIGHT + trackIndex * TRACK_HEIGHT + 4,
-                width: drag.isWaypoint ? 44 : drag.startDuration * zoomRef.current!,
+                width: drag.isWaypoint
+                    ? 44
+                    : drag.startDuration * zoomRef.current!,
                 color: drag.color,
                 type: drag.type,
                 isWaypoint: drag.isWaypoint,
@@ -108,14 +123,27 @@ export function useEventMoveDrag(
 
             const rect = inner.getBoundingClientRect();
             const deltaX = e.clientX - drag.startX;
-            const newTime = Math.max(0, drag.startTime + deltaX / zoomRef.current!);
+            const newTime = Math.max(
+                0,
+                drag.startTime + deltaX / zoomRef.current!
+            );
 
             const yInInner = e.clientY - rect.top;
-            const rawIndex = Math.floor((yInInner - RULER_HEIGHT) / TRACK_HEIGHT);
-            const targetIndex = Math.max(0, Math.min(tracks.length - 1, rawIndex));
+            const rawIndex = Math.floor(
+                (yInInner - RULER_HEIGHT) / TRACK_HEIGHT
+            );
+            const targetIndex = Math.max(
+                0,
+                Math.min(tracks.length - 1, rawIndex)
+            );
             const targetTrackId = tracks[targetIndex].id;
 
-            onMoveEvent(drag.sourceTrackId, targetTrackId, drag.eventId, newTime);
+            onMoveEvent(
+                drag.sourceTrackId,
+                targetTrackId,
+                drag.eventId,
+                newTime
+            );
             moveDragRef.current = null;
             setGhostPos(null);
         };

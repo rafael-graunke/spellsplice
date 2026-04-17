@@ -14,7 +14,12 @@ function formatTime(seconds: number): string {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-function TimelineRuler({ duration, zoom, onSeek, onScrollDelta }: TimelineRulerProps) {
+function TimelineRuler({
+    duration,
+    zoom,
+    onSeek,
+    onScrollDelta,
+}: TimelineRulerProps) {
     const rulerRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<{ startX: number; moved: boolean } | null>(null);
     const [grabbing, setGrabbing] = useState(false);
@@ -36,7 +41,8 @@ function TimelineRuler({ duration, zoom, onSeek, onScrollDelta }: TimelineRulerP
 
         const onMouseUp = (e: MouseEvent) => {
             if (dragRef.current && !dragRef.current.moved && rulerRef.current) {
-                const x = e.clientX - rulerRef.current.getBoundingClientRect().left;
+                const x =
+                    e.clientX - rulerRef.current.getBoundingClientRect().left;
                 onSeek(Math.max(0, Math.min(duration, x / zoom)));
             }
             dragRef.current = null;
@@ -62,7 +68,7 @@ function TimelineRuler({ duration, zoom, onSeek, onScrollDelta }: TimelineRulerP
                 const labelInterval = zp < 15 ? 10 : zp < 80 ? 5 : 1;
                 return Array.from(
                     { length: Math.floor(duration / tickInterval) + 1 },
-                    (_, i) => i * tickInterval,
+                    (_, i) => i * tickInterval
                 ).map((t) => {
                     const hasLabel = t % labelInterval === 0;
                     return (

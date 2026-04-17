@@ -22,11 +22,13 @@ Spellsplice is a Magic: The Gathering video overlay editor. Users load a video f
 **App.tsx** holds all canonical state (`isPlaying`, `currentTime`, `video: VideoState | null`) and passes it down via props. No external state management — plain React state + props drilling.
 
 Three-panel layout (react-resizable-panels):
+
 - **VideoPreview** (top-left) — renders video frames to a `<canvas>` via `drawImage` on a rAF loop. A hidden `<video>` element in the React tree handles actual decoding and audio. Syncs seek position and play/pause from props.
 - **Inspector** (top-right) — placeholder, not yet implemented.
 - **Timeline** (bottom) — orchestrates playback. Owns zoom state (`pxPerSec`). Drives `currentTime` forward via rAF while playing. Contains sub-components: `TimelineControls`, `TimelineTrackControl`, `TimelineRuler`, `TimelineCursor`.
 
 **Key types** are in `src/components/types/`:
+
 - `VideoState` — `{ file, url, duration, videoEl }`
 - `Player` — `{ id, name, lifeTotal, handSize, librarySize }`
 

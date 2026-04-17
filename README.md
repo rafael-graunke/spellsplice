@@ -14,16 +14,16 @@
 # Table of Contents
 
 - [About the Project](#about-the-project)
-  * [Screenshots](#screenshots)
-  * [Features](#features)
+    - [Screenshots](#screenshots)
+    - [Features](#features)
 - [Getting Started](#getting-started)
-  * [Prerequisites](#prerequisites)
-  * [Installation](#installation)
-  * [Run Locally](#run-locally)
+    - [Prerequisites](#prerequisites)
+    - [Installation](#installation)
+    - [Run Locally](#run-locally)
 - [Usage](#usage)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
-  * [Code of Conduct](#code-of-conduct)
+    - [Code of Conduct](#code-of-conduct)
 - [FAQ](#faq)
 - [License](#license)
 - [Contact](#contact)
@@ -46,17 +46,13 @@ Spellsplice is an unofficial tool for creating Magic: The Gathering overlays.
 
 ### Features
 
-- 
-
----
+- ***
 
 ## Getting Started
 
 ### Prerequisites
 
--
-
----
+- ***
 
 ### Installation
 
@@ -82,13 +78,11 @@ yarn start
 
 ## Usage
 
--
-
----
+- ***
 
 ## Roadmap
 
-* [ ] 
+- [ ]
 
 ---
 
@@ -100,21 +94,15 @@ Contributions are welcome.
 
 ### Code of Conduct
 
--
-
----
+- ***
 
 ## FAQ
 
--
-
----
+- ***
 
 ## License
 
--
-
----
+- ***
 
 ## Contact
 

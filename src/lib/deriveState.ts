@@ -10,7 +10,11 @@ import {
     applyShuffle,
 } from './stateHandlers';
 
-export function derivePlayerState(player: Player, events: TrackEvent[], time: number): Player {
+export function derivePlayerState(
+    player: Player,
+    events: TrackEvent[],
+    time: number
+): Player {
     const persistent = events
         .filter((e) => !e.resizable && e.time <= time)
         .sort((a, b) => a.time - b.time);
@@ -18,14 +22,20 @@ export function derivePlayerState(player: Player, events: TrackEvent[], time: nu
     return persistent.reduce(applyEvent, { ...player });
 }
 
-export function getActiveWindowedEvents(events: TrackEvent[], time: number): TrackEvent[] {
+export function getActiveWindowedEvents(
+    events: TrackEvent[],
+    time: number
+): TrackEvent[] {
     return events.filter(
         (e) => e.resizable && e.time <= time && time < e.time + e.duration
     );
 }
 
 // Returns the next time after `time` at which derived state would change.
-export function getNextChangeTime(tracks: { events: TrackEvent[] }[], time: number): number {
+export function getNextChangeTime(
+    tracks: { events: TrackEvent[] }[],
+    time: number
+): number {
     let next = Infinity;
     for (const track of tracks) {
         for (const e of track.events) {
@@ -33,7 +43,8 @@ export function getNextChangeTime(tracks: { events: TrackEvent[] }[], time: numb
                 next = Math.min(next, e.time);
             } else if (e.resizable) {
                 if (e.time > time) next = Math.min(next, e.time);
-                else if (time < e.time + e.duration) next = Math.min(next, e.time + e.duration);
+                else if (time < e.time + e.duration)
+                    next = Math.min(next, e.time + e.duration);
             }
         }
     }

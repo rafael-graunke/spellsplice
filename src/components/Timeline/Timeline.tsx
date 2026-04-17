@@ -30,8 +30,18 @@ interface TimelineProps {
     tracks: Track[];
     handleCreateEvent: (partial: Partial<TrackEvent>) => void;
     handleDeleteEvent: (trackId: string, eventId: number) => void;
-    handleUpdateEvent: (trackId: string, eventId: number, time: number, duration: number) => void;
-    handleMoveEvent: (fromTrackId: string, toTrackId: string, eventId: number, newTime: number) => void;
+    handleUpdateEvent: (
+        trackId: string,
+        eventId: number,
+        time: number,
+        duration: number
+    ) => void;
+    handleMoveEvent: (
+        fromTrackId: string,
+        toTrackId: string,
+        eventId: number,
+        newTime: number
+    ) => void;
 }
 
 export function Timeline({
@@ -53,9 +63,23 @@ export function Timeline({
     const trackRef = useRef<HTMLDivElement>(null);
     const innerRef = useRef<HTMLDivElement>(null);
 
-    const { zoom, zoomPercent, zoomRef, handleZoomChange } = useZoom(containerRef, trackRef, innerRef);
-    const { setIsDragging } = useSeekDrag(innerRef, zoom, duration, setCurrentTime);
-    const { ghostPos, moveDragRef, handleMoveStart } = useEventMoveDrag(innerRef, zoomRef, tracks, handleMoveEvent);
+    const { zoom, zoomPercent, zoomRef, handleZoomChange } = useZoom(
+        containerRef,
+        trackRef,
+        innerRef
+    );
+    const { setIsDragging } = useSeekDrag(
+        innerRef,
+        zoom,
+        duration,
+        setCurrentTime
+    );
+    const { ghostPos, moveDragRef, handleMoveStart } = useEventMoveDrag(
+        innerRef,
+        zoomRef,
+        tracks,
+        handleMoveEvent
+    );
 
     return (
         <div className="timeline flex flex-col h-full" ref={containerRef}>
@@ -69,7 +93,10 @@ export function Timeline({
             />
             <ResizablePanelGroup orientation="horizontal">
                 <ResizablePanel minSize={100} defaultSize="20%">
-                    <TimelineTrackControl playerData={playerData} tracks={tracks} />
+                    <TimelineTrackControl
+                        playerData={playerData}
+                        tracks={tracks}
+                    />
                 </ResizablePanel>
                 <ResizableHandle />
                 <ResizablePanel minSize={100} defaultSize="80%">
@@ -85,7 +112,8 @@ export function Timeline({
                                 zoom={zoom}
                                 onSeek={setCurrentTime}
                                 onScrollDelta={(delta) => {
-                                    if (trackRef.current) trackRef.current.scrollLeft -= delta;
+                                    if (trackRef.current)
+                                        trackRef.current.scrollLeft -= delta;
                                 }}
                             />
                             {tracks.map((track) => (
@@ -97,22 +125,37 @@ export function Timeline({
                                     selectedEventId={selectedEvent?.id ?? null}
                                     onSelectEvent={setSelectedEvent}
                                     draggingEventId={
-                                        ghostPos && moveDragRef.current?.sourceTrackId === track.id
+                                        ghostPos &&
+                                        moveDragRef.current?.sourceTrackId ===
+                                            track.id
                                             ? moveDragRef.current.eventId
                                             : null
                                     }
                                     onUpdateEvent={(eventId, time, dur) =>
-                                        handleUpdateEvent(track.id, eventId, time, dur)
+                                        handleUpdateEvent(
+                                            track.id,
+                                            eventId,
+                                            time,
+                                            dur
+                                        )
                                     }
-                                    onDeleteEvent={(eventId) => handleDeleteEvent(track.id, eventId)}
+                                    onDeleteEvent={(eventId) =>
+                                        handleDeleteEvent(track.id, eventId)
+                                    }
                                     onMoveStart={(eventId, e, time, dur) =>
-                                        handleMoveStart(track.id, eventId, e, time, dur)
+                                        handleMoveStart(
+                                            track.id,
+                                            eventId,
+                                            e,
+                                            time,
+                                            dur
+                                        )
                                     }
                                     onDeselect={() => setSelectedEvent(null)}
                                 />
                             ))}
-                            {ghostPos && (
-                                ghostPos.isWaypoint ? (
+                            {ghostPos &&
+                                (ghostPos.isWaypoint ? (
                                     <TimelineEventIcon
                                         type={ghostPos.type}
                                         className="size-11 absolute pointer-events-none opacity-75 z-50"
@@ -123,7 +166,10 @@ export function Timeline({
                                     />
                                 ) : (
                                     <div
-                                        className={cn('absolute pointer-events-none rounded-sm opacity-75 z-50', ghostPos.color)}
+                                        className={cn(
+                                            'absolute pointer-events-none rounded-sm opacity-75 z-50',
+                                            ghostPos.color
+                                        )}
                                         style={{
                                             left: ghostPos.left,
                                             top: ghostPos.top,
@@ -131,8 +177,7 @@ export function Timeline({
                                             height: TRACK_HEIGHT - 8,
                                         }}
                                     />
-                                )
-                            )}
+                                ))}
                         </div>
                     </div>
                 </ResizablePanel>

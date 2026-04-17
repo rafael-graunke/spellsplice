@@ -51,13 +51,17 @@ function TimelineEventIcon({
                 'size-12 absolute bottom-[-3px] -translate-x-1/2',
                 'cursor-grab active:cursor-grabbing select-none',
                 isBeingDragged && 'opacity-0',
-                className,
+                className
             )}
             style={{ left: position, ...style }}
             {...divProps}
         >
             <EventBackground
-                className={cn('absolute inset-0 size-full', fillColor, selected && 'stroke-white stroke-25')}
+                className={cn(
+                    'absolute inset-0 size-full',
+                    fillColor,
+                    selected && 'stroke-white stroke-25'
+                )}
             />
             <Icon className="absolute inset-0 size-7 fill-white -translate-x-1/2 left-1/2 -translate-y-[calc(50%-3px)] top-1/2" />
         </div>

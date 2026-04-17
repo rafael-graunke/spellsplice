@@ -37,8 +37,13 @@ function App() {
     const [video, setVideo] = useState<VideoState | null>(null);
     const [selectedEvent, setSelectedEvent] = useState<TrackEvent | null>(null);
 
-    const { tracks, handleCreateEvent, handleDeleteEvent, handleUpdateEvent, handleMoveEvent } =
-        useTrackEvents(players, currentTime, setSelectedEvent);
+    const {
+        tracks,
+        handleCreateEvent,
+        handleDeleteEvent,
+        handleUpdateEvent,
+        handleMoveEvent,
+    } = useTrackEvents(players, currentTime, setSelectedEvent);
 
     return (
         <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">

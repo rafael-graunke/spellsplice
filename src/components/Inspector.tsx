@@ -1,6 +1,4 @@
-interface InspectorProps {
-
-}
+interface InspectorProps {}
 
 export function Inspector({}: InspectorProps) {
     return (

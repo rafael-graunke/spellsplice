@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RefObject, MouseEvent as ReactMouseEvent } from 'react';
-import type { Track } from '../../types/event';
+import type { Track, EventType } from '../../types/event';
 import { RULER_HEIGHT, TRACK_HEIGHT } from '../constants';
 
 interface GhostPos {
@@ -8,6 +8,8 @@ interface GhostPos {
     top: number;
     width: number;
     color: string;
+    type: EventType;
+    isWaypoint: boolean;
 }
 
 export function useEventMoveDrag(
@@ -24,6 +26,8 @@ export function useEventMoveDrag(
         startTime: number;
         startDuration: number;
         color: string;
+        type: EventType;
+        isWaypoint: boolean;
     } | null>(null);
 
     const handleMoveStart = (
@@ -31,7 +35,7 @@ export function useEventMoveDrag(
         eventId: number,
         e: ReactMouseEvent,
         time: number,
-        duration: number,
+        duration: number | undefined,
     ) => {
         const inner = innerRef.current;
         if (!inner) return;
@@ -41,21 +45,28 @@ export function useEventMoveDrag(
         if (!event) return;
 
         const trackIndex = tracks.findIndex((t) => t.id === trackId);
+        const isWaypoint = !event.resizable;
 
         moveDragRef.current = {
             eventId,
             sourceTrackId: trackId,
             startX: e.clientX,
             startTime: time,
-            startDuration: duration,
+            startDuration: duration ?? 0,
             color: event.color,
+            type: event.type,
+            isWaypoint,
         };
 
         setGhostPos({
             left: time * zoomRef.current!,
-            top: RULER_HEIGHT + trackIndex * TRACK_HEIGHT + 4,
-            width: duration * zoomRef.current!,
+            top: isWaypoint
+                ? RULER_HEIGHT + trackIndex * TRACK_HEIGHT
+                : RULER_HEIGHT + trackIndex * TRACK_HEIGHT + 4,
+            width: isWaypoint ? 44 : (duration ?? 1) * zoomRef.current!,
             color: event.color,
+            type: event.type,
+            isWaypoint,
         });
     };
 
@@ -77,9 +88,13 @@ export function useEventMoveDrag(
 
             setGhostPos({
                 left: newTime * zoomRef.current!,
-                top: RULER_HEIGHT + trackIndex * TRACK_HEIGHT + 4,
-                width: drag.startDuration * zoomRef.current!,
+                top: drag.isWaypoint
+                    ? RULER_HEIGHT + trackIndex * TRACK_HEIGHT
+                    : RULER_HEIGHT + trackIndex * TRACK_HEIGHT + 4,
+                width: drag.isWaypoint ? 44 : drag.startDuration * zoomRef.current!,
                 color: drag.color,
+                type: drag.type,
+                isWaypoint: drag.isWaypoint,
             });
         };
 

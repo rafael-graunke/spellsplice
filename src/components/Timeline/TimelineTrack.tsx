@@ -31,6 +31,7 @@ function TimelineTrack({ width, zoom, events, selectedEventId, onSelectEvent, on
                         key={event.id}
                         color={event.color}
                         time={event.time}
+                        type={event.type}
                         duration={event.duration}
                         zoom={zoom}
                         isSelected={selectedEventId === event.id}

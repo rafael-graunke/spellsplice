@@ -12,6 +12,7 @@ import TimelineTrackControl from './TimelineTrackControl';
 import TimelineRuler from './TimelineRuler';
 import TimelineCursor from './TimelineCursor';
 import TimelineTrack from './TimelineTrack';
+import TimelineEventIcon from './TimelineEventIcon';
 import { useZoom } from './hooks/useZoom';
 import { useSeekDrag } from './hooks/useSeekDrag';
 import { useEventMoveDrag } from './hooks/useEventMoveDrag';
@@ -110,18 +111,26 @@ export function Timeline({
                                 />
                             ))}
                             {ghostPos && (
-                                <div
-                                    className={cn(
-                                        'absolute pointer-events-none rounded-sm opacity-75 z-50',
-                                        ghostPos.color
-                                    )}
-                                    style={{
-                                        left: ghostPos.left,
-                                        top: ghostPos.top,
-                                        width: ghostPos.width,
-                                        height: TRACK_HEIGHT - 8,
-                                    }}
-                                />
+                                ghostPos.isWaypoint ? (
+                                    <TimelineEventIcon
+                                        type={ghostPos.type}
+                                        className="size-11 absolute pointer-events-none opacity-75 z-50"
+                                        style={{
+                                            left: ghostPos.left,
+                                            top: ghostPos.top,
+                                        }}
+                                    />
+                                ) : (
+                                    <div
+                                        className={cn('absolute pointer-events-none rounded-sm opacity-75 z-50', ghostPos.color)}
+                                        style={{
+                                            left: ghostPos.left,
+                                            top: ghostPos.top,
+                                            width: ghostPos.width,
+                                            height: TRACK_HEIGHT - 8,
+                                        }}
+                                    />
+                                )
                             )}
                         </div>
                     </div>

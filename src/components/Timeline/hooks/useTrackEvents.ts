@@ -17,7 +17,7 @@ export function useTrackEvents(
             id: nextEventId.current++,
             time: currentTime,
             duration: 1,
-            color: EventColorMap[partial.type] ?? 'bg-blue-500',
+            color: EventColorMap[partial.type].bg,
             resizable: false,
             ...partial,
         };

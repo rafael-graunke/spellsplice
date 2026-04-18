@@ -16,6 +16,7 @@ import TimelineEventIcon from './TimelineEventIcon';
 import { useZoom } from './hooks/useZoom';
 import { useSeekDrag } from './hooks/useSeekDrag';
 import { useEventMoveDrag } from './hooks/useEventMoveDrag';
+import { useMarqueeDrag } from './hooks/useMarqueeDrag';
 import { TRACK_HEIGHT } from './constants';
 
 interface TimelineProps {
@@ -25,8 +26,8 @@ interface TimelineProps {
     currentTime: number;
     setCurrentTime: (state: React.SetStateAction<number>) => void;
     setIsPlaying: (playing: boolean) => void;
-    selectedEvent: TrackEvent | null;
-    setSelectedEvent: React.Dispatch<React.SetStateAction<TrackEvent | null>>;
+    selectedEvents: TrackEvent[];
+    setSelectedEvents: React.Dispatch<React.SetStateAction<TrackEvent[]>>;
     tracks: Track[];
     handleCreateEvent: (partial: Partial<TrackEvent>) => void;
     handleDeleteEvent: (trackId: string, eventId: number) => void;
@@ -42,6 +43,14 @@ interface TimelineProps {
         eventId: number,
         newTime: number
     ) => void;
+    handleMoveMultipleEvents: (
+        moves: Array<{
+            fromTrackId: string;
+            toTrackId: string;
+            eventId: number;
+            newTime: number;
+        }>
+    ) => void;
 }
 
 export function Timeline({
@@ -51,13 +60,14 @@ export function Timeline({
     currentTime,
     setCurrentTime,
     setIsPlaying,
-    selectedEvent,
-    setSelectedEvent,
+    selectedEvents,
+    setSelectedEvents,
     tracks,
     handleCreateEvent,
     handleDeleteEvent,
     handleUpdateEvent,
     handleMoveEvent,
+    handleMoveMultipleEvents,
 }: TimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const trackRef = useRef<HTMLDivElement>(null);
@@ -74,12 +84,47 @@ export function Timeline({
         duration,
         setCurrentTime
     );
-    const { ghostPos, moveDragRef, handleMoveStart } = useEventMoveDrag(
+    const { ghostPositions, moveDragRef, handleMoveStart } = useEventMoveDrag(
         innerRef,
         zoomRef,
         tracks,
-        handleMoveEvent
+        selectedEvents,
+        handleMoveEvent,
+        handleMoveMultipleEvents
     );
+
+    const selectedEventIds = new Set(selectedEvents.map((e) => e.id));
+
+    const draggingEventIds =
+        ghostPositions.length > 0
+            ? new Set<number>(
+                  [
+                      moveDragRef.current?.primary.eventId,
+                      ...(moveDragRef.current?.companions.map((c) => c.eventId) ??
+                          []),
+                  ].filter((id): id is number => id !== undefined)
+              )
+            : new Set<number>();
+
+    const { marqueeRect, handleTrackMouseDown } = useMarqueeDrag(
+        innerRef,
+        tracks,
+        zoomRef,
+        (events) => setSelectedEvents(events),
+        () => setSelectedEvents([])
+    );
+
+    const handleSelectEvent = (event: TrackEvent, additive: boolean) => {
+        if (additive) {
+            setSelectedEvents((prev) =>
+                prev.some((e) => e.id === event.id)
+                    ? prev.filter((e) => e.id !== event.id)
+                    : [...prev, event]
+            );
+        } else {
+            setSelectedEvents([event]);
+        }
+    };
 
     return (
         <div className="timeline flex flex-col h-full" ref={containerRef}>
@@ -122,15 +167,9 @@ export function Timeline({
                                     width={duration * zoom}
                                     zoom={zoom}
                                     events={track.events}
-                                    selectedEventId={selectedEvent?.id ?? null}
-                                    onSelectEvent={setSelectedEvent}
-                                    draggingEventId={
-                                        ghostPos &&
-                                        moveDragRef.current?.sourceTrackId ===
-                                            track.id
-                                            ? moveDragRef.current.eventId
-                                            : null
-                                    }
+                                    selectedEventIds={selectedEventIds}
+                                    onSelectEvent={handleSelectEvent}
+                                    draggingEventIds={draggingEventIds}
                                     onUpdateEvent={(eventId, time, dur) =>
                                         handleUpdateEvent(
                                             track.id,
@@ -151,33 +190,47 @@ export function Timeline({
                                             dur
                                         )
                                     }
-                                    onDeselect={() => setSelectedEvent(null)}
+                                    onBackgroundMouseDown={handleTrackMouseDown}
                                 />
                             ))}
-                            {ghostPos &&
-                                (ghostPos.isWaypoint ? (
+                            {marqueeRect && (
+                                <div
+                                    className="absolute pointer-events-none border border-blue-400 bg-blue-400/10 z-40"
+                                    style={{
+                                        left: marqueeRect.x,
+                                        top: marqueeRect.y,
+                                        width: marqueeRect.w,
+                                        height: marqueeRect.h,
+                                    }}
+                                />
+                            )}
+                            {ghostPositions.map((ghost, i) =>
+                                ghost.isWaypoint ? (
                                     <TimelineEventIcon
-                                        type={ghostPos.type}
+                                        key={i}
+                                        type={ghost.type}
                                         className="size-11 absolute pointer-events-none opacity-75 z-50"
                                         style={{
-                                            left: ghostPos.left,
-                                            top: ghostPos.top,
+                                            left: ghost.left,
+                                            top: ghost.top,
                                         }}
                                     />
                                 ) : (
                                     <div
+                                        key={i}
                                         className={cn(
                                             'absolute pointer-events-none rounded-sm opacity-75 z-50',
-                                            ghostPos.color
+                                            ghost.color
                                         )}
                                         style={{
-                                            left: ghostPos.left,
-                                            top: ghostPos.top,
-                                            width: ghostPos.width,
+                                            left: ghost.left,
+                                            top: ghost.top,
+                                            width: ghost.width,
                                             height: TRACK_HEIGHT - 8,
                                         }}
                                     />
-                                ))}
+                                )
+                            )}
                         </div>
                     </div>
                 </ResizablePanel>

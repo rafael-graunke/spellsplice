@@ -5,8 +5,8 @@ interface TimelineTrackProps {
     width?: number;
     zoom: number;
     events: TrackEvent[];
-    selectedEventId?: number | null;
-    onSelectEvent?: (event: TrackEvent) => void;
+    selectedEventIds?: Set<number>;
+    onSelectEvent?: (event: TrackEvent, additive: boolean) => void;
     onUpdateEvent: (id: number, time: number, duration: number) => void;
     onDeleteEvent?: (id: number) => void;
     onMoveStart?: (
@@ -15,26 +15,26 @@ interface TimelineTrackProps {
         time: number,
         duration: number
     ) => void;
-    draggingEventId?: number | null;
-    onDeselect?: () => void;
+    draggingEventIds?: Set<number>;
+    onBackgroundMouseDown?: (e: React.MouseEvent) => void;
 }
 
 function TimelineTrack({
     width,
     zoom,
     events,
-    selectedEventId,
+    selectedEventIds,
     onSelectEvent,
     onUpdateEvent,
     onDeleteEvent,
     onMoveStart,
-    draggingEventId,
-    onDeselect,
+    draggingEventIds,
+    onBackgroundMouseDown,
 }: TimelineTrackProps) {
     return (
         <div
             className="h-12 py-1"
-            onMouseDown={() => onDeselect?.()}
+            onMouseDown={(e) => onBackgroundMouseDown?.(e)}
             style={{
                 width: `max(100%, ${width}px)`,
                 backgroundImage:
@@ -53,9 +53,9 @@ function TimelineTrack({
                         type={event.type}
                         duration={event.duration}
                         zoom={zoom}
-                        isSelected={selectedEventId === event.id}
+                        isSelected={selectedEventIds?.has(event.id) ?? false}
                         resizable={event.resizable}
-                        onSelect={() => onSelectEvent?.(event)}
+                        onSelect={(additive) => onSelectEvent?.(event, additive)}
                         onUpdate={(time, duration) =>
                             onUpdateEvent(event.id, time, duration)
                         }
@@ -63,7 +63,7 @@ function TimelineTrack({
                         onMoveStart={(e, time, duration) =>
                             onMoveStart?.(event.id, e, time, duration)
                         }
-                        isBeingDragged={draggingEventId === event.id}
+                        isBeingDragged={draggingEventIds?.has(event.id) ?? false}
                     />
                 ))}
             </div>

@@ -13,7 +13,7 @@ export function useZoom(
     trackRef: RefObject<HTMLDivElement>,
     innerRef: RefObject<HTMLDivElement>
 ) {
-    const [zoomPercent, setZoomPercent] = useState(zoomToPercent(50));
+    const [zoomPercent, setZoomPercent] = useState(50);
     const zoom = percentToZoom(zoomPercent);
     const zoomRef = useRef(zoom);
     zoomRef.current = zoom;

@@ -35,7 +35,7 @@ function App() {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [video, setVideo] = useState<VideoState | null>(null);
-    const [selectedEvent, setSelectedEvent] = useState<TrackEvent | null>(null);
+    const [selectedEvents, setSelectedEvents] = useState<TrackEvent[]>([]);
 
     const {
         tracks,
@@ -43,7 +43,8 @@ function App() {
         handleDeleteEvent,
         handleUpdateEvent,
         handleMoveEvent,
-    } = useTrackEvents(players, currentTime, setSelectedEvent);
+        handleMoveMultipleEvents,
+    } = useTrackEvents(players, currentTime, setSelectedEvents);
 
     return (
         <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
@@ -82,13 +83,14 @@ function App() {
                             duration={video ? video.duration || 120 : 120}
                             isPlaying={isPlaying}
                             setIsPlaying={setIsPlaying}
-                            selectedEvent={selectedEvent}
-                            setSelectedEvent={setSelectedEvent}
+                            selectedEvents={selectedEvents}
+                            setSelectedEvents={setSelectedEvents}
                             tracks={tracks}
                             handleCreateEvent={handleCreateEvent}
                             handleDeleteEvent={handleDeleteEvent}
                             handleUpdateEvent={handleUpdateEvent}
                             handleMoveEvent={handleMoveEvent}
+                            handleMoveMultipleEvents={handleMoveMultipleEvents}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>

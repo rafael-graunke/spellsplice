@@ -5,7 +5,7 @@ import { EventColorMap, type Track, type TrackEvent } from '../../types/event';
 export function useTrackEvents(
     playerData: Player[],
     currentTime: number,
-    setSelectedEvent: React.Dispatch<React.SetStateAction<TrackEvent | null>>
+    setSelectedEvents: React.Dispatch<React.SetStateAction<TrackEvent[]>>
 ) {
     const [tracks, setTracks] = useState<Track[]>(() =>
         playerData.map((player) => ({
@@ -32,7 +32,7 @@ export function useTrackEvents(
             const [first, ...rest] = prev;
             return [{ ...first, events: [...first.events, newEvent] }, ...rest];
         });
-        setSelectedEvent(newEvent);
+        setSelectedEvents([newEvent]);
     };
 
     const handleDeleteEvent = (trackId: string, eventId: number) => {
@@ -106,11 +106,60 @@ export function useTrackEvents(
         });
     };
 
+    const handleMoveMultipleEvents = (
+        moves: Array<{
+            fromTrackId: string;
+            toTrackId: string;
+            eventId: number;
+            newTime: number;
+        }>
+    ) => {
+        setTracks((prev) => {
+            let next = prev;
+            for (const { fromTrackId, toTrackId, eventId, newTime } of moves) {
+                const sourceTrack = next.find((t) => t.id === fromTrackId);
+                const event = sourceTrack?.events.find((e) => e.id === eventId);
+                if (!event) continue;
+                const updatedEvent = { ...event, time: newTime };
+                if (fromTrackId === toTrackId) {
+                    next = next.map((track) =>
+                        track.id === fromTrackId
+                            ? {
+                                  ...track,
+                                  events: track.events.map((e) =>
+                                      e.id === eventId ? updatedEvent : e
+                                  ),
+                              }
+                            : track
+                    );
+                } else {
+                    next = next.map((track) => {
+                        if (track.id === fromTrackId)
+                            return {
+                                ...track,
+                                events: track.events.filter(
+                                    (e) => e.id !== eventId
+                                ),
+                            };
+                        if (track.id === toTrackId)
+                            return {
+                                ...track,
+                                events: [...track.events, updatedEvent],
+                            };
+                        return track;
+                    });
+                }
+            }
+            return next;
+        });
+    };
+
     return {
         tracks,
         handleCreateEvent,
         handleDeleteEvent,
         handleUpdateEvent,
         handleMoveEvent,
+        handleMoveMultipleEvents,
     };
 }

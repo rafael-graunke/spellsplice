@@ -17,7 +17,7 @@ interface TimelineEventProps {
     type: EventType;
     resizable?: boolean;
     isSelected?: boolean;
-    onSelect?: () => void;
+    onSelect?: (additive: boolean) => void;
     onUpdate: (time: number, duration: number) => void;
     onMoveStart?: (e: React.MouseEvent, time: number, duration: number) => void;
     onDelete?: () => void;
@@ -100,8 +100,8 @@ function TimelineEvent({
 
     const sharedMouseProps = {
         onMouseDown: (e: React.MouseEvent) => handleMouseDown(e, 'move'),
-        onClick: () => {
-            if (!hasDragged.current) onSelect?.();
+        onClick: (e: React.MouseEvent) => {
+            if (!hasDragged.current) onSelect?.(e.ctrlKey || e.metaKey);
         },
     };
 

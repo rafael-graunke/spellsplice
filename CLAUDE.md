@@ -20,69 +20,81 @@ Spellsplice is a Magic: The Gathering video overlay editor. Users load a video f
 
 ## Architecture
 
-**App.tsx** holds all canonical state (`isPlaying`, `currentTime`, `video: VideoState | null`, `selectedEvent: TrackEvent | null`) and passes it down via props. No external state management — plain React state + props drilling.
+**App.tsx** holds all canonical state and passes it down via props. No external state management — plain React state + props drilling. Key state:
+- `players: Player[]` — managed by `usePlayerTracks`; each player owns their track and events
+- `selectedPlayerId: string | null` — which player's track the timeline is showing
+- `selectedEvents: TrackEvent[]` — currently selected events (shown in Inspector)
+- `isPlaying`, `currentTime`, `video: VideoState | null`
 
 Three-panel layout (react-resizable-panels), vertical 70/30 split:
-- **VideoPreview** (top-left, 75%) — renders video frames to a `<canvas>` via `drawImage` on a rAF loop. A hidden `<video>` element in the React tree handles actual decoding and audio. Syncs seek position and play/pause from props. Renders player state overlays (life totals, hand size) and active windowed event banners directly on the canvas each frame. Uses `derivedCacheRef` with a `validUntil` timestamp to skip redundant state derivation between frames.
-- **Inspector** (top-right, 25%) — placeholder. Will be where users edit player config (name, decklist) and event properties (cards affected, life amount, etc.).
-- **Timeline** (bottom, 30%) — orchestrates playback. Owns zoom state (`pxPerSec`). Drives `currentTime` forward via rAF while playing. Contains sub-components and hooks described below.
+- **VideoPreview** (top-left, 75%) — renders video frames to a `<canvas>` via `drawImage` on a rAF loop. A hidden `<video>` element handles decoding/audio. Renders player state overlays and active windowed event banners directly on the canvas. Uses `derivedCacheRef` with a `validUntil` timestamp to skip redundant state derivation between frames.
+- **Inspector** (top-right, 25%) — edits the selected event's `meta` fields. Per-type form components; card fields use Scryfall autocomplete via react-query with 500ms debounce.
+- **Timeline** (bottom, 30%) — playback orchestration, event editing, and zoom. Shows one layer row per `selectedPlayer.track.layers` for the active player.
 
 ## Key Types (`src/components/types/`)
 
 - `VideoState` — `{ file, url, duration, videoEl }`
-- `Player` — `{ id, name, lifeTotal, handSize, cards[] }`
-- `Track` — `{ id, playerId, events: TrackEvent[] }`
-- `TrackEvent` — `{ id, time, duration, color, type: EventType, resizable, meta? }`
-- `EventType` — enum of 8 types: `ADD_TO_HAND`, `REMOVE_FROM_HAND`, `LOSE_LIFE`, `GAIN_LIFE`, `REVEAL_FROM_HAND`, `STACK_TOP`, `SHUFFLE`, `DISPLAY_CARD`
+- `Player` — `{ id, name, lifeTotal, handSize, cards[], track: Track }`
+- `Track` — `{ id, layers: number, events: TrackEvent[] }` — owned by a Player
+- `TrackEvent` — `{ id, time, layer: number, color, type: EventType, resizable, duration?, meta? }`
+- `EventType` — 8 values: `ADD_TO_HAND`, `REMOVE_FROM_HAND`, `LOSE_LIFE`, `GAIN_LIFE`, `REVEAL_FROM_HAND`, `STACK_TOP`, `SHUFFLE`, `DISPLAY_CARD`
 
 ### Event categories
 
-Events fall into two categories based on the `resizable` flag:
-
-- **Persistent events** (non-resizable, e.g. LOSE_LIFE, ADD_TO_HAND) — waypoints that fire at a single point in time and permanently modify player state going forward. Rendered as icons on the track.
-- **Windowed events** (resizable, e.g. DISPLAY_CARD) — span a duration and show a transient overlay while active. Rendered as bars on the track. More windowed types may be added in the future.
+- **Persistent events** (`resizable: false`, e.g. LOSE_LIFE, ADD_TO_HAND) — fire at a single point in time and permanently modify player state going forward. Rendered as icons on the track.
+- **Windowed events** (`resizable: true`, e.g. DISPLAY_CARD) — span a duration and show a transient overlay while active. Rendered as bars.
 
 `EventColorMap` in `event.ts` maps each `EventType` to Tailwind color classes (text, bg, fill, stroke).
 
-## Players
+### meta field by event type
 
-On init, two players are created (20 life, empty hand). The editor supports up to 4 players. Player names and decklist names will be editable through the Inspector (not yet implemented).
+- `GAIN_LIFE` / `LOSE_LIFE` — `{ amount: number }`
+- `ADD_TO_HAND` / `REMOVE_FROM_HAND` / `REVEAL_FROM_HAND` / `DISPLAY_CARD` — `{ cards: string[] }`
+- `STACK_TOP` — `{ cards: string[] }` (single card)
+- `SHUFFLE` — no meta
+
+## Player & Track Model
+
+Each `Player` owns exactly one `Track`. A track has `layers: number` rows (default 4), all belonging to the same player. `TrackEvent.layer` (0-indexed) places the event on a specific row within that track.
+
+**Drag up/down** changes `event.layer` — it does not move events between players. Cross-player drag is not supported.
+
+`usePlayerTracks` (`src/components/Timeline/hooks/usePlayerTracks.ts`) manages all player+track state. All event mutation handlers take `playerId` as their first argument.
 
 ## Timeline System (`src/components/Timeline/`)
 
-**Timeline.tsx** — main orchestrator. Renders the controls bar, the track label sidebar, and the scrollable track area. Uses three hooks:
-- `useZoom` — zoom in px/sec (range 5–50), converted to/from 0–100% for UI. Wheel events zoom centered on the mouse position.
+**Timeline.tsx** — main orchestrator. Renders layer rows for the selected player only. Uses four hooks:
+- `useZoom` — zoom in px/sec (range 5–50), converted to/from 0–100% for UI. Wheel events zoom centered on mouse.
 - `useSeekDrag` — clicking/dragging the inner track area seeks the playhead.
-- `useEventMoveDrag` — drag events between tracks, with a ghost preview rendered during the drag.
+- `useEventMoveDrag` — drag events; vertical drag changes `layer`, horizontal changes `time`. Emits `handleMoveEvent(playerId, eventId, newTime, newLayer)`.
+- `useMarqueeDrag` — rubber-band selection across layers of the selected player.
 
-**TimelineControls.tsx** — three sections: event creation (Cmd+K command dialog), playback controls (play/pause via spacebar, skip to start/end), zoom slider + input.
+**TimelineControls.tsx** — event creation (Cmd+K command dialog), playback controls (spacebar play/pause, skip), zoom slider.
 
-**TimelineTrack.tsx** — renders one player's track row with a grid background. Maps events to `TimelineEvent` components. Handles deselection on background click.
+**TimelineTrack.tsx** — one layer row. Maps events to `TimelineEvent` components. Background click triggers deselect.
 
-**TimelineEvent.tsx** — individual event. Resizable events show a bar with left/right drag handles. Non-resizable events show an icon via `TimelineEventIcon`. Supports drag-to-move (cross-track), context menu delete, and click-to-select.
+**TimelineEvent.tsx** — individual event. Resizable events have left/right drag handles. Non-resizable events show an icon. Supports move-drag, context menu delete, click-to-select.
 
-**TimelineEventIcon.tsx** — maps `EventType` to an SVG icon component with correct colors. Shows a white ring when selected.
-
-**TimelineCursor.tsx** — red playhead (diamond + vertical line). Draggable for manual seek; pauses playback on drag start.
-
-**TimelineRuler.tsx** — time scale with tick marks and labels. Tick density adapts to zoom level. Click or drag to seek. Drag with middle/right button to pan horizontally.
-
-**TimelineTrackControl.tsx** — left sidebar showing player names aligned with track rows.
+**TimelineTrackControl.tsx** — left sidebar; clickable list of players. Selecting a player switches the timeline view to their track layers.
 
 **constants.ts** — `RULER_HEIGHT` (40px), `TRACK_HEIGHT` (48px), `MIN_ZOOM` (5 px/sec), `MAX_ZOOM` (50 px/sec).
 
 ## State Derivation (`src/lib/`)
 
 **deriveState.ts**
-- `derivePlayerState(players, tracks, time)` — applies all persistent events up to `time` in chronological order to compute current player state.
-- `getActiveWindowedEvents(tracks, time)` — returns events currently within their duration window (for canvas banner rendering).
-- `getNextChangeTime(tracks, time)` — returns the timestamp of the next state change, used by VideoPreview's cache to know when to re-derive.
+- `derivePlayerState(player, events, time)` — applies all persistent events up to `time` in order to compute current player state.
+- `getActiveWindowedEvents(events, time)` — events within their duration window (for canvas banners).
+- `getNextChangeTime(tracks, time)` — next timestamp where derived state changes; used by VideoPreview's cache.
 
-**stateHandlers.ts** — per-event-type mutations called by `derivePlayerState`: `applyGainLife`, `applyLoseLife`, `applyAddToHand`, `applyRemoveFromHand`. `REVEAL_FROM_HAND`, `STACK_TOP`, and `SHUFFLE` handlers are not yet implemented.
+**stateHandlers.ts** — per-type mutations: `applyGainLife`, `applyLoseLife`, `applyAddToHand`, `applyRemoveFromHand`. `REVEAL_FROM_HAND`, `STACK_TOP`, `SHUFFLE` handlers are stubs.
+
+## Inspector (`src/components/Inspector/`)
+
+Per-type field components — not auto-derived from the meta shape. Card fields (`ADD_TO_HAND`, `REMOVE_FROM_HAND`, `REVEAL_FROM_HAND`, `DISPLAY_CARD`, `STACK_TOP`) use Scryfall autocomplete (`https://api.scryfall.com/cards/autocomplete?q=`) with react-query for caching and a 500ms debounce before firing. Life fields (`GAIN_LIFE`, `LOSE_LIFE`) are a plain number input. Changes call `handleUpdateMeta(playerId, eventId, meta)` from `usePlayerTracks`.
 
 ## Rendering (`src/renders/`)
 
-**renderPlayerState.ts** — canvas 2D rendering of player info boxes (name, life total, hand size) in the bottom corners of the video frame. Called per-frame from VideoPreview.
+**renderPlayerState.ts** — canvas 2D rendering of player info boxes (name, life total, hand size) at bottom corners of the video frame. Called per-frame from VideoPreview.
 
 ## UI Stack
 
@@ -92,5 +104,5 @@ shadcn/ui + Radix UI + Tailwind CSS v4. Components live in `src/components/ui/`.
 
 - 4-space indentation, single quotes, trailing commas — see `.prettierrc`
 - Canvas is used for video display only — the hidden `<video ref>` in VideoPreview handles decoding/audio
-- Timeline zoom is in pixels-per-second, controlled by mouse wheel on the timeline
 - Heavy use of `useRef` for performance-critical values (zoom, drag positions) to avoid unnecessary re-renders
+- `useEffect` dependency arrays in drag hooks use primitive values (`selectedPlayer?.id`, `selectedPlayer?.track.layers`) rather than the object reference to avoid stale closures

@@ -37,9 +37,18 @@ function App() {
         handleUpdateEvent,
         handleMoveEvent,
         handleMoveMultipleEvents,
+        handleUpdateMeta,
     } = usePlayerTracks(initialPlayers, currentTime, setSelectedEvents);
 
     const selectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? players[0] ?? null;
+
+    const handleInspectorUpdate = (eventId: number, meta: Record<string, unknown>) => {
+        if (!selectedPlayer) return;
+        handleUpdateMeta(selectedPlayer.id, eventId, meta);
+        setSelectedEvents((prev) =>
+            prev.map((e) => (e.id === eventId ? { ...e, meta } : e))
+        );
+    };
 
     return (
         <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
@@ -64,7 +73,7 @@ function App() {
                             </ResizablePanel>
                             <ResizableHandle />
                             <ResizablePanel minSize={100} defaultSize="25%">
-                                <Inspector editObject={selectedEvents} />
+                                <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} />
                             </ResizablePanel>
                         </ResizablePanelGroup>
                     </ResizablePanel>

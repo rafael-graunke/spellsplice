@@ -137,6 +137,28 @@ export function usePlayerTracks(
         });
     };
 
+    const handleUpdateMeta = (
+        playerId: string,
+        eventId: number,
+        meta: Record<string, unknown>
+    ) => {
+        setPlayers((prev) =>
+            prev.map((p) =>
+                p.id !== playerId
+                    ? p
+                    : {
+                          ...p,
+                          track: {
+                              ...p.track,
+                              events: p.track.events.map((e) =>
+                                  e.id !== eventId ? e : { ...e, meta }
+                              ),
+                          },
+                      }
+            )
+        );
+    };
+
     return {
         players,
         handleCreateEvent,
@@ -144,5 +166,6 @@ export function usePlayerTracks(
         handleUpdateEvent,
         handleMoveEvent,
         handleMoveMultipleEvents,
+        handleUpdateMeta,
     };
 }

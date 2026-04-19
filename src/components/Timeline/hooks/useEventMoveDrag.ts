@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RefObject, MouseEvent as ReactMouseEvent } from 'react';
-import type { Track, TrackEvent, EventType } from '../../types/event';
+import type { Player, } from '../../types/player';
+import type { TrackEvent, EventType } from '../../types/event';
 import { RULER_HEIGHT, TRACK_HEIGHT } from '../constants';
 
 interface GhostPos {
@@ -14,8 +15,8 @@ interface GhostPos {
 
 interface EventDragData {
     eventId: number;
-    sourceTrackId: string;
-    sourceTrackIndex: number;
+    sourcePlayerId: string;
+    sourceLayer: number;
     startTime: number;
     startDuration: number;
     color: string;
@@ -27,22 +28,22 @@ interface MoveDragState {
     primary: EventDragData;
     companions: EventDragData[];
     startX: number;
-    startTrackIndex: number;
+    startLayer: number;
 }
 
 type MoveResult = {
-    fromTrackId: string;
-    toTrackId: string;
+    playerId: string;
     eventId: number;
     newTime: number;
+    newLayer: number;
 };
 
-function makeGhost(data: EventDragData, newTime: number, trackIndex: number, zoom: number): GhostPos {
+function makeGhost(data: EventDragData, newTime: number, layerIndex: number, zoom: number): GhostPos {
     return {
         left: newTime * zoom,
         top: data.isWaypoint
-            ? RULER_HEIGHT + trackIndex * TRACK_HEIGHT
-            : RULER_HEIGHT + trackIndex * TRACK_HEIGHT + 4,
+            ? RULER_HEIGHT + layerIndex * TRACK_HEIGHT
+            : RULER_HEIGHT + layerIndex * TRACK_HEIGHT + 4,
         width: data.isWaypoint ? 44 : data.startDuration * zoom,
         color: data.color,
         type: data.type,
@@ -51,18 +52,19 @@ function makeGhost(data: EventDragData, newTime: number, trackIndex: number, zoo
 }
 
 export function useEventMoveDrag(
-    innerRef: RefObject<HTMLDivElement>,
+    innerRef: RefObject<HTMLDivElement | null>,
     zoomRef: RefObject<number>,
-    tracks: Track[],
+    selectedPlayer: Player | null,
     selectedEvents: TrackEvent[],
-    onMoveEvent: (fromTrackId: string, toTrackId: string, eventId: number, newTime: number) => void,
+    onMoveEvent: (playerId: string, eventId: number, newTime: number, newLayer: number) => void,
     onMoveMultipleEvents: (moves: MoveResult[]) => void,
 ) {
     const [ghostPositions, setGhostPositions] = useState<GhostPos[]>([]);
     const moveDragRef = useRef<MoveDragState | null>(null);
 
     const handleMoveStart = (
-        trackId: string,
+        playerId: string,
+        sourceLayer: number,
         eventId: number,
         e: ReactMouseEvent,
         time: number,
@@ -71,16 +73,13 @@ export function useEventMoveDrag(
         const inner = innerRef.current;
         if (!inner) return;
 
-        const sourceTrack = tracks.find((t) => t.id === trackId);
-        const event = sourceTrack?.events.find((ev) => ev.id === eventId);
+        const event = selectedPlayer?.track.events.find((ev) => ev.id === eventId);
         if (!event) return;
-
-        const trackIndex = tracks.findIndex((t) => t.id === trackId);
 
         const primary: EventDragData = {
             eventId,
-            sourceTrackId: trackId,
-            sourceTrackIndex: trackIndex,
+            sourcePlayerId: playerId,
+            sourceLayer,
             startTime: time,
             startDuration: duration ?? 0,
             color: event.color,
@@ -96,17 +95,15 @@ export function useEventMoveDrag(
             ? selectedEvents
                   .filter((se) => se.id !== eventId)
                   .flatMap((se) => {
-                      const seTrackIndex = tracks.findIndex((t) =>
-                          t.events.some((ev) => ev.id === se.id)
+                      const current = selectedPlayer?.track.events.find(
+                          (ev) => ev.id === se.id
                       );
-                      if (seTrackIndex === -1) return [];
-                      const seTrack = tracks[seTrackIndex];
-                      const current = seTrack.events.find((ev) => ev.id === se.id)!;
+                      if (!current) return [];
                       return [
                           {
                               eventId: se.id,
-                              sourceTrackId: seTrack.id,
-                              sourceTrackIndex: seTrackIndex,
+                              sourcePlayerId: playerId,
+                              sourceLayer: current.layer,
                               startTime: current.time,
                               startDuration: current.duration ?? 0,
                               color: current.color,
@@ -121,20 +118,20 @@ export function useEventMoveDrag(
             primary,
             companions,
             startX: e.clientX,
-            startTrackIndex: trackIndex,
+            startLayer: sourceLayer,
         };
 
         const zoom = zoomRef.current!;
         setGhostPositions([
-            makeGhost(primary, time, trackIndex, zoom),
-            ...companions.map((c) =>
-                makeGhost(c, c.startTime, c.sourceTrackIndex, zoom)
-            ),
+            makeGhost(primary, time, sourceLayer, zoom),
+            ...companions.map((c) => makeGhost(c, c.startTime, c.sourceLayer, zoom)),
         ]);
     };
 
     useEffect(() => {
         if (ghostPositions.length === 0) return;
+
+        const totalLayers = selectedPlayer?.track.layers ?? 1;
 
         const onMouseMove = (e: MouseEvent) => {
             const drag = moveDragRef.current;
@@ -148,24 +145,19 @@ export function useEventMoveDrag(
 
             const yInInner = e.clientY - rect.top;
             const rawIndex = Math.floor((yInInner - RULER_HEIGHT) / TRACK_HEIGHT);
-            const primaryTrackIndex = Math.max(0, Math.min(tracks.length - 1, rawIndex));
-            const trackDelta = primaryTrackIndex - drag.startTrackIndex;
+            const primaryLayer = Math.max(0, Math.min(totalLayers - 1, rawIndex));
+            const layerDelta = primaryLayer - drag.startLayer;
 
             const newTime = Math.max(0, drag.primary.startTime + deltaTime);
 
             const ghosts = [
-                makeGhost(drag.primary, newTime, primaryTrackIndex, zoom),
+                makeGhost(drag.primary, newTime, primaryLayer, zoom),
                 ...drag.companions.map((c) => {
-                    const cTrackIndex = Math.max(
+                    const cLayer = Math.max(
                         0,
-                        Math.min(tracks.length - 1, c.sourceTrackIndex + trackDelta)
+                        Math.min(totalLayers - 1, c.sourceLayer + layerDelta)
                     );
-                    return makeGhost(
-                        c,
-                        Math.max(0, c.startTime + deltaTime),
-                        cTrackIndex,
-                        zoom
-                    );
+                    return makeGhost(c, Math.max(0, c.startTime + deltaTime), cLayer, zoom);
                 }),
             ];
             setGhostPositions(ghosts);
@@ -186,37 +178,30 @@ export function useEventMoveDrag(
 
             const yInInner = e.clientY - rect.top;
             const rawIndex = Math.floor((yInInner - RULER_HEIGHT) / TRACK_HEIGHT);
-            const primaryTrackIndex = Math.max(0, Math.min(tracks.length - 1, rawIndex));
-            const trackDelta = primaryTrackIndex - drag.startTrackIndex;
-            const targetTrackId = tracks[primaryTrackIndex].id;
+            const primaryLayer = Math.max(0, Math.min(totalLayers - 1, rawIndex));
+            const layerDelta = primaryLayer - drag.startLayer;
 
             if (drag.companions.length === 0) {
                 onMoveEvent(
-                    drag.primary.sourceTrackId,
-                    targetTrackId,
+                    drag.primary.sourcePlayerId,
                     drag.primary.eventId,
-                    Math.max(0, drag.primary.startTime + deltaTime)
+                    Math.max(0, drag.primary.startTime + deltaTime),
+                    primaryLayer
                 );
             } else {
                 const moves: MoveResult[] = [
                     {
-                        fromTrackId: drag.primary.sourceTrackId,
-                        toTrackId: targetTrackId,
+                        playerId: drag.primary.sourcePlayerId,
                         eventId: drag.primary.eventId,
                         newTime: Math.max(0, drag.primary.startTime + deltaTime),
+                        newLayer: primaryLayer,
                     },
-                    ...drag.companions.map((c) => {
-                        const cTrackIndex = Math.max(
-                            0,
-                            Math.min(tracks.length - 1, c.sourceTrackIndex + trackDelta)
-                        );
-                        return {
-                            fromTrackId: c.sourceTrackId,
-                            toTrackId: tracks[cTrackIndex].id,
-                            eventId: c.eventId,
-                            newTime: Math.max(0, c.startTime + deltaTime),
-                        };
-                    }),
+                    ...drag.companions.map((c) => ({
+                        playerId: c.sourcePlayerId,
+                        eventId: c.eventId,
+                        newTime: Math.max(0, c.startTime + deltaTime),
+                        newLayer: Math.max(0, Math.min(totalLayers - 1, c.sourceLayer + layerDelta)),
+                    })),
                 ];
                 onMoveMultipleEvents(moves);
             }
@@ -231,7 +216,7 @@ export function useEventMoveDrag(
             window.removeEventListener('mousemove', onMouseMove);
             window.removeEventListener('mouseup', onMouseUp);
         };
-    }, [ghostPositions, tracks]);
+    }, [ghostPositions, selectedPlayer?.id, selectedPlayer?.track.layers]);
 
     return { ghostPositions, moveDragRef, handleMoveStart };
 }

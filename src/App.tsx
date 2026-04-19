@@ -12,39 +12,34 @@ import { useState } from 'react';
 import VideoPreview from './components/VideoPreview';
 import type { VideoState } from './components/types/video';
 import { Inspector } from './components/Inspector';
-import { useTrackEvents } from './components/Timeline/hooks/useTrackEvents';
+import { usePlayerTracks } from './components/Timeline/hooks/usePlayerTracks';
+
+type PlayerInit = Omit<Player, 'track'>;
+
+const initialPlayers: PlayerInit[] = [
+    { id: 'player1', name: 'Player 1', handSize: 0, lifeTotal: 20, cards: [] },
+    { id: 'player2', name: 'Player 2', handSize: 0, lifeTotal: 20, cards: [] },
+];
 
 function App() {
-    const players: Player[] = [
-        {
-            id: 'player1',
-            name: 'Player 1',
-            handSize: 0,
-            lifeTotal: 20,
-            cards: [],
-        },
-        {
-            id: 'player2',
-            name: 'Player 2',
-            handSize: 0,
-            lifeTotal: 20,
-            cards: [],
-        },
-    ];
-
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [video, setVideo] = useState<VideoState | null>(null);
     const [selectedEvents, setSelectedEvents] = useState<TrackEvent[]>([]);
+    const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(
+        () => initialPlayers[0]?.id ?? null
+    );
 
     const {
-        tracks,
+        players,
         handleCreateEvent,
         handleDeleteEvent,
         handleUpdateEvent,
         handleMoveEvent,
         handleMoveMultipleEvents,
-    } = useTrackEvents(players, currentTime, setSelectedEvents);
+    } = usePlayerTracks(initialPlayers, currentTime, setSelectedEvents);
+
+    const selectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? players[0] ?? null;
 
     return (
         <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
@@ -64,13 +59,12 @@ function App() {
                                     setVideo={setVideo}
                                     setCurrentTime={setCurrentTime}
                                     setIsPlaying={setIsPlaying}
-                                    tracks={tracks}
                                     players={players}
                                 />
                             </ResizablePanel>
                             <ResizableHandle />
                             <ResizablePanel minSize={100} defaultSize="25%">
-                                <Inspector />
+                                <Inspector editObject={selectedEvents} />
                             </ResizablePanel>
                         </ResizablePanelGroup>
                     </ResizablePanel>
@@ -79,13 +73,14 @@ function App() {
                         <Timeline
                             setCurrentTime={setCurrentTime}
                             currentTime={currentTime}
-                            playerData={players}
                             duration={video ? video.duration || 120 : 120}
                             isPlaying={isPlaying}
                             setIsPlaying={setIsPlaying}
                             selectedEvents={selectedEvents}
                             setSelectedEvents={setSelectedEvents}
-                            tracks={tracks}
+                            players={players}
+                            selectedPlayer={selectedPlayer}
+                            setSelectedPlayerId={setSelectedPlayerId}
                             handleCreateEvent={handleCreateEvent}
                             handleDeleteEvent={handleDeleteEvent}
                             handleUpdateEvent={handleUpdateEvent}

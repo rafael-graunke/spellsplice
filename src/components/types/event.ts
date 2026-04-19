@@ -72,6 +72,7 @@ export const EventColorMap: Record<EventType, EventColor> = {
 export interface TrackEvent {
     id: number;
     time: number;
+    layer: number;
     color: string;
     type: EventType;
     resizable: boolean;
@@ -81,6 +82,6 @@ export interface TrackEvent {
 
 export interface Track {
     id: string;
-    playerId: string;
+    layers: number;
     events: TrackEvent[];
 }

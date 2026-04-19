@@ -9,7 +9,6 @@ import {
     EmptyTitle,
 } from './ui/empty';
 import type { VideoState } from './types/video';
-import type { Track } from './types/event';
 import type { Player } from './types/player';
 import {
     derivePlayerState,
@@ -25,7 +24,6 @@ interface VideoPreviewProps {
     setIsPlaying: (playing: boolean) => void;
     video: VideoState | null;
     setVideo: React.Dispatch<React.SetStateAction<VideoState | null>>;
-    tracks: Track[];
     players: Player[];
 }
 
@@ -36,27 +34,22 @@ function VideoPreview({
     setIsPlaying,
     video,
     setVideo,
-    tracks,
     players,
 }: VideoPreviewProps) {
     const inputRef = useRef<HTMLInputElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
-    const tracksRef = useRef(tracks);
     const playersRef = useRef(players);
     const prevTimeRef = useRef(-1);
     const derivedCacheRef = useRef<{
-        playerStates: ReturnType<typeof derivePlayerState>[];
+        playerStates: (ReturnType<typeof derivePlayerState> | null)[];
         activeEvents: ReturnType<typeof getActiveWindowedEvents>[];
         validUntil: number;
     } | null>(null);
 
     useEffect(() => {
-        tracksRef.current = tracks;
-        derivedCacheRef.current = null; // invalidate when tracks change
-    }, [tracks]);
-    useEffect(() => {
         playersRef.current = players;
+        derivedCacheRef.current = null;
     }, [players]);
 
     const handleFile = (file: File) => {
@@ -106,24 +99,22 @@ function VideoPreview({
 
         const cache = derivedCacheRef.current;
         const needsRederive =
-            !cache || time >= cache.validUntil || time < prevTimeRef.current; // seek backwards
+            !cache || time >= cache.validUntil || time < prevTimeRef.current;
 
         if (needsRederive) {
-            const playerStates = tracksRef.current.map((track) => {
-                const player = playersRef.current.find(
-                    (p) => p.id === track.playerId
-                );
-                return player
-                    ? derivePlayerState(player, track.events, time)
-                    : null;
-            });
-            const activeEvents = tracksRef.current.map((track) =>
-                getActiveWindowedEvents(track.events, time)
+            const playerStates = playersRef.current.map((p) =>
+                derivePlayerState(p, p.track.events, time)
+            );
+            const activeEvents = playersRef.current.map((p) =>
+                getActiveWindowedEvents(p.track.events, time)
             );
             derivedCacheRef.current = {
                 playerStates,
                 activeEvents,
-                validUntil: getNextChangeTime(tracksRef.current, time),
+                validUntil: getNextChangeTime(
+                    playersRef.current.map((p) => p.track),
+                    time
+                ),
             };
         }
         prevTimeRef.current = time;

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { RefObject, SetStateAction } from 'react';
 
 export function useSeekDrag(
-    innerRef: RefObject<HTMLDivElement>,
+    innerRef: RefObject<HTMLDivElement | null>,
     zoom: number,
     duration: number,
     setCurrentTime: (t: SetStateAction<number>) => void

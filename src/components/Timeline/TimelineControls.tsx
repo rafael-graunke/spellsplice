@@ -50,7 +50,7 @@ function ZoomControls({ zoom, onZoomChange }: ZoomControlsProps) {
 
 interface CreateControlsProps {
     setIsPlaying: (playing: React.SetStateAction<boolean>) => void;
-    onCreateEvent: (partial: Partial<TrackEvent>) => void;
+    onCreateEvent: (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => void;
 }
 
 function CreateControls({ setIsPlaying, onCreateEvent }: CreateControlsProps) {
@@ -69,7 +69,7 @@ function CreateControls({ setIsPlaying, onCreateEvent }: CreateControlsProps) {
         return () => window.removeEventListener('keydown', downHandler);
     }, []);
 
-    const handleSelect = (partial: Partial<TrackEvent>) => {
+    const handleSelect = (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => {
         onCreateEvent(partial);
         setOpen(false);
     };
@@ -236,7 +236,7 @@ function PlaybackControls({
 
 interface TimelineControlsProps
     extends ZoomControlsProps, PlaybackControlsProps {
-    onCreateEvent: (partial: Partial<TrackEvent>) => void;
+    onCreateEvent: (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => void;
 }
 
 export function TimelineControls({

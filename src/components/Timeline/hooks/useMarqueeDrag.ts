@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import type { RefObject } from 'react';
-import type { Track, TrackEvent } from '../../types/event';
+import type { Player } from '../../types/player';
+import type { TrackEvent } from '../../types/event';
 import { RULER_HEIGHT, TRACK_HEIGHT } from '../constants';
 
 interface MarqueeRect {
@@ -11,8 +12,8 @@ interface MarqueeRect {
 }
 
 export function useMarqueeDrag(
-    innerRef: RefObject<HTMLDivElement>,
-    tracks: Track[],
+    innerRef: RefObject<HTMLDivElement | null>,
+    selectedPlayer: Player | null,
     zoomRef: RefObject<number>,
     onSelect: (events: TrackEvent[]) => void,
     onDeselect: () => void,
@@ -74,23 +75,28 @@ export function useMarqueeDrag(
             const zoom = zoomRef.current!;
             const matched: TrackEvent[] = [];
 
-            tracks.forEach((track, trackIndex) => {
-                const trackTop = RULER_HEIGHT + trackIndex * TRACK_HEIGHT;
+            const totalLayers = selectedPlayer?.track.layers ?? 0;
+            const events = selectedPlayer?.track.events ?? [];
+
+            for (let layerIndex = 0; layerIndex < totalLayers; layerIndex++) {
+                const trackTop = RULER_HEIGHT + layerIndex * TRACK_HEIGHT;
                 const trackBottom = trackTop + TRACK_HEIGHT;
-                if (rect.y + rect.h < trackTop || rect.y > trackBottom) return;
+                if (rect.y + rect.h < trackTop || rect.y > trackBottom) continue;
 
-                track.events.forEach((event) => {
-                    const centerX = event.time * zoom;
-                    const eventLeft = event.resizable ? centerX : centerX - 22;
-                    const eventRight = event.resizable
-                        ? centerX + (event.duration ?? 1) * zoom
-                        : centerX + 22;
+                events
+                    .filter((e) => e.layer === layerIndex)
+                    .forEach((event) => {
+                        const centerX = event.time * zoom;
+                        const eventLeft = event.resizable ? centerX : centerX - 22;
+                        const eventRight = event.resizable
+                            ? centerX + (event.duration ?? 1) * zoom
+                            : centerX + 22;
 
-                    if (rect.x + rect.w >= eventLeft && rect.x <= eventRight) {
-                        matched.push(event);
-                    }
-                });
-            });
+                        if (rect.x + rect.w >= eventLeft && rect.x <= eventRight) {
+                            matched.push(event);
+                        }
+                    });
+            }
 
             onSelect(matched);
         };

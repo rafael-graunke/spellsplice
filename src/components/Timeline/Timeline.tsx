@@ -5,8 +5,8 @@ import {
     ResizablePanelGroup,
 } from '../ui/resizable';
 import { TimelineControls } from './TimelineControls';
+import type { TrackEvent } from '../types/event';
 import type { Player } from '../types/player';
-import type { Track, TrackEvent } from '../types/event';
 import { cn } from '@/lib/utils';
 import TimelineTrackControl from './TimelineTrackControl';
 import TimelineRuler from './TimelineRuler';
@@ -20,41 +20,26 @@ import { useMarqueeDrag } from './hooks/useMarqueeDrag';
 import { TRACK_HEIGHT } from './constants';
 
 interface TimelineProps {
-    playerData: Player[];
     duration: number;
     isPlaying: boolean;
     currentTime: number;
     setCurrentTime: (state: React.SetStateAction<number>) => void;
-    setIsPlaying: (playing: boolean) => void;
+    setIsPlaying: React.Dispatch<React.SetStateAction<boolean>>;
     selectedEvents: TrackEvent[];
     setSelectedEvents: React.Dispatch<React.SetStateAction<TrackEvent[]>>;
-    tracks: Track[];
-    handleCreateEvent: (partial: Partial<TrackEvent>) => void;
-    handleDeleteEvent: (trackId: string, eventId: number) => void;
-    handleUpdateEvent: (
-        trackId: string,
-        eventId: number,
-        time: number,
-        duration: number
-    ) => void;
-    handleMoveEvent: (
-        fromTrackId: string,
-        toTrackId: string,
-        eventId: number,
-        newTime: number
-    ) => void;
+    players: Player[];
+    selectedPlayer: Player | null;
+    setSelectedPlayerId: (id: string) => void;
+    handleCreateEvent: (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>, playerId?: string) => void;
+    handleDeleteEvent: (playerId: string, eventId: number) => void;
+    handleUpdateEvent: (playerId: string, eventId: number, time: number, duration: number) => void;
+    handleMoveEvent: (playerId: string, eventId: number, newTime: number, newLayer: number) => void;
     handleMoveMultipleEvents: (
-        moves: Array<{
-            fromTrackId: string;
-            toTrackId: string;
-            eventId: number;
-            newTime: number;
-        }>
+        moves: Array<{ playerId: string; eventId: number; newTime: number; newLayer: number }>
     ) => void;
 }
 
 export function Timeline({
-    playerData,
     duration,
     isPlaying,
     currentTime,
@@ -62,7 +47,9 @@ export function Timeline({
     setIsPlaying,
     selectedEvents,
     setSelectedEvents,
-    tracks,
+    players,
+    selectedPlayer,
+    setSelectedPlayerId,
     handleCreateEvent,
     handleDeleteEvent,
     handleUpdateEvent,
@@ -84,10 +71,13 @@ export function Timeline({
         duration,
         setCurrentTime
     );
+
+    const effectivePlayer = selectedPlayer ?? players[0] ?? null;
+
     const { ghostPositions, moveDragRef, handleMoveStart } = useEventMoveDrag(
         innerRef,
         zoomRef,
-        tracks,
+        effectivePlayer,
         selectedEvents,
         handleMoveEvent,
         handleMoveMultipleEvents
@@ -108,7 +98,7 @@ export function Timeline({
 
     const { marqueeRect, handleTrackMouseDown } = useMarqueeDrag(
         innerRef,
-        tracks,
+        effectivePlayer,
         zoomRef,
         (events) => setSelectedEvents(events),
         () => setSelectedEvents([])
@@ -126,6 +116,8 @@ export function Timeline({
         }
     };
 
+    const layerCount = effectivePlayer?.track.layers ?? 0;
+
     return (
         <div className="timeline flex flex-col h-full" ref={containerRef}>
             <TimelineControls
@@ -134,13 +126,16 @@ export function Timeline({
                 isPlaying={isPlaying}
                 setCurrentTime={setCurrentTime}
                 setIsPlaying={setIsPlaying}
-                onCreateEvent={handleCreateEvent}
+                onCreateEvent={(partial) =>
+                    handleCreateEvent(partial, effectivePlayer?.id)
+                }
             />
             <ResizablePanelGroup orientation="horizontal">
                 <ResizablePanel minSize={100} defaultSize="20%">
                     <TimelineTrackControl
-                        playerData={playerData}
-                        tracks={tracks}
+                        players={players}
+                        selectedPlayer={effectivePlayer}
+                        onSelectPlayer={(p) => setSelectedPlayerId(p.id)}
                     />
                 </ResizablePanel>
                 <ResizableHandle />
@@ -161,29 +156,32 @@ export function Timeline({
                                         trackRef.current.scrollLeft -= delta;
                                 }}
                             />
-                            {tracks.map((track) => (
+                            {Array.from({ length: layerCount }, (_, layerIndex) => (
                                 <TimelineTrack
-                                    key={track.id}
+                                    key={layerIndex}
                                     width={duration * zoom}
                                     zoom={zoom}
-                                    events={track.events}
+                                    events={(effectivePlayer?.track.events ?? []).filter(
+                                        (e) => e.layer === layerIndex
+                                    )}
                                     selectedEventIds={selectedEventIds}
                                     onSelectEvent={handleSelectEvent}
                                     draggingEventIds={draggingEventIds}
                                     onUpdateEvent={(eventId, time, dur) =>
                                         handleUpdateEvent(
-                                            track.id,
+                                            effectivePlayer!.id,
                                             eventId,
                                             time,
                                             dur
                                         )
                                     }
                                     onDeleteEvent={(eventId) =>
-                                        handleDeleteEvent(track.id, eventId)
+                                        handleDeleteEvent(effectivePlayer!.id, eventId)
                                     }
                                     onMoveStart={(eventId, e, time, dur) =>
                                         handleMoveStart(
-                                            track.id,
+                                            effectivePlayer!.id,
+                                            layerIndex,
                                             eventId,
                                             e,
                                             time,

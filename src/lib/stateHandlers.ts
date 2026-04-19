@@ -35,15 +35,15 @@ export function applyRemoveFromHand(
 
 export function applyRevealFromHand(
     state: Player,
-    trackEvent: TrackEvent
+    _trackEvent: TrackEvent
 ): Player {
     return state;
 }
 
-export function applyStackTop(state: Player, trackEvent: TrackEvent): Player {
+export function applyStackTop(state: Player, _trackEvent: TrackEvent): Player {
     return state;
 }
 
-export function applyShuffle(state: Player, trackEvent: TrackEvent): Player {
+export function applyShuffle(state: Player, _trackEvent: TrackEvent): Player {
     return state;
 }

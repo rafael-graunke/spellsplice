@@ -54,7 +54,7 @@ function TimelineEvent({
         hasDragged.current = false;
 
         if (mode === 'move') {
-            onMoveStart?.(e, time, duration);
+            onMoveStart?.(e, time, duration ?? 0);
             return;
         }
 
@@ -63,7 +63,7 @@ function TimelineEvent({
             mode,
             startX: e.clientX,
             startTime: time,
-            startDuration: duration,
+            startDuration: duration ?? 0,
         };
     };
 

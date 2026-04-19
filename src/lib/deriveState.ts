@@ -27,7 +27,7 @@ export function getActiveWindowedEvents(
     time: number
 ): TrackEvent[] {
     return events.filter(
-        (e) => e.resizable && e.time <= time && time < e.time + e.duration
+        (e) => e.resizable && e.time <= time && time < e.time + e.duration!
     );
 }
 
@@ -43,8 +43,8 @@ export function getNextChangeTime(
                 next = Math.min(next, e.time);
             } else if (e.resizable) {
                 if (e.time > time) next = Math.min(next, e.time);
-                else if (time < e.time + e.duration)
-                    next = Math.min(next, e.time + e.duration);
+                else if (time < e.time + e.duration!)
+                    next = Math.min(next, e.time + e.duration!);
             }
         }
     }

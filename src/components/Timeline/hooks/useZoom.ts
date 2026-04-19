@@ -9,9 +9,9 @@ export const zoomToPercent = (z: number): number =>
     ((z - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)) * 100;
 
 export function useZoom(
-    containerRef: RefObject<HTMLDivElement>,
-    trackRef: RefObject<HTMLDivElement>,
-    innerRef: RefObject<HTMLDivElement>
+    containerRef: RefObject<HTMLDivElement | null>,
+    trackRef: RefObject<HTMLDivElement | null>,
+    innerRef: RefObject<HTMLDivElement | null>
 ) {
     const [zoomPercent, setZoomPercent] = useState(50);
     const zoom = percentToZoom(zoomPercent);

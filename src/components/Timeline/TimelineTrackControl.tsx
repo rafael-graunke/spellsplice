@@ -19,7 +19,7 @@ function TimelineTrackControl({
                     key={player.id}
                     onClick={() => onSelectPlayer(player)}
                     className={cn(
-                        'h-12 flex items-center px-3 border-b border-gray-600 border-dashed text-sm truncate cursor-pointer select-none',
+                        'h-12 flex items-center px-3 border-b border-gray-600 border-solid text-sm truncate cursor-pointer select-none',
                         player.id === selectedPlayer?.id
                             ? 'text-white bg-white/10'
                             : 'text-gray-400 hover:text-gray-200'

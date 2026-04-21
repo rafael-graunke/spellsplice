@@ -1,9 +1,9 @@
 import { Input } from '@/components/ui/input';
-import type { TrackEvent } from '../types/event';
+import type { TrackEvent, EventMeta } from '../types/event';
 
 interface LifeFieldsProps {
     event: TrackEvent;
-    onUpdate: (meta: Record<string, unknown>) => void;
+    onUpdate: (meta: EventMeta) => void;
 }
 
 export function LifeFields({ event, onUpdate }: LifeFieldsProps) {

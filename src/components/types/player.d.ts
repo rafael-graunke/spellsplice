@@ -1,3 +1,4 @@
+import type { Card } from './card';
 import type { Track } from './event';
 
 export interface Player {
@@ -5,6 +6,6 @@ export interface Player {
     name: string;
     lifeTotal: number;
     handSize: number;
-    cards: string[];
+    cards: Card[];
     track: Track;
 }

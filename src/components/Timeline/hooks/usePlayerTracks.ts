@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { Player } from '../../types/player';
-import { EventColorMap, type TrackEvent } from '../../types/event';
+import { EventColorMap, type TrackEvent, type EventMeta } from '../../types/event';
 
 type PlayerInit = Omit<Player, 'track'>;
 
@@ -140,7 +140,7 @@ export function usePlayerTracks(
     const handleUpdateMeta = (
         playerId: string,
         eventId: number,
-        meta: Record<string, unknown>
+        meta: EventMeta
     ) => {
         setPlayers((prev) =>
             prev.map((p) =>

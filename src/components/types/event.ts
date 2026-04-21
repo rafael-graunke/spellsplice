@@ -1,3 +1,10 @@
+import type { Card } from './card';
+
+export interface EventMeta {
+    cards?: Card[];
+    amount?: number;
+}
+
 export const EventType = {
     AddToHand: 'ADD_TO_HAND',
     RemoveFromHand: 'REMOVE_FROM_HAND',
@@ -77,7 +84,7 @@ export interface TrackEvent {
     type: EventType;
     resizable: boolean;
     duration?: number;
-    meta?: Record<string, any>;
+    meta?: EventMeta;
 }
 
 export interface Track {

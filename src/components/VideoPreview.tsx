@@ -44,6 +44,7 @@ function VideoPreview({
     const playersRef = useRef(players);
     const prevTimeRef = useRef(-1);
     const d20Ref = useRef<HTMLImageElement | null>(null);
+    const eyeRef = useRef<HTMLImageElement | null>(null);
     const derivedCacheRef = useRef<{
         playerStates: (ReturnType<typeof derivePlayerState> | null)[];
         activeEvents: ReturnType<typeof getActiveWindowedEvents>[];
@@ -54,6 +55,12 @@ function VideoPreview({
         const img = new Image();
         img.onload = () => { d20Ref.current = img; };
         img.src = '/d20.svg';
+    }, []);
+
+    useEffect(() => {
+        const img = new Image();
+        img.onload = () => { eyeRef.current = img; };
+        img.src = '/eye.svg';
     }, []);
 
     useEffect(() => {
@@ -131,7 +138,7 @@ function VideoPreview({
         const { playerStates, activeEvents } = derivedCacheRef.current!;
 
         renderPlayerState(ctx, playerStates, offsetX, offsetY, drawW, drawH, d20Ref.current);
-        renderHandStack(ctx, playerStates, offsetX, offsetY, drawW, drawH);
+        renderHandStack(ctx, playerStates, offsetX, offsetY, drawW, drawH, eyeRef.current);
 
         // Active windowed event card images
         const cardH = drawH * 0.5;
@@ -140,7 +147,7 @@ function VideoPreview({
 
         activeEvents.forEach((events) => {
             events.forEach((event) => {
-                const cardName = event.meta?.cards?.[0];
+                const cardName = event.meta?.cards?.[0]?.name;
                 if (!cardName) return;
 
                 const cached = ensureImage(cardName);

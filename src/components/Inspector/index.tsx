@@ -1,9 +1,9 @@
-import type { TrackEvent } from '../types/event';
+import type { TrackEvent, EventMeta } from '../types/event';
 import { EventFields } from './EventFields';
 
 interface InspectorProps {
     editObject: TrackEvent[] | null;
-    onUpdate: (eventId: number, meta: Record<string, unknown>) => void;
+    onUpdate: (eventId: number, meta: EventMeta) => void;
 }
 
 export function Inspector({ editObject, onUpdate }: InspectorProps) {

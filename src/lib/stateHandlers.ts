@@ -25,20 +25,37 @@ export function applyRemoveFromHand(
     trackEvent: TrackEvent
 ): Player {
     if (!trackEvent.meta?.cards) return state;
-    const cardsToRemove = new Set(trackEvent.meta.cards);
+    const namesToRemove = new Set(trackEvent.meta.cards.map((c) => c.name));
     return {
         ...state,
         handSize: Math.max(0, state.handSize - trackEvent.meta.cards.length),
-        cards: state.cards.filter((card) => !cardsToRemove.has(card)),
+        cards: state.cards.filter((card) => !namesToRemove.has(card.name)),
     };
 }
 
 export function applyRevealFromHand(
     state: Player,
-    _trackEvent: TrackEvent
+    trackEvent: TrackEvent
 ): Player {
-    return state;
+
+    if (!trackEvent.meta?.cards) return state;
+    const revealCounts = new Map<string, number>();
+    for (const c of trackEvent.meta.cards) {
+        revealCounts.set(c.name, (revealCounts.get(c.name) ?? 0) + 1);
+    }
+    return {
+        ...state,
+        cards: state.cards.map((card) => {
+            const remaining = revealCounts.get(card.name) ?? 0;
+            if (remaining > 0) {
+                revealCounts.set(card.name, remaining - 1);
+                return { ...card, revealed: true };
+            }
+            return card;
+        }),
+    };
 }
+
 
 export function applyStackTop(state: Player, _trackEvent: TrackEvent): Player {
     return state;

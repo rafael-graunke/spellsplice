@@ -44,11 +44,6 @@ Load a video file, then use the timeline editor to mark in-game events — life 
 </div>
 
 
-## Install
-
-_No release builds available yet._
-
-
 ## Local Development
 
 ### Prerequisites
@@ -60,7 +55,7 @@ _No release builds available yet._
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/spellsplice.git
+git clone https://github.com/rafael-graunke/spellsplice.git
 cd spellsplice
 
 # If using nvm
@@ -84,7 +79,7 @@ npx prettier --write .  # Format all files
 
 ## Roadmap
 
-### v1 — Export Ready `[in progress]`
+### v1 - Export Ready `[in progress]`
 
 Everything needed to produce a complete, finished video.
 
@@ -95,14 +90,13 @@ Everything needed to produce a complete, finished video.
   - [x] Resizable duration events
   - [x] Multi-event selection via rubber-band drag
   - [x] Command palette (Cmd+K) for adding events
-- [x] Up to 4 players, each with their own multi-layer track
+- [x] Two players, each with their own multi-layer track
 - [x] Live overlay: player name, life total, hand size
 - [x] Inspector panel: edit event properties (cards via Scryfall autocomplete, life amounts)
 - [ ] **Decklist import** - paste a decklist in MTGO format per player; card data and images are bulk-fetched from Scryfall once and cached locally for the session
   - [ ] Autocomplete in event fields draws from the cached deck first, falling back to global Scryfall search for off-deck cards
 - [x] **Cards-in-hand display** - always-visible stacked card title crops per player (Card Kingdom / Mengu's Workshop style), rendered from the local image cache
 - [ ] **Video export** - render the overlay baked into the video, or export overlay-only, directly in the browser via WebAssembly FFmpeg
-- [ ] **Add / remove players** - manage the player roster from within the app
 - [ ] **Player name & deck name editing** in Inspector - changes reflect on the overlay in real time
 - [ ] Complete all event types and state handlers:
   - [x] Add to Hand
@@ -115,17 +109,13 @@ Everything needed to produce a complete, finished video.
   - [ ] Shuffle
 
 
-### v2 — Power Users `[future]`
+### v2 - Streaming & Creator Tools `[future]`
 
-Reduce repetition for common game actions.
+Live streaming support and full creative control over the overlay.
 
-- [ ] **Built-in macro library** - predefined event sequences for common spells (e.g. Brainstorm: +3 to hand, −2 from hand, stack top ×2)
-- [ ] **User-defined macros** - create, name, and reuse custom event sequences without waiting for app-side support
-
-
-### v3 — Creator Tools `[future]`
-
-Full creative control over the final product.
-
+- [ ] **Add / remove players** - manage the player roster from within the app
+- [ ] **Live overlay mode** - manage an event stack in the controller, overlay renders chroma-keyed and syncs via BroadcastChannel; opens as a popup window for clean OBS Window Capture
 - [ ] **Overlay UI editor** - drag, resize, and style every overlay element; choose fonts, colors, backgrounds, and which stats to show per player
 - [ ] **Layout export & sharing** - export your overlay layout to a file and share it with others
+- [ ] **Built-in macro library** - predefined event sequences for common spells (e.g. Brainstorm: +3 to hand, −2 from hand, stack top ×2)
+- [ ] **User-defined macros** - create, name, and reuse custom event sequences without waiting for app-side support

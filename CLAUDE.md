@@ -106,8 +106,7 @@ shadcn/ui + Radix UI + Tailwind CSS v4. Components live in `src/components/ui/`.
 |---------|-------|--------|
 | **v0** | Foundation | 🟡 Current |
 | **v1** | Export Ready | ⬜ Planned |
-| **v2** | Power Users | ⬜ Future |
-| **v3** | Creator Tools | ⬜ Future |
+| **v2** | Streaming & Creator Tools | ⬜ Future |
 
 **v1 targets** (must-haves before first release):
 - Decklist import (MTGO format) per player — bulk-fetches Scryfall data once, caches images locally; autocomplete draws from deck cache first
@@ -117,9 +116,10 @@ shadcn/ui + Radix UI + Tailwind CSS v4. Components live in `src/components/ui/`.
 - Inspector: player name + deck name editing (reflected on overlay)
 - Complete state handlers for REVEAL_FROM_HAND, STACK_TOP, SHUFFLE (currently stubs)
 
-**v2 targets**: built-in macro library (common spell sequences like Brainstorm) + user-defined macros
-
-**v3 targets**: full overlay UI editor (drag/resize/style any element) + layout export & sharing
+**v2 targets**:
+- Live overlay mode — `/control` + `/overlay` routes; controller manages an event stack, overlay renders chroma-keyed canvas synced via BroadcastChannel; popup window for clean OBS Window Capture
+- Full overlay UI editor (drag/resize/style any element) + layout export & sharing
+- Built-in macro library (common spell sequences like Brainstorm) + user-defined macros
 
 ## Conventions
 

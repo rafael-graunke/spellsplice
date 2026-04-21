@@ -5,31 +5,68 @@ export function renderPlayerState(
     playerStates: (ReturnType<typeof derivePlayerState> | null)[],
     offsetX: number,
     offsetY: number,
-    drawW: number
+    drawW: number,
+    drawH: number,
+    d20Img: HTMLImageElement | null
 ) {
     playerStates.forEach((state, i) => {
         if (!state) return;
 
-        const boxW = 140;
-        const boxH = 72;
-        const boxX = i === 0 ? offsetX + 12 : offsetX + drawW - boxW - 12;
-        const boxY = offsetY + 12;
+        const isLeft = i === 0;
+        const boxH = 68;
+        const boxW = 260;
+        const slantW = 44;
+        const topY = offsetY + 12;
+        const bottomY = topY + boxH;
+        const rx = offsetX + drawW;
 
         ctx.save();
         ctx.beginPath();
-        ctx.fillStyle = '#dadadaff';
-        ctx.roundRect(boxX, boxY, boxW, boxH, 6);
+
+        if (isLeft) {
+            ctx.moveTo(offsetX, topY);
+            ctx.lineTo(offsetX + boxW + slantW, topY);
+            ctx.lineTo(offsetX + boxW, bottomY);
+            ctx.lineTo(offsetX, bottomY);
+        } else {
+            ctx.moveTo(rx - boxW - slantW, topY);
+            ctx.lineTo(rx, topY);
+            ctx.lineTo(rx, bottomY);
+            ctx.lineTo(rx - boxW, bottomY);
+        }
+
+        ctx.closePath();
+        ctx.fillStyle = '#2e4a6b';
         ctx.fill();
 
-        ctx.fillStyle = '#000000';
-        ctx.font = 'bold 13px sans-serif';
-        ctx.fillText(state.name, boxX + 10, boxY + 20);
+        const d20Size = boxH - 12;
+        const midY = topY + boxH / 2;
 
-        ctx.font = '13px sans-serif';
-        ctx.fillStyle = '#000000';
-        ctx.fillText(`♥  ${state.lifeTotal}`, boxX + 10, boxY + 42);
-        ctx.fillStyle = '#000000';
-        ctx.fillText(`✋  ${state.handSize}`, boxX + 10, boxY + 62);
+        // Player 1: D20 right, name left. Player 2: D20 left, name right.
+        const d20X = isLeft
+            ? offsetX + boxW - d20Size - 16
+            : rx - boxW + 16;
+        const d20Y = topY + 6;
+
+        if (d20Img) ctx.drawImage(d20Img, d20X, d20Y, d20Size, d20Size);
+
+        ctx.font = `bold ${Math.round(d20Size * 0.35)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#2e4a6b';
+        ctx.fillText(String(state.lifeTotal), d20X + d20Size / 2, d20Y + d20Size / 2);
+
+        const nameX = isLeft
+            ? offsetX + 16
+            : rx - boxW + d20Size + 28;
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 18px sans-serif';
+        ctx.textAlign = isLeft ? 'left' : 'left';
+        ctx.fillText(state.name.toUpperCase(), nameX, midY);
+
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
         ctx.restore();
     });
 }

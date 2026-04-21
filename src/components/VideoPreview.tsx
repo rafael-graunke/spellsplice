@@ -41,11 +41,19 @@ function VideoPreview({
     const videoRef = useRef<HTMLVideoElement>(null);
     const playersRef = useRef(players);
     const prevTimeRef = useRef(-1);
+    const imageCache = useRef<Map<string, HTMLImageElement | 'loading' | 'error'>>(new Map());
+    const d20Ref = useRef<HTMLImageElement | null>(null);
     const derivedCacheRef = useRef<{
         playerStates: (ReturnType<typeof derivePlayerState> | null)[];
         activeEvents: ReturnType<typeof getActiveWindowedEvents>[];
         validUntil: number;
     } | null>(null);
+
+    useEffect(() => {
+        const img = new Image();
+        img.onload = () => { d20Ref.current = img; };
+        img.src = '/d20.svg';
+    }, []);
 
     useEffect(() => {
         playersRef.current = players;
@@ -121,33 +129,58 @@ function VideoPreview({
 
         const { playerStates, activeEvents } = derivedCacheRef.current!;
 
-        renderPlayerState(ctx, playerStates, offsetX, offsetY, drawW);
+        renderPlayerState(ctx, playerStates, offsetX, offsetY, drawW, drawH, d20Ref.current);
 
-        // Active windowed event banners
-        let bannerOffset = 0;
+        // Active windowed event card images
+        const cardH = drawH * 0.5;
+        const cardW = cardH * (223 / 310);
+        let cardOffset = 0;
+
         activeEvents.forEach((events) => {
             events.forEach((event) => {
-                const bannerH = 36;
-                const bannerY = offsetY + drawH - bannerH - 12 - bannerOffset;
+                const cardName = event.meta?.cards?.[0];
+                if (!cardName) return;
+
+                const cached = imageCache.current.get(cardName);
+
+                if (cached === undefined) {
+                    imageCache.current.set(cardName, 'loading');
+                    fetch(
+                        `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`
+                    )
+                        .then((r) => r.json())
+                        .then((data) => {
+                            const url = data.image_uris?.normal;
+                            if (!url) {
+                                imageCache.current.set(cardName, 'error');
+                                return;
+                            }
+                            const img = new Image();
+                            img.crossOrigin = 'anonymous';
+                            img.onload = () =>
+                                imageCache.current.set(cardName, img);
+                            img.onerror = () =>
+                                imageCache.current.set(cardName, 'error');
+                            img.src = url;
+                        })
+                        .catch(() => imageCache.current.set(cardName, 'error'));
+                    return;
+                }
+
+                if (cached === 'loading' || cached === 'error') return;
+
+                const cardX =
+                    offsetX + drawW / 2 - (cardW / 2) + cardOffset * (cardW + 8);
+                const cardY = offsetY + drawH / 2 - cardH / 2;
 
                 ctx.save();
                 ctx.beginPath();
-                ctx.fillStyle = 'rgba(236, 72, 153, 0.85)';
-                ctx.roundRect(offsetX + 12, bannerY, drawW - 24, bannerH, 6);
-                ctx.fill();
-
-                ctx.fillStyle = '#ffffff';
-                ctx.font = 'bold 14px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText(
-                    event.type.replace(/_/g, ' '),
-                    offsetX + drawW / 2,
-                    bannerY + 24
-                );
-                ctx.textAlign = 'left';
+                ctx.roundRect(cardX, cardY, cardW, cardH, 11);
+                ctx.clip();
+                ctx.drawImage(cached, cardX, cardY, cardW, cardH);
                 ctx.restore();
 
-                bannerOffset += bannerH + 6;
+                cardOffset++;
             });
         });
     };

@@ -11,6 +11,7 @@ export function useTrackEvents(
         playerData.map((player) => ({
             id: player.id,
             playerId: player.id,
+            layers: 4,
             events: [],
         }))
     );
@@ -25,6 +26,7 @@ export function useTrackEvents(
             duration: 1,
             color: EventColorMap[partial.type].bg,
             resizable: false,
+            layer: 1,
             ...partial,
         };
         setTracks((prev) => {

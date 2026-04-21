@@ -35,10 +35,27 @@ export function applyRemoveFromHand(
 
 export function applyRevealFromHand(
     state: Player,
-    _trackEvent: TrackEvent
+    trackEvent: TrackEvent
 ): Player {
-    return state;
+
+    if (!trackEvent.meta?.cards) return state;
+    const revealCounts = new Map<string, number>();
+    for (const c of trackEvent.meta.cards) {
+        revealCounts.set(c.name, (revealCounts.get(c.name) ?? 0) + 1);
+    }
+    return {
+        ...state,
+        cards: state.cards.map((card) => {
+            const remaining = revealCounts.get(card.name) ?? 0;
+            if (remaining > 0) {
+                revealCounts.set(card.name, remaining - 1);
+                return { ...card, revealed: true };
+            }
+            return card;
+        }),
+    };
 }
+
 
 export function applyStackTop(state: Player, _trackEvent: TrackEvent): Player {
     return state;

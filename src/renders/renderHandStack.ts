@@ -9,13 +9,17 @@ const STRIP_H = Math.round(STRIP_W * (680 * TITLE_CROP) / 488);
 // Extra height drawn below each strip to fill under the rounded corners of the card above
 const OVERLAP = BORDER_RADIUS;
 
+const ICON_SIZE = Math.round(STRIP_H * 0.7);
+const ICON_GAP = 6;
+
 export function renderHandStack(
     ctx: CanvasRenderingContext2D,
     playerStates: (ReturnType<typeof derivePlayerState> | null)[],
     offsetX: number,
     offsetY: number,
     drawW: number,
-    drawH: number
+    drawH: number,
+    eyeIcon: HTMLImageElement | null
 ) {
     const bottomY = offsetY + drawH - 8;
 
@@ -52,6 +56,17 @@ export function renderHandStack(
             }
 
             ctx.restore();
+
+            if (card.revealed && eyeIcon) {
+                const iconX = isLeft
+                    ? x + STRIP_W + ICON_GAP
+                    : x - ICON_GAP - ICON_SIZE;
+                const iconY = 8 + y + Math.round((STRIP_H - ICON_SIZE) / 2);
+                ctx.save();
+                ctx.globalAlpha = 0.6;
+                ctx.drawImage(eyeIcon, iconX, iconY, ICON_SIZE, ICON_SIZE);
+                ctx.restore();
+            }
         }
     });
 }

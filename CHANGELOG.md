@@ -1,3 +1,10 @@
+# [0.3.0](https://github.com/rafael-graunke/spellsplice/compare/v0.2.0...v0.3.0) (2026-04-21)
+
+
+### Features
+
+* **preview:** add card reveal icon ([7025d02](https://github.com/rafael-graunke/spellsplice/commit/7025d025252925d2ffcbd01935f213cca106fe63))
+
 # [0.2.0](https://github.com/rafael-graunke/spellsplice/compare/v0.1.0...v0.2.0) (2026-04-21)
 
 

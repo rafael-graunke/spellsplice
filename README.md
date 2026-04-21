@@ -100,7 +100,7 @@ Everything needed to produce a complete, finished video.
 - [x] Inspector panel: edit event properties (cards via Scryfall autocomplete, life amounts)
 - [ ] **Decklist import** - paste a decklist in MTGO format per player; card data and images are bulk-fetched from Scryfall once and cached locally for the session
   - [ ] Autocomplete in event fields draws from the cached deck first, falling back to global Scryfall search for off-deck cards
-- [ ] **Cards-in-hand display** - always-visible stacked card title crops per player (Card Kingdom / Mengu's Workshop style), rendered from the local image cache
+- [x] **Cards-in-hand display** - always-visible stacked card title crops per player (Card Kingdom / Mengu's Workshop style), rendered from the local image cache
 - [ ] **Video export** - render the overlay baked into the video, or export overlay-only, directly in the browser via WebAssembly FFmpeg
 - [ ] **Add / remove players** - manage the player roster from within the app
 - [ ] **Player name & deck name editing** in Inspector - changes reflect on the overlay in real time
@@ -109,10 +109,10 @@ Everything needed to produce a complete, finished video.
   - [x] Remove from Hand
   - [x] Gain Life
   - [x] Lose Life
+  - [x] Display Card
   - [ ] Reveal from Hand
   - [ ] Stack Top
   - [ ] Shuffle
-  - [ ] Display Card
 
 
 ### v2 — Power Users `[future]`

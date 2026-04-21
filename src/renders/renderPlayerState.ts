@@ -6,7 +6,7 @@ export function renderPlayerState(
     offsetX: number,
     offsetY: number,
     drawW: number,
-    drawH: number,
+    _drawH: number,
     d20Img: HTMLImageElement | null
 ) {
     playerStates.forEach((state, i) => {

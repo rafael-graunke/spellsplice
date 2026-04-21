@@ -111,12 +111,13 @@ shadcn/ui + Radix UI + Tailwind CSS v4. Components live in `src/components/ui/`.
 **v1 targets** (must-haves before first release):
 - Decklist import (MTGO format) per player — bulk-fetches Scryfall data once, caches images locally; autocomplete draws from deck cache first
 - Cards-in-hand display — stacked card title crops always visible on overlay per player, rendered from local cache
+- Project export/import — save and load the full timeline (players, events, deck data) to a JSON file
 - Video export via wasm-ffmpeg (overlay-only or baked into video, runs in-browser)
-- Add / remove players from within the app
 - Inspector: player name + deck name editing (reflected on overlay)
 - Complete state handlers for REVEAL_FROM_HAND, STACK_TOP, SHUFFLE (currently stubs)
 
 **v2 targets**:
+- Add / remove players from within the app
 - Live overlay mode — `/control` + `/overlay` routes; controller manages an event stack, overlay renders chroma-keyed canvas synced via BroadcastChannel; popup window for clean OBS Window Capture
 - Full overlay UI editor (drag/resize/style any element) + layout export & sharing
 - Built-in macro library (common spell sequences like Brainstorm) + user-defined macros

@@ -100,6 +100,27 @@ Per-type field components — not auto-derived from the meta shape. Card fields 
 
 shadcn/ui + Radix UI + Tailwind CSS v4. Components live in `src/components/ui/`. Path alias `@/*` maps to `src/*`. SVG icons auto-imported from `src/assets/icons/` via vite-plugin-svgr.
 
+## Roadmap
+
+| Version | Theme | Status |
+|---------|-------|--------|
+| **v0** | Foundation | 🟡 Current |
+| **v1** | Export Ready | ⬜ Planned |
+| **v2** | Power Users | ⬜ Future |
+| **v3** | Creator Tools | ⬜ Future |
+
+**v1 targets** (must-haves before first release):
+- Decklist import (MTGO format) per player — bulk-fetches Scryfall data once, caches images locally; autocomplete draws from deck cache first
+- Cards-in-hand display — stacked card title crops always visible on overlay per player, rendered from local cache
+- Video export via wasm-ffmpeg (overlay-only or baked into video, runs in-browser)
+- Add / remove players from within the app
+- Inspector: player name + deck name editing (reflected on overlay)
+- Complete state handlers for REVEAL_FROM_HAND, STACK_TOP, SHUFFLE (currently stubs)
+
+**v2 targets**: built-in macro library (common spell sequences like Brainstorm) + user-defined macros
+
+**v3 targets**: full overlay UI editor (drag/resize/style any element) + layout export & sharing
+
 ## Conventions
 
 - 4-space indentation, single quotes, trailing commas — see `.prettierrc`

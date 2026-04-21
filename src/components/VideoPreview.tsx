@@ -16,6 +16,8 @@ import {
     getNextChangeTime,
 } from '@/lib/deriveState';
 import { renderPlayerState } from '@/renders/renderPlayerState';
+import { renderHandStack } from '@/renders/renderHandStack';
+import { ensureImage } from '@/lib/cardCache';
 
 interface VideoPreviewProps {
     isPlaying: boolean;
@@ -41,7 +43,6 @@ function VideoPreview({
     const videoRef = useRef<HTMLVideoElement>(null);
     const playersRef = useRef(players);
     const prevTimeRef = useRef(-1);
-    const imageCache = useRef<Map<string, HTMLImageElement | 'loading' | 'error'>>(new Map());
     const d20Ref = useRef<HTMLImageElement | null>(null);
     const derivedCacheRef = useRef<{
         playerStates: (ReturnType<typeof derivePlayerState> | null)[];
@@ -130,6 +131,7 @@ function VideoPreview({
         const { playerStates, activeEvents } = derivedCacheRef.current!;
 
         renderPlayerState(ctx, playerStates, offsetX, offsetY, drawW, drawH, d20Ref.current);
+        renderHandStack(ctx, playerStates, offsetX, offsetY, drawW, drawH);
 
         // Active windowed event card images
         const cardH = drawH * 0.5;
@@ -141,32 +143,7 @@ function VideoPreview({
                 const cardName = event.meta?.cards?.[0];
                 if (!cardName) return;
 
-                const cached = imageCache.current.get(cardName);
-
-                if (cached === undefined) {
-                    imageCache.current.set(cardName, 'loading');
-                    fetch(
-                        `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`
-                    )
-                        .then((r) => r.json())
-                        .then((data) => {
-                            const url = data.image_uris?.normal;
-                            if (!url) {
-                                imageCache.current.set(cardName, 'error');
-                                return;
-                            }
-                            const img = new Image();
-                            img.crossOrigin = 'anonymous';
-                            img.onload = () =>
-                                imageCache.current.set(cardName, img);
-                            img.onerror = () =>
-                                imageCache.current.set(cardName, 'error');
-                            img.src = url;
-                        })
-                        .catch(() => imageCache.current.set(cardName, 'error'));
-                    return;
-                }
-
+                const cached = ensureImage(cardName);
                 if (cached === 'loading' || cached === 'error') return;
 
                 const cardX =

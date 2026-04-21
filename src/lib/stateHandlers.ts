@@ -25,11 +25,11 @@ export function applyRemoveFromHand(
     trackEvent: TrackEvent
 ): Player {
     if (!trackEvent.meta?.cards) return state;
-    const cardsToRemove = new Set(trackEvent.meta.cards);
+    const namesToRemove = new Set(trackEvent.meta.cards.map((c) => c.name));
     return {
         ...state,
         handSize: Math.max(0, state.handSize - trackEvent.meta.cards.length),
-        cards: state.cards.filter((card) => !cardsToRemove.has(card)),
+        cards: state.cards.filter((card) => !namesToRemove.has(card.name)),
     };
 }
 

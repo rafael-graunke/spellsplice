@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { useCardSearch } from '@/hooks/useCardSearch';
-import type { TrackEvent } from '../types/event';
+import type { TrackEvent, EventMeta } from '../types/event';
+import type { Card } from '../types/card';
 
 interface CardFieldsProps {
     event: TrackEvent;
     multi: boolean;
-    onUpdate: (meta: Record<string, unknown>) => void;
+    onUpdate: (meta: EventMeta) => void;
 }
 
 export function CardFields({ event, multi, onUpdate }: CardFieldsProps) {
@@ -14,23 +15,24 @@ export function CardFields({ event, multi, onUpdate }: CardFieldsProps) {
     const [open, setOpen] = useState(false);
     const { data: suggestions, isFetching } = useCardSearch(query);
 
-    const selected: string[] = (event.meta?.cards as string[]) ?? [];
+    const selected: Card[] = event.meta?.cards ?? [];
 
     useEffect(() => {
         setQuery('');
     }, [event.id]);
 
-    const addCard = (card: string) => {
+    const addCard = (name: string) => {
+        const card: Card = { name };
         const next = multi
-            ? selected.includes(card) ? selected : [...selected, card]
+            ? selected.some((c) => c.name === name) ? selected : [...selected, card]
             : [card];
         onUpdate({ cards: next });
         setQuery('');
         setOpen(false);
     };
 
-    const removeCard = (card: string) => {
-        onUpdate({ cards: selected.filter((c) => c !== card) });
+    const removeCard = (cardName: string) => {
+        onUpdate({ cards: selected.filter((c) => c.name !== cardName) });
     };
 
     return (
@@ -43,13 +45,13 @@ export function CardFields({ event, multi, onUpdate }: CardFieldsProps) {
                 <div className="flex flex-wrap gap-1">
                     {selected.map((card) => (
                         <span
-                            key={card}
+                            key={card.name}
                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-white/10 text-white"
                         >
-                            {card}
+                            {card.name}
                             <span
                                 className="cursor-pointer opacity-60 hover:opacity-100"
-                                onClick={() => removeCard(card)}
+                                onClick={() => removeCard(card.name)}
                             >
                                 ×
                             </span>

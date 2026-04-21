@@ -140,7 +140,7 @@ function VideoPreview({
 
         activeEvents.forEach((events) => {
             events.forEach((event) => {
-                const cardName = event.meta?.cards?.[0];
+                const cardName = event.meta?.cards?.[0]?.name;
                 if (!cardName) return;
 
                 const cached = ensureImage(cardName);

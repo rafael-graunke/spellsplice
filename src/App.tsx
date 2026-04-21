@@ -7,7 +7,7 @@ import {
 } from './components/ui/resizable';
 import { Timeline } from './components/Timeline';
 import type { Player } from './components/types/player';
-import type { TrackEvent } from './components/types/event';
+import type { TrackEvent, EventMeta } from './components/types/event';
 import { useState } from 'react';
 import VideoPreview from './components/VideoPreview';
 import type { VideoState } from './components/types/video';
@@ -42,7 +42,7 @@ function App() {
 
     const selectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? players[0] ?? null;
 
-    const handleInspectorUpdate = (eventId: number, meta: Record<string, unknown>) => {
+    const handleInspectorUpdate = (eventId: number, meta: EventMeta) => {
         if (!selectedPlayer) return;
         handleUpdateMeta(selectedPlayer.id, eventId, meta);
         setSelectedEvents((prev) =>

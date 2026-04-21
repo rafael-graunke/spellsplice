@@ -1,10 +1,10 @@
-import type { TrackEvent } from '../types/event';
+import type { TrackEvent, EventMeta } from '../types/event';
 import { LifeFields } from './LifeFields';
 import { CardFields } from './CardFields';
 
 interface EventFieldsProps {
     event: TrackEvent;
-    onUpdate: (meta: Record<string, unknown>) => void;
+    onUpdate: (meta: EventMeta) => void;
 }
 
 export function EventFields({ event, onUpdate }: EventFieldsProps) {

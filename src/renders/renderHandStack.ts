@@ -27,7 +27,8 @@ export function renderHandStack(
 
         // Render newest first so older cards paint on top, covering rounded corner gaps
         for (let j = state.cards.length - 1; j >= 0; j--) {
-            const cardName = state.cards[j];
+            const card = state.cards[j];
+            const cardName = card.name;
             const y = bottomY - (j + 1) * STRIP_H;
             const img = ensureImage(cardName);
 

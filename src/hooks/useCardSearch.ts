@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useDebounce } from '@uidotdev/usehooks';
 
 export function useCardSearch(query: string) {
-    const debouncedQuery = useDebounce(query, 500);
+    const debouncedQuery = useDebounce(query.toLowerCase(), 500);
     return useQuery({
         queryKey: ['cards', debouncedQuery],
         queryFn: async () => {
@@ -13,6 +13,6 @@ export function useCardSearch(query: string) {
             return json.data as string[];
         },
         enabled: debouncedQuery.length > 1,
-        staleTime: 1000 * 60 * 10,
+        staleTime: Infinity,
     });
 }

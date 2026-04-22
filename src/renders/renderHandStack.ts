@@ -34,7 +34,7 @@ export function renderHandStack(
             const card = state.cards[j];
             const cardName = card.name;
             const y = bottomY - (j + 1) * STRIP_H;
-            const img = ensureImage(cardName);
+            const img = ensureImage(cardName, card.edition);
 
             ctx.save();
             ctx.beginPath();

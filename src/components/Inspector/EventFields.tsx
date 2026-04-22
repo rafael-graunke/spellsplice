@@ -16,10 +16,10 @@ export function EventFields({ event, onUpdate }: EventFieldsProps) {
         case 'ADD_TO_HAND':
         case 'REMOVE_FROM_HAND':
         case 'REVEAL_FROM_HAND':
-        case 'DISPLAY_CARD':
-            return <CardFields event={event} multi={true} onUpdate={onUpdate} />;
-
         case 'STACK_TOP':
+            return <CardFields event={event} multi={true} onUpdate={onUpdate} />;
+                
+        case 'DISPLAY_CARD':
             return <CardFields event={event} multi={false} onUpdate={onUpdate} />;
 
         case 'SHUFFLE':

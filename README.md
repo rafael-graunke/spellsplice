@@ -105,7 +105,7 @@ Everything needed to produce a complete, finished video.
   - [x] Gain Life
   - [x] Lose Life
   - [x] Display Card
-  - [ ] Reveal from Hand
+  - [x] Reveal from Hand
   - [ ] Stack Top
   - [ ] Shuffle
 

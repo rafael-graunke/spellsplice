@@ -94,19 +94,23 @@ function VideoPreview({
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
+        const dpr = window.devicePixelRatio || 1;
         const v = video.videoEl;
-        const canvasW = canvas.width;
-        const canvasH = canvas.height;
+        const canvasW = canvas.width / dpr;
+        const canvasH = canvas.height / dpr;
         const videoW = v.videoWidth;
         const videoH = v.videoHeight;
 
         if (!videoW || !videoH) return;
 
         const scale = Math.min(canvasW / videoW, canvasH / videoH);
-        const drawW = videoW * scale;
-        const drawH = videoH * scale;
-        const offsetX = (canvasW - drawW) / 2;
-        const offsetY = (canvasH - drawH) / 2;
+        const drawW = Math.round(videoW * scale);
+        const drawH = Math.round(videoH * scale);
+        const offsetX = Math.round((canvasW - drawW) / 2);
+        const offsetY = Math.round((canvasH - drawH) / 2);
+
+        ctx.save();
+        ctx.scale(dpr, dpr);
 
         ctx.clearRect(0, 0, canvasW, canvasH);
         ctx.drawImage(v, offsetX, offsetY, drawW, drawH);
@@ -147,10 +151,10 @@ function VideoPreview({
 
         activeEvents.forEach((events) => {
             events.forEach((event) => {
-                const cardName = event.meta?.cards?.[0]?.name;
-                if (!cardName) return;
+                const card = event.meta?.cards?.[0];
+                if (!card?.name) return;
 
-                const cached = ensureImage(cardName);
+                const cached = ensureImage(card.name, card.edition);
                 if (cached === 'loading' || cached === 'error') return;
 
                 const cardX =
@@ -177,9 +181,9 @@ function VideoPreview({
         if (!parent) return;
 
         const resize = () => {
-            const rect = parent.getBoundingClientRect();
-            canvas.width = rect.width;
-            canvas.height = rect.height;
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.round(canvas.offsetWidth * dpr);
+            canvas.height = Math.round(canvas.offsetHeight * dpr);
             drawFrame();
         };
 

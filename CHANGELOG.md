@@ -1,3 +1,16 @@
+# [0.4.0](https://github.com/rafael-graunke/spellsplice/compare/v0.3.0...v0.4.0) (2026-04-22)
+
+
+### Bug Fixes
+
+* **inspector:** added missing type prompt ([74450e1](https://github.com/rafael-graunke/spellsplice/commit/74450e17903a504396171d1d0e0caa951da0c7d7))
+* **inspector:** amount field ([6c2df8d](https://github.com/rafael-graunke/spellsplice/commit/6c2df8df1660ba6dc8343f7e43ff8bd22fe72c9f))
+
+
+### Features
+
+* **inspector:** changes inspector style; adds printing selection ([589a632](https://github.com/rafael-graunke/spellsplice/commit/589a632914ca37d224f70b0c0dfa11cea047d9fa))
+
 # [0.3.0](https://github.com/rafael-graunke/spellsplice/compare/v0.2.0...v0.3.0) (2026-04-21)
 
 

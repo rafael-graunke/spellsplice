@@ -1,3 +1,10 @@
+# [0.5.0](https://github.com/rafael-graunke/spellsplice/compare/v0.4.0...v0.5.0) (2026-04-22)
+
+
+### Features
+
+* added project export ([4568303](https://github.com/rafael-graunke/spellsplice/commit/456830303b43ac8748b5fc27a32dad337c6e1380))
+
 # [0.4.0](https://github.com/rafael-graunke/spellsplice/compare/v0.3.0...v0.4.0) (2026-04-22)
 
 

@@ -117,6 +117,11 @@ export function CardFields({ event, multi, onUpdate }: CardFieldsProps) {
                                 Searching…
                             </div>
                         )}
+                        {!isFetching && !suggestions && (
+                            <div className="py-2 text-center text-sm text-muted-foreground">
+                                Start typing to search for cards
+                            </div>
+                        )}
                         {!isFetching && suggestions && suggestions.length === 0 && (
                             <div className="py-2 text-center text-sm text-muted-foreground">
                                 No results

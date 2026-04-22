@@ -159,6 +159,15 @@ export function usePlayerTracks(
         );
     };
 
+    const resetPlayers = (incoming: Player[]) => {
+        setPlayers(incoming);
+        const maxId = Math.max(
+            0,
+            ...incoming.flatMap((p) => p.track.events.map((e) => e.id))
+        );
+        nextEventId.current = maxId + 1;
+    };
+
     return {
         players,
         handleCreateEvent,
@@ -167,5 +176,6 @@ export function usePlayerTracks(
         handleMoveEvent,
         handleMoveMultipleEvents,
         handleUpdateMeta,
+        resetPlayers,
     };
 }

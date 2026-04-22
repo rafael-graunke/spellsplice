@@ -27,6 +27,7 @@ interface VideoPreviewProps {
     video: VideoState | null;
     setVideo: React.Dispatch<React.SetStateAction<VideoState | null>>;
     players: Player[];
+    fileToLoad?: File | null;
 }
 
 function VideoPreview({
@@ -37,6 +38,7 @@ function VideoPreview({
     video,
     setVideo,
     players,
+    fileToLoad,
 }: VideoPreviewProps) {
     const inputRef = useRef<HTMLInputElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -67,6 +69,10 @@ function VideoPreview({
         playersRef.current = players;
         derivedCacheRef.current = null;
     }, [players]);
+
+    useEffect(() => {
+        if (fileToLoad) handleFile(fileToLoad);
+    }, [fileToLoad]);
 
     const handleFile = (file: File) => {
         if (!file) return;

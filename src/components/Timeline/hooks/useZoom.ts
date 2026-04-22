@@ -17,7 +17,6 @@ export function useZoom(
     const zoom = percentToZoom(zoomPercent);
     const zoomRef = useRef(zoom);
     zoomRef.current = zoom;
-
     const handleZoomChange = (newPercent: number) => {
         const clamped = Math.min(Math.max(0, newPercent), 100);
         const newZoom = percentToZoom(clamped);
@@ -30,6 +29,7 @@ export function useZoom(
         if (!el) return;
 
         const handler = (e: WheelEvent) => {
+            if (!(e.ctrlKey || e.altKey)) return;
             e.preventDefault();
 
             const track = trackRef.current;
@@ -59,8 +59,16 @@ export function useZoom(
             track.scrollLeft = newScrollLeft;
         };
 
+        const keyupHandler = (e: KeyboardEvent) => {
+            if (e.key === 'Alt') e.preventDefault();
+        };
+
         el.addEventListener('wheel', handler, { passive: false });
-        return () => el.removeEventListener('wheel', handler);
+        document.addEventListener('keyup', keyupHandler);
+        return () => {
+            el.removeEventListener('wheel', handler);
+            document.removeEventListener('keyup', keyupHandler);
+        };
     }, []);
 
     return { zoom, zoomPercent, zoomRef, handleZoomChange };

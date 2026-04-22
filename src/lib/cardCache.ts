@@ -1,5 +1,33 @@
 export const imageCache = new Map<string, HTMLImageElement | 'loading' | 'error'>();
 
+export async function serializeImageCache(): Promise<Map<string, Blob>> {
+    const result = new Map<string, Blob>();
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    for (const [key, value] of imageCache) {
+        if (!(value instanceof HTMLImageElement)) continue;
+        canvas.width = value.naturalWidth;
+        canvas.height = value.naturalHeight;
+        ctx.drawImage(value, 0, 0);
+        const blob = await new Promise<Blob | null>((resolve) =>
+            canvas.toBlob(resolve, 'image/jpeg', 0.9)
+        );
+        if (blob) result.set(key, blob);
+    }
+    return result;
+}
+
+export function restoreImageCache(entries: Map<string, Blob>): void {
+    for (const [key, blob] of entries) {
+        imageCache.set(key, 'loading');
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => { imageCache.set(key, img); URL.revokeObjectURL(url); };
+        img.onerror = () => { imageCache.set(key, 'error'); URL.revokeObjectURL(url); };
+        img.src = url;
+    }
+}
+
 export function ensureImage(cardName: string, edition?: string): HTMLImageElement | 'loading' | 'error' {
     const key = edition ? `${cardName}|${edition}` : cardName;
     const cached = imageCache.get(key);

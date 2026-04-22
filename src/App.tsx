@@ -8,11 +8,13 @@ import {
 import { Timeline } from './components/Timeline';
 import type { Player } from './components/types/player';
 import type { TrackEvent, EventMeta } from './components/types/event';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { exportProject, importProject } from '@/lib/projectExport';
 import VideoPreview from './components/VideoPreview';
 import type { VideoState } from './components/types/video';
 import { Inspector } from './components/Inspector';
 import { usePlayerTracks } from './components/Timeline/hooks/usePlayerTracks';
+import AppBar from './components/AppBar';
 
 type PlayerInit = Omit<Player, 'track'>;
 
@@ -20,6 +22,9 @@ const initialPlayers: PlayerInit[] = [
     { id: 'player1', name: 'Player 1', handSize: 0, lifeTotal: 20, cards: [] },
     { id: 'player2', name: 'Player 2', handSize: 0, lifeTotal: 20, cards: [] },
 ];
+
+const makeFreshPlayers = (): Player[] =>
+    initialPlayers.map((p) => ({ ...p, track: { id: p.id, layers: 4, events: [] } }));
 
 function App() {
     const [isPlaying, setIsPlaying] = useState(false);
@@ -29,6 +34,10 @@ function App() {
     const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(
         () => initialPlayers[0]?.id ?? null
     );
+    const [fileToLoad, setFileToLoad] = useState<File | null>(null);
+    const [isDirty, setIsDirty] = useState(false);
+    const isFirstPlayersRender = useRef(true);
+    const skipDirtyRef = useRef(false);
 
     const {
         players,
@@ -38,7 +47,43 @@ function App() {
         handleMoveEvent,
         handleMoveMultipleEvents,
         handleUpdateMeta,
+        resetPlayers,
     } = usePlayerTracks(initialPlayers, currentTime, setSelectedEvents);
+
+    useEffect(() => {
+        if (isDirty) return;
+        if (isFirstPlayersRender.current) { isFirstPlayersRender.current = false; return; }
+        if (skipDirtyRef.current) { skipDirtyRef.current = false; return; }
+        setIsDirty(true);
+    }, [players]);
+
+    const handleExport = async () => {
+        await exportProject(players, video);
+        setIsDirty(false);
+    };
+
+    const handleImport = async (file: File) => {
+        const { manifest, videoFile } = await importProject(file);
+        skipDirtyRef.current = true;
+        resetPlayers(manifest.players);
+        setSelectedPlayerId(manifest.players[0]?.id ?? null);
+        setSelectedEvents([]);
+        setCurrentTime(0);
+        setIsPlaying(false);
+        setIsDirty(false);
+        if (videoFile) setFileToLoad(videoFile);
+    };
+
+    const handleNew = () => {
+        skipDirtyRef.current = true;
+        resetPlayers(makeFreshPlayers());
+        setVideo(null);
+        setSelectedEvents([]);
+        setCurrentTime(0);
+        setIsPlaying(false);
+        setFileToLoad(null);
+        setIsDirty(false);
+    };
 
     const selectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? players[0] ?? null;
 
@@ -52,8 +97,14 @@ function App() {
 
     return (
         <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-            <section className="h-screen">
-                <ResizablePanelGroup orientation="vertical">
+            <section className="h-screen flex flex-col">
+                <AppBar
+                    isDirty={isDirty}
+                    onNew={handleNew}
+                    onExport={handleExport}
+                    onImport={handleImport}
+                />
+                <ResizablePanelGroup orientation="vertical" className="flex-1">
                     <ResizablePanel minSize={100} defaultSize="70%">
                         <ResizablePanelGroup orientation="horizontal">
                             <ResizablePanel
@@ -69,6 +120,7 @@ function App() {
                                     setCurrentTime={setCurrentTime}
                                     setIsPlaying={setIsPlaying}
                                     players={players}
+                                    fileToLoad={fileToLoad}
                                 />
                             </ResizablePanel>
                             <ResizableHandle />

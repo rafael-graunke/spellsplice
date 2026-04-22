@@ -96,7 +96,7 @@ Everything needed to produce a complete, finished video.
 - [ ] **Decklist import** - paste a decklist in MTGO format per player; card data and images are bulk-fetched from Scryfall once and cached locally for the session
   - [ ] Autocomplete in event fields draws from the cached deck first, falling back to global Scryfall search for off-deck cards
 - [x] **Cards-in-hand display** - always-visible stacked card title crops per player (Card Kingdom / Mengu's Workshop style), rendered from the local image cache
-- [ ] **Project export/import** - save and load the full timeline (players, events, deck data) to a JSON file
+- [x] **Project export/import** - save and load the full timeline (players, events, deck data) to a JSON file
 - [ ] **Video export** - render the overlay baked into the video, or export overlay-only, directly in the browser via WebAssembly FFmpeg
 - [ ] **Player name & deck name editing** in Inspector - changes reflect on the overlay in real time
 - [ ] Complete all event types and state handlers:

@@ -1,3 +1,10 @@
+## [0.5.1](https://github.com/rafael-graunke/spellsplice/compare/v0.5.0...v0.5.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* **preview:** fix flip card ([8ed35b2](https://github.com/rafael-graunke/spellsplice/commit/8ed35b2c1caf5776d4b7f8497f500df2cfb05565))
+
 # [0.5.0](https://github.com/rafael-graunke/spellsplice/compare/v0.4.0...v0.5.0) (2026-04-22)
 
 

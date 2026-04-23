@@ -8,4 +8,5 @@ export interface Player {
     handSize: number;
     cards: Card[];
     track: Track;
+    deckName?: string;
 }

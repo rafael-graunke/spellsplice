@@ -1,8 +1,8 @@
 import type { derivePlayerState } from '@/lib/deriveState';
 import { ensureImage } from '@/lib/cardCache';
 
-const STRIP_W = 240;
-const TITLE_CROP = 0.10;
+const STRIP_W = 400;
+const TITLE_CROP = 0.1;
 const BORDER_RADIUS = STRIP_W * 0.05;
 // Expected strip height for standard Scryfall normal images (488×680)
 const STRIP_H = Math.round(STRIP_W * (680 * TITLE_CROP) / 488);
@@ -22,6 +22,9 @@ export function renderHandStack(
     eyeIcon: HTMLImageElement | null
 ) {
     const bottomY = offsetY + drawH - 8;
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 
     playerStates.forEach((state, i) => {
         if (!state || state.cards.length === 0) return;
@@ -43,16 +46,17 @@ export function renderHandStack(
 
             if (img instanceof HTMLImageElement) {
                 const destH = STRIP_H + OVERLAP;
-                const srcH = (destH / STRIP_W) * img.naturalWidth;
+                const srcH = Math.round((destH / STRIP_W) * img.naturalWidth);
+                ctx.globalAlpha = 0.75;
                 ctx.drawImage(img, 0, 0, img.naturalWidth, srcH, x, y, STRIP_W, destH);
             } else {
-                ctx.fillStyle = '#2e4a6b';
+                ctx.fillStyle = '#3a0257';
                 ctx.fill();
                 ctx.fillStyle = '#ffffff';
-                ctx.font = 'bold 14px sans-serif';
+                ctx.font = 'bold 18px sans-serif';
                 ctx.textBaseline = 'middle';
                 ctx.textAlign = 'left';
-                ctx.fillText(cardName, x + 10, y + STRIP_H / 2);
+                ctx.fillText(cardName, x + 10, Math.round(y + STRIP_H / 2));
             }
 
             ctx.restore();

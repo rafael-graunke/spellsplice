@@ -41,7 +41,8 @@ export function ensureImage(cardName: string, edition?: string): HTMLImageElemen
     fetch(endpoint)
         .then((r) => r.json())
         .then((data) => {
-            const url = data.image_uris?.normal;
+            const face = data.card_faces?.[0] ?? data;
+            const url = face.image_uris?.normal;
             if (!url) {
                 imageCache.set(key, 'error');
                 return;

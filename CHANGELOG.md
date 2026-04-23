@@ -1,3 +1,10 @@
+## [0.5.2](https://github.com/rafael-graunke/spellsplice/compare/v0.5.1...v0.5.2) (2026-04-23)
+
+
+### Bug Fixes
+
+* **preview:** player boxes placement ([552679e](https://github.com/rafael-graunke/spellsplice/commit/552679eeba47ae29bca181b66e14cf545ed63e5d))
+
 ## [0.5.1](https://github.com/rafael-graunke/spellsplice/compare/v0.5.0...v0.5.1) (2026-04-23)
 
 

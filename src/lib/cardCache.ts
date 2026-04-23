@@ -2,11 +2,11 @@ export const imageCache = new Map<string, HTMLImageElement | 'loading' | 'error'
 export const borderCropCache = new Map<string, HTMLImageElement | 'loading' | 'error'>();
 export const frameCache = new Map<string, string>();
 
-export async function serializeImageCache(): Promise<Map<string, Blob>> {
+async function serializeCache(cache: Map<string, HTMLImageElement | 'loading' | 'error'>): Promise<Map<string, Blob>> {
     const result = new Map<string, Blob>();
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d')!;
-    for (const [key, value] of imageCache) {
+    for (const [key, value] of cache) {
         if (!(value instanceof HTMLImageElement)) continue;
         canvas.width = value.naturalWidth;
         canvas.height = value.naturalHeight;
@@ -19,14 +19,40 @@ export async function serializeImageCache(): Promise<Map<string, Blob>> {
     return result;
 }
 
-export function restoreImageCache(entries: Map<string, Blob>): void {
+function restoreCache(cache: Map<string, HTMLImageElement | 'loading' | 'error'>, entries: Map<string, Blob>): void {
     for (const [key, blob] of entries) {
-        imageCache.set(key, 'loading');
+        cache.set(key, 'loading');
         const url = URL.createObjectURL(blob);
         const img = new Image();
-        img.onload = () => { imageCache.set(key, img); URL.revokeObjectURL(url); };
-        img.onerror = () => { imageCache.set(key, 'error'); URL.revokeObjectURL(url); };
+        img.onload = () => { cache.set(key, img); URL.revokeObjectURL(url); };
+        img.onerror = () => { cache.set(key, 'error'); URL.revokeObjectURL(url); };
         img.src = url;
+    }
+}
+
+export async function serializeImageCache(): Promise<Map<string, Blob>> {
+    return serializeCache(imageCache);
+}
+
+export function restoreImageCache(entries: Map<string, Blob>): void {
+    restoreCache(imageCache, entries);
+}
+
+export async function serializeBorderCropCache(): Promise<Map<string, Blob>> {
+    return serializeCache(borderCropCache);
+}
+
+export function restoreBorderCropCache(entries: Map<string, Blob>): void {
+    restoreCache(borderCropCache, entries);
+}
+
+export function serializeFrameCache(): Record<string, string> {
+    return Object.fromEntries(frameCache);
+}
+
+export function restoreFrameCache(data: Record<string, string>): void {
+    for (const [key, value] of Object.entries(data)) {
+        frameCache.set(key, value);
     }
 }
 

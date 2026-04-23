@@ -1,7 +1,11 @@
 import JSZip from 'jszip';
 import type { Player } from '@/components/types/player';
 import type { VideoState } from '@/components/types/video';
-import { serializeImageCache, restoreImageCache } from './cardCache';
+import {
+    serializeImageCache, restoreImageCache,
+    serializeBorderCropCache, restoreBorderCropCache,
+    serializeFrameCache, restoreFrameCache,
+} from './cardCache';
 
 export interface ProjectExport {
     version: '1';
@@ -30,6 +34,13 @@ export async function exportProject(players: Player[], video: VideoState | null)
     for (const [key, imgBlob] of cachedImages) {
         zip.folder('images')!.file(`${encodeURIComponent(key)}.jpg`, imgBlob);
     }
+
+    const cachedBorderCrops = await serializeBorderCropCache();
+    for (const [key, imgBlob] of cachedBorderCrops) {
+        zip.folder('border-crops')!.file(`${encodeURIComponent(key)}.jpg`, imgBlob);
+    }
+
+    zip.file('frame-cache.json', JSON.stringify(serializeFrameCache()));
 
     const blob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(blob);
@@ -69,6 +80,24 @@ export async function importProject(file: File): Promise<{
         await Promise.all(tasks);
     }
     restoreImageCache(imageEntries);
+
+    const borderCropEntries = new Map<string, Blob>();
+    const borderCropsFolder = zip.folder('border-crops');
+    if (borderCropsFolder) {
+        const tasks: Promise<void>[] = [];
+        borderCropsFolder.forEach((relativePath, file) => {
+            const key = decodeURIComponent(relativePath.replace(/\.jpg$/, ''));
+            tasks.push(file.async('blob').then((blob) => { borderCropEntries.set(key, blob); }));
+        });
+        await Promise.all(tasks);
+    }
+    restoreBorderCropCache(borderCropEntries);
+
+    const frameCacheFile = zip.file('frame-cache.json');
+    if (frameCacheFile) {
+        const json = await frameCacheFile.async('string');
+        restoreFrameCache(JSON.parse(json));
+    }
 
     return { manifest, videoFile };
 }

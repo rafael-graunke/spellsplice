@@ -16,7 +16,7 @@ export function renderPlayerState(
         const boxH = 100;
         const boxW = 350;
         const slantW = 44;
-        const topY = offsetY + 12;
+        const topY = offsetY;
         const bottomY = topY + boxH;
         const rx = offsetX + drawW;
 

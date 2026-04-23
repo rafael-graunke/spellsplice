@@ -13,10 +13,10 @@ export function renderPlayerState(
         if (!state) return;
 
         const isLeft = i === 0;
-        const boxH = 68;
-        const boxW = 260;
+        const boxH = 100;
+        const boxW = 350;
         const slantW = 44;
-        const topY = offsetY + 12;
+        const topY = offsetY;
         const bottomY = topY + boxH;
         const rx = offsetX + drawW;
 
@@ -36,7 +36,7 @@ export function renderPlayerState(
         }
 
         ctx.closePath();
-        ctx.fillStyle = '#2e4a6b';
+        ctx.fillStyle = '#3a0257';
         ctx.fill();
 
         const d20Size = boxH - 12;
@@ -53,7 +53,7 @@ export function renderPlayerState(
         ctx.font = `bold ${Math.round(d20Size * 0.35)}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#2e4a6b';
+        ctx.fillStyle = '#3a0257';
         ctx.fillText(String(state.lifeTotal), d20X + d20Size / 2, d20Y + d20Size / 2);
 
         const nameX = isLeft
@@ -61,9 +61,11 @@ export function renderPlayerState(
             : rx - boxW + d20Size + 28;
 
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 18px sans-serif';
+        ctx.font = 'bold 22px sans-serif';
         ctx.textAlign = isLeft ? 'left' : 'left';
-        ctx.fillText(state.name.toUpperCase(), nameX, midY);
+        ctx.fillText(state.name.toUpperCase(), nameX, midY - 15);
+        ctx.fillStyle = '#bbbbbb';
+        ctx.fillText(`(${state.deckName || 'Unnamed Deck'})`, nameX, midY + 15);
 
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';

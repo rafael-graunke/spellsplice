@@ -1,29 +1,13 @@
 import type { derivePlayerState } from '@/lib/deriveState';
-import { ensureBorderCrop } from '@/lib/cardCache';
+import { ensureImage } from '@/lib/cardCache';
 
-const EDITION_CROPS: Record<
-    string,
-    { sx: number; sy: number; sw: number; sh: number }
-> = {
-    lea: { sx: 15, sy: 19, sw: 450, sh: 35 },
-    leb: { sx: 15, sy: 19, sw: 450, sh: 35 },
-    '2ed': { sx: 15, sy: 19, sw: 450, sh: 35 },
-    '3ed': { sx: 15, sy: 19, sw: 450, sh: 35 },
-};
-
-const FRAME_CROPS: Record<
-    string,
-    { sx: number; sy: number; sw: number; sh: number }
-> = {
-    '1993': { sx: 12, sy: 12, sw: 460, sh: 38 },
-    '1997': { sx: 12, sy: 12, sw: 460, sh: 38 },
-    '2003': { sx: 17, sy: 21, sw: 446, sh: 42 },
-    '2015': { sx: 17, sy: 21, sw: 446, sh: 42 },
-};
-const DEFAULT_CROP = { sx: 17, sy: 21, sw: 446, sh: 42 };
-
-const STRIP_W = 430;
-const STRIP_H = Math.round((STRIP_W * 42) / 446);
+const STRIP_W = 400;
+const TITLE_CROP = 0.1;
+const BORDER_RADIUS = STRIP_W * 0.05;
+// Expected strip height for standard Scryfall normal images (488×680)
+const STRIP_H = Math.round(STRIP_W * (680 * TITLE_CROP) / 488);
+// Extra height drawn below each strip to fill under the rounded corners of the card above
+const OVERLAP = BORDER_RADIUS;
 
 const ICON_SIZE = Math.round(STRIP_H * 0.7);
 const ICON_GAP = 6;
@@ -48,33 +32,23 @@ export function renderHandStack(
         const isLeft = i === 0;
         const x = isLeft ? offsetX + 8 : offsetX + drawW - STRIP_W - 8;
 
-        for (let j = 0; j < state.cards.length; j++) {
+        // Render newest first so older cards paint on top, covering rounded corner gaps
+        for (let j = state.cards.length - 1; j >= 0; j--) {
             const card = state.cards[j];
             const cardName = card.name;
             const y = bottomY - (j + 1) * STRIP_H;
-            const { img, frame } = ensureBorderCrop(cardName, card.edition);
+            const img = ensureImage(cardName, card.edition);
 
             ctx.save();
             ctx.beginPath();
-            ctx.rect(x, y, STRIP_W, STRIP_H);
+            ctx.roundRect(x, y, STRIP_W, STRIP_H + OVERLAP, [BORDER_RADIUS, BORDER_RADIUS, 0, 0]);
             ctx.clip();
 
             if (img instanceof HTMLImageElement) {
-                const crop =
-                    (card.edition ? EDITION_CROPS[card.edition] : undefined) ??
-                    FRAME_CROPS[frame ?? ''] ??
-                    DEFAULT_CROP;
-                ctx.drawImage(
-                    img,
-                    crop.sx,
-                    crop.sy,
-                    crop.sw,
-                    crop.sh,
-                    x,
-                    y,
-                    STRIP_W,
-                    STRIP_H
-                );
+                const destH = STRIP_H + OVERLAP;
+                const srcH = Math.round((destH / STRIP_W) * img.naturalWidth);
+                ctx.globalAlpha = 0.75;
+                ctx.drawImage(img, 0, 0, img.naturalWidth, srcH, x, y, STRIP_W, destH);
             } else {
                 ctx.fillStyle = '#3a0257';
                 ctx.fill();
@@ -91,7 +65,7 @@ export function renderHandStack(
                 const iconX = isLeft
                     ? x + STRIP_W + ICON_GAP
                     : x - ICON_GAP - ICON_SIZE;
-                const iconY = y + Math.round((STRIP_H - ICON_SIZE) / 2);
+                const iconY = 8 + y + Math.round((STRIP_H - ICON_SIZE) / 2);
                 ctx.save();
                 ctx.globalAlpha = 0.6;
                 ctx.drawImage(eyeIcon, iconX, iconY, ICON_SIZE, ICON_SIZE);

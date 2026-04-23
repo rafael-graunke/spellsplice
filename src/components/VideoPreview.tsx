@@ -100,10 +100,9 @@ function VideoPreview({
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        const dpr = window.devicePixelRatio || 1;
+        const canvasW = 1920;
+        const canvasH = 1080;
         const v = video.videoEl;
-        const canvasW = canvas.width / dpr;
-        const canvasH = canvas.height / dpr;
         const videoW = v.videoWidth;
         const videoH = v.videoHeight;
 
@@ -116,7 +115,6 @@ function VideoPreview({
         const offsetY = Math.round((canvasH - drawH) / 2);
 
         ctx.save();
-        ctx.scale(dpr, dpr);
 
         ctx.clearRect(0, 0, canvasW, canvasH);
         ctx.drawImage(v, offsetX, offsetY, drawW, drawH);
@@ -169,7 +167,7 @@ function VideoPreview({
 
                 ctx.save();
                 ctx.beginPath();
-                ctx.roundRect(cardX, cardY, cardW, cardH, 11);
+                ctx.roundRect(cardX, cardY, cardW, cardH, 20);
                 ctx.clip();
                 ctx.drawImage(cached, cardX, cardY, cardW, cardH);
                 ctx.restore();
@@ -181,24 +179,10 @@ function VideoPreview({
 
     useEffect(() => {
         if (!canvasRef.current) return;
-
         const canvas = canvasRef.current;
-        const parent = canvas.parentElement;
-        if (!parent) return;
-
-        const resize = () => {
-            const dpr = window.devicePixelRatio || 1;
-            canvas.width = Math.round(canvas.offsetWidth * dpr);
-            canvas.height = Math.round(canvas.offsetHeight * dpr);
-            drawFrame();
-        };
-
-        resize();
-
-        const observer = new ResizeObserver(resize);
-        observer.observe(parent);
-
-        return () => observer.disconnect();
+        canvas.width = 1920;
+        canvas.height = 1080;
+        drawFrame();
     }, [video]);
 
     useEffect(() => {
@@ -275,7 +259,9 @@ function VideoPreview({
                 style={{ position: 'absolute', width: 0, height: 0 }}
             />
             {video ? (
-                <canvas ref={canvasRef} className="w-full h-full" />
+                <div className="w-full h-full flex items-center justify-center">
+                    <canvas ref={canvasRef} className="max-w-full max-h-full" style={{ aspectRatio: '16/9' }} />
+                </div>
             ) : (
                 <Empty className="h-full">
                     <EmptyHeader>

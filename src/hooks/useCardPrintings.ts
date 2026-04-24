@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { slowFetch } from '@/lib/scryfallQueue';
 
 export interface Printing {
     set: string;
@@ -10,7 +11,7 @@ export function useCardPrintings(name: string) {
     return useQuery({
         queryKey: ['printings', name],
         queryFn: async () => {
-            const res = await fetch(
+            const res = await slowFetch(
                 `https://api.scryfall.com/cards/search?q=!"${encodeURIComponent(name)}"&unique=prints&order=released`
             );
             const json = await res.json();

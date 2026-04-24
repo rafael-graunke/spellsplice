@@ -1,3 +1,10 @@
+## [0.5.3](https://github.com/rafael-graunke/spellsplice/compare/v0.5.2...v0.5.3) (2026-04-24)
+
+
+### Bug Fixes
+
+* **caching:** save all cache to project file ([a38c485](https://github.com/rafael-graunke/spellsplice/commit/a38c485c3163b62938f203c7a67ae4f8d1dcca62))
+
 ## [0.5.2](https://github.com/rafael-graunke/spellsplice/compare/v0.5.1...v0.5.2) (2026-04-23)
 
 

@@ -1,93 +1,99 @@
-export const imageCache = new Map<string, HTMLImageElement | 'loading' | 'error'>();
-export const borderCropCache = new Map<string, HTMLImageElement | 'loading' | 'error'>();
-export const frameCache = new Map<string, string>();
+import { slowFetch } from './scryfallQueue';
 
-export async function serializeImageCache(): Promise<Map<string, Blob>> {
-    const result = new Map<string, Blob>();
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d')!;
-    for (const [key, value] of imageCache) {
-        if (!(value instanceof HTMLImageElement)) continue;
-        canvas.width = value.naturalWidth;
-        canvas.height = value.naturalHeight;
-        ctx.drawImage(value, 0, 0);
-        const blob = await new Promise<Blob | null>((resolve) =>
-            canvas.toBlob(resolve, 'image/jpeg', 0.9)
-        );
-        if (blob) result.set(key, blob);
-    }
-    return result;
-}
+type SetData = { image_uris: Record<string, string>; frame?: string };
 
-export function restoreImageCache(entries: Map<string, Blob>): void {
-    for (const [key, blob] of entries) {
-        imageCache.set(key, 'loading');
-        const url = URL.createObjectURL(blob);
+export const cardDataCache: Record<string, Record<string, SetData>> = {};
+const cardImageCache: Record<
+    string,
+    Record<string, Record<string, HTMLImageElement | 'loading' | 'error'>>
+> = {};
+const inFlight = new Set<string>();
+
+function loadImagesForSet(name: string, setCode: string, uris: Record<string, string>): void {
+    if (!cardImageCache[name]) cardImageCache[name] = {};
+    if (!cardImageCache[name][setCode]) cardImageCache[name][setCode] = {};
+    for (const [key, url] of Object.entries(uris)) {
+        if (cardImageCache[name][setCode][key] !== undefined) continue;
+        cardImageCache[name][setCode][key] = 'loading';
         const img = new Image();
-        img.onload = () => { imageCache.set(key, img); URL.revokeObjectURL(url); };
-        img.onerror = () => { imageCache.set(key, 'error'); URL.revokeObjectURL(url); };
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            cardImageCache[name][setCode][key] = img;
+        };
+        img.onerror = () => {
+            cardImageCache[name][setCode][key] = 'error';
+        };
         img.src = url;
     }
 }
 
-export function ensureImage(cardName: string, edition?: string): HTMLImageElement | 'loading' | 'error' {
-    const key = edition ? `${cardName}|${edition}` : cardName;
-    const cached = imageCache.get(key);
-    if (cached !== undefined) return cached;
+function ensureCardData(cardName: string, edition?: string): void {
+    const inFlightKey = `${cardName}|${edition ?? '*'}`;
+    if (inFlight.has(inFlightKey)) return;
+    inFlight.add(inFlightKey);
 
-    imageCache.set(key, 'loading');
     const endpoint = edition
         ? `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}&set=${encodeURIComponent(edition)}`
         : `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`;
 
-    fetch(endpoint)
+    slowFetch(endpoint)
         .then((r) => r.json())
         .then((data) => {
+            const setCode: string = data.set;
             const face = data.card_faces?.[0] ?? data;
-            const url = face.image_uris?.normal;
-            if (!url) {
-                imageCache.set(key, 'error');
-                return;
-            }
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => imageCache.set(key, img);
-            img.onerror = () => imageCache.set(key, 'error');
-            img.src = url;
-        })
-        .catch(() => imageCache.set(key, 'error'));
+            const allUris: Record<string, string> = face.image_uris ?? {};
+            const uris: Record<string, string> = {};
+            if (allUris.normal) uris.normal = allUris.normal;
+            if (allUris.border_crop) uris.border_crop = allUris.border_crop;
+            const setData: SetData = {
+                image_uris: uris,
+                ...(data.frame && { frame: data.frame }),
+            };
 
+            if (!cardDataCache[cardName]) cardDataCache[cardName] = {};
+            cardDataCache[cardName][setCode] = setData;
+            if (!edition) cardDataCache[cardName]['*'] = setData;
+
+            loadImagesForSet(cardName, setCode, uris);
+            if (!edition) loadImagesForSet(cardName, '*', uris);
+        })
+        .catch(() => {
+            // inFlight key stays — prevents retry storms on repeated errors
+        });
+}
+
+export function ensureImage(
+    cardName: string,
+    edition?: string,
+): HTMLImageElement | 'loading' | 'error' {
+    const setCode = edition ?? '*';
+    const img = cardImageCache[cardName]?.[setCode]?.['normal'];
+    if (img !== undefined) return img;
+    ensureCardData(cardName, edition);
     return 'loading';
 }
 
 export function ensureBorderCrop(
     cardName: string,
-    edition?: string
+    edition?: string,
 ): { img: HTMLImageElement | 'loading' | 'error'; frame: string | null } {
-    const key = edition ? `${cardName}|${edition}` : cardName;
-    const cachedImg = borderCropCache.get(key);
-    const cachedFrame = frameCache.get(key) ?? null;
-    if (cachedImg !== undefined) return { img: cachedImg, frame: cachedFrame };
-
-    borderCropCache.set(key, 'loading');
-    const endpoint = edition
-        ? `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}&set=${encodeURIComponent(edition)}`
-        : `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`;
-
-    fetch(endpoint)
-        .then((r) => r.json())
-        .then((data) => {
-            if (data.frame) frameCache.set(key, data.frame);
-            const face = data.card_faces?.[0] ?? data;
-            const url = face.image_uris?.border_crop;
-            if (!url) { borderCropCache.set(key, 'error'); return; }
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => borderCropCache.set(key, img);
-            img.onerror = () => borderCropCache.set(key, 'error');
-            img.src = url;
-        })
-        .catch(() => borderCropCache.set(key, 'error'));
-
+    const setCode = edition ?? '*';
+    const img = cardImageCache[cardName]?.[setCode]?.['border_crop'];
+    const frame = cardDataCache[cardName]?.[setCode]?.frame ?? null;
+    if (img !== undefined) return { img, frame };
+    ensureCardData(cardName, edition);
     return { img: 'loading', frame: null };
+}
+
+export function serializeCardDataCache(): Record<string, Record<string, SetData>> {
+    return cardDataCache;
+}
+
+export function restoreCardDataCache(data: Record<string, Record<string, SetData>>): void {
+    for (const [name, sets] of Object.entries(data)) {
+        cardDataCache[name] = sets;
+        for (const [setCode, setData] of Object.entries(sets)) {
+            loadImagesForSet(name, setCode, setData.image_uris);
+        }
+    }
 }

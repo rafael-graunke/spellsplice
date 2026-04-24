@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/popover';
 import { Item, ItemContent, ItemTitle, ItemActions } from '@/components/ui/item';
 import { Button } from '@/components/ui/button';
+import { cardDataCache } from '@/lib/cardCache';
 import type { TrackEvent, EventMeta } from '../types/event';
 import type { Card } from '../types/card';
 
@@ -76,11 +77,16 @@ export function CardFields({ event, multi, onUpdate }: CardFieldsProps) {
 
     const addCard = (name: string) => {
         if (!name) return;
+        const cachedSets = cardDataCache[name];
+        const cachedEdition = cachedSets
+            ? Object.keys(cachedSets).find((k) => k !== '*')
+            : undefined;
+        const newCard: Card = cachedEdition ? { name, edition: cachedEdition } : { name };
         const next = multi
             ? selected.some((c) => c.name === name)
                 ? selected
-                : [...selected, { name }]
-            : [{ name }];
+                : [...selected, newCard]
+            : [newCard];
         onUpdate({ cards: next });
         setQuery('');
         setComboKey((k) => k + 1);

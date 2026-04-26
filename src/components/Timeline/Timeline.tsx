@@ -5,7 +5,7 @@ import {
     ResizablePanelGroup,
 } from '../ui/resizable';
 import { TimelineControls } from './TimelineControls';
-import type { TrackEvent } from '../types/event';
+import { EventColorMap, type TrackEvent } from '../types/event';
 import type { Player } from '../types/player';
 import { cn } from '@/lib/utils';
 import TimelineTrackControl from './TimelineTrackControl';
@@ -218,7 +218,7 @@ export function Timeline({
                                         key={i}
                                         className={cn(
                                             'absolute pointer-events-none rounded-sm opacity-75 z-50',
-                                            ghost.color
+                                            EventColorMap[ghost.type].bg
                                         )}
                                         style={{
                                             left: ghost.left,

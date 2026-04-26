@@ -8,7 +8,6 @@ interface GhostPos {
     left: number;
     top: number;
     width: number;
-    color: string;
     type: EventType;
     isWaypoint: boolean;
 }
@@ -19,7 +18,6 @@ interface EventDragData {
     sourceLayer: number;
     startTime: number;
     startDuration: number;
-    color: string;
     type: EventType;
     isWaypoint: boolean;
 }
@@ -45,7 +43,6 @@ function makeGhost(data: EventDragData, newTime: number, layerIndex: number, zoo
             ? RULER_HEIGHT + layerIndex * TRACK_HEIGHT
             : RULER_HEIGHT + layerIndex * TRACK_HEIGHT + 4,
         width: data.isWaypoint ? 44 : data.startDuration * zoom,
-        color: data.color,
         type: data.type,
         isWaypoint: data.isWaypoint,
     };
@@ -82,7 +79,6 @@ export function useEventMoveDrag(
             sourceLayer,
             startTime: time,
             startDuration: duration ?? 0,
-            color: event.color,
             type: event.type,
             isWaypoint: !event.resizable,
         };
@@ -106,7 +102,6 @@ export function useEventMoveDrag(
                               sourceLayer: current.layer,
                               startTime: current.time,
                               startDuration: current.duration ?? 0,
-                              color: current.color,
                               type: current.type,
                               isWaypoint: !current.resizable,
                           },

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { Player } from '../../types/player';
-import { EventColorMap, type Track, type TrackEvent } from '../../types/event';
+import type { Track, TrackEvent } from '../../types/event';
 
 export function useTrackEvents(
     playerData: Player[],
@@ -24,7 +24,6 @@ export function useTrackEvents(
             id: nextEventId.current++,
             time: currentTime,
             duration: 1,
-            color: EventColorMap[partial.type].bg,
             resizable: false,
             layer: 1,
             ...partial,

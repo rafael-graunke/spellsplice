@@ -18,6 +18,8 @@ import AppBar from './components/AppBar';
 
 type PlayerInit = Omit<Player, 'track'>;
 
+const AUTOSAVE_KEY = 'spellsplice-autosave';
+
 const initialPlayers: PlayerInit[] = [
     { id: 'player1', name: 'Player 1', handSize: 0, lifeTotal: 20, cards: [] },
     { id: 'player2', name: 'Player 2', handSize: 0, lifeTotal: 20, cards: [] },
@@ -25,6 +27,16 @@ const initialPlayers: PlayerInit[] = [
 
 const makeFreshPlayers = (): Player[] =>
     initialPlayers.map((p) => ({ ...p, track: { id: p.id, layers: 4, events: [] } }));
+
+function loadSavedPlayers(): Player[] | undefined {
+    try {
+        const raw = localStorage.getItem(AUTOSAVE_KEY);
+        if (!raw) return undefined;
+        return JSON.parse(raw) as Player[];
+    } catch {
+        return undefined;
+    }
+}
 
 function App() {
     const [isPlaying, setIsPlaying] = useState(false);
@@ -38,6 +50,7 @@ function App() {
     const [isDirty, setIsDirty] = useState(false);
     const isFirstPlayersRender = useRef(true);
     const skipDirtyRef = useRef(false);
+    const [savedPlayersInit] = useState(loadSavedPlayers);
 
     const {
         players,
@@ -48,11 +61,15 @@ function App() {
         handleMoveMultipleEvents,
         handleUpdateMeta,
         resetPlayers,
-    } = usePlayerTracks(initialPlayers, currentTime, setSelectedEvents);
+    } = usePlayerTracks(initialPlayers, currentTime, setSelectedEvents, savedPlayersInit);
 
     useEffect(() => {
+        if (isFirstPlayersRender.current) {
+            isFirstPlayersRender.current = false;
+            return;
+        }
+        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(players));
         if (isDirty) return;
-        if (isFirstPlayersRender.current) { isFirstPlayersRender.current = false; return; }
         if (skipDirtyRef.current) { skipDirtyRef.current = false; return; }
         setIsDirty(true);
     }, [players]);
@@ -77,6 +94,7 @@ function App() {
     const handleNew = () => {
         skipDirtyRef.current = true;
         resetPlayers(makeFreshPlayers());
+        localStorage.removeItem(AUTOSAVE_KEY);
         setVideo(null);
         setSelectedEvents([]);
         setCurrentTime(0);

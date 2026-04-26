@@ -1,4 +1,4 @@
-import type { TrackEvent } from '../types/event';
+import { EventColorMap, type TrackEvent } from '../types/event';
 import TimelineEvent from './TimelineEvent';
 
 interface TimelineTrackProps {
@@ -48,7 +48,7 @@ function TimelineTrack({
                 {events.map((event) => (
                     <TimelineEvent
                         key={event.id}
-                        color={event.color}
+                        color={EventColorMap[event.type].bg}
                         time={event.time}
                         type={event.type}
                         duration={event.duration}

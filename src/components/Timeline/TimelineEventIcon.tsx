@@ -5,6 +5,7 @@ import {
     Discard,
     Draw,
     EventBackground,
+    Eye,
     Heal,
     Reveal,
     Shuffle,
@@ -15,12 +16,12 @@ import type { EventType } from '../types/event';
 
 type SvgIcon = FunctionComponent<ComponentProps<'svg'> & { title?: string }>;
 
-const iconMap: Record<EventType, SvgIcon> = {
+export const iconMap: Record<EventType, SvgIcon> = {
     ADD_TO_HAND: Draw,
     REMOVE_FROM_HAND: Discard,
     LOSE_LIFE: Damage,
     GAIN_LIFE: Heal,
-    REVEAL_FROM_HAND: Reveal,
+    REVEAL_FROM_HAND: Eye,
     STACK_TOP: StackTop,
     SHUFFLE: Shuffle,
     DISPLAY_CARD: Reveal,

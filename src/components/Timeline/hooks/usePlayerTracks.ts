@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { Player } from '../../types/player';
-import { EventColorMap, type TrackEvent, type EventMeta } from '../../types/event';
+import type { TrackEvent, EventMeta } from '../../types/event';
 
 type PlayerInit = Omit<Player, 'track'>;
 
@@ -34,7 +34,6 @@ export function usePlayerTracks(
             time: currentTime,
             layer: 0,
             duration: 1,
-            color: EventColorMap[partial.type].bg,
             resizable: false,
             ...partial,
         };

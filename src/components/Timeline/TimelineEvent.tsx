@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/context-menu';
 import TimelineEventIcon from './TimelineEventIcon';
 import type { EventType } from '../types/event';
+import { Book } from '@/assets/icons';
 
 interface TimelineEventProps {
     color: string;
@@ -122,6 +123,9 @@ function TimelineEvent({
                         }}
                         {...sharedMouseProps}
                     >
+                        {/* <Reveal className="absolute size-7 left-3 top-1/2 -translate-y-1/2 fill-white" /> */}
+
+                        <Book className="absolute fill-white size-7 left-3 top-1/2 -translate-y-1/2" />
                         <div
                             className="absolute cursor-col-resize h-full w-2 bg-white/30 left-0"
                             onMouseDown={(e) =>

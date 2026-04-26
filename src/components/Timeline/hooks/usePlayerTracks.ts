@@ -7,15 +7,21 @@ type PlayerInit = Omit<Player, 'track'>;
 export function usePlayerTracks(
     initialPlayers: PlayerInit[],
     currentTime: number,
-    setSelectedEvents: React.Dispatch<React.SetStateAction<TrackEvent[]>>
+    setSelectedEvents: React.Dispatch<React.SetStateAction<TrackEvent[]>>,
+    savedPlayers?: Player[]
 ) {
     const [players, setPlayers] = useState<Player[]>(() =>
+        savedPlayers ??
         initialPlayers.map((p) => ({
             ...p,
             track: { id: p.id, layers: 4, events: [] },
         }))
     );
-    const nextEventId = useRef(1);
+    const nextEventId = useRef(
+        savedPlayers
+            ? Math.max(0, ...savedPlayers.flatMap((p) => p.track.events.map((e) => e.id))) + 1
+            : 1
+    );
 
     const handleCreateEvent = (
         partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>,

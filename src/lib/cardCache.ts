@@ -2,6 +2,8 @@ import { slowFetch } from './scryfallQueue';
 
 type SetData = { image_uris: Record<string, string>; frame?: string };
 
+const CARD_CACHE_KEY = 'spellsplice-card-cache';
+
 export const cardDataCache: Record<string, Record<string, SetData>> = {};
 const cardImageCache: Record<
     string,
@@ -56,6 +58,8 @@ function ensureCardData(cardName: string, edition?: string): void {
 
             loadImagesForSet(cardName, setCode, uris);
             if (!edition) loadImagesForSet(cardName, '*', uris);
+
+            try { localStorage.setItem(CARD_CACHE_KEY, JSON.stringify(cardDataCache)); } catch {}
         })
         .catch(() => {
             // inFlight key stays — prevents retry storms on repeated errors
@@ -96,4 +100,10 @@ export function restoreCardDataCache(data: Record<string, Record<string, SetData
             loadImagesForSet(name, setCode, setData.image_uris);
         }
     }
+    try { localStorage.setItem(CARD_CACHE_KEY, JSON.stringify(cardDataCache)); } catch {}
 }
+
+try {
+    const raw = localStorage.getItem(CARD_CACHE_KEY);
+    if (raw) restoreCardDataCache(JSON.parse(raw));
+} catch {}

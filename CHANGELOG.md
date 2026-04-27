@@ -1,3 +1,10 @@
+# [0.7.0-rc.1](https://github.com/rafael-graunke/spellsplice/compare/v0.6.0...v0.7.0-rc.1) (2026-04-27)
+
+
+### Features
+
+* adds decklist import and user info editing ([de96727](https://github.com/rafael-graunke/spellsplice/commit/de9672724f55e1735e6ed898a233396806582d5f))
+
 # [0.6.0](https://github.com/rafael-graunke/spellsplice/compare/v0.5.3...v0.6.0) (2026-04-26)
 
 

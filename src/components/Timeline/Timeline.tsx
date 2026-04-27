@@ -37,6 +37,7 @@ interface TimelineProps {
     handleMoveMultipleEvents: (
         moves: Array<{ playerId: string; eventId: number; newTime: number; newLayer: number }>
     ) => void;
+    handleUpdatePlayer: (playerId: string, updates: { name?: string; deckName?: string; decklist?: import('../types/player').Decklist }) => void;
 }
 
 export function Timeline({
@@ -55,6 +56,7 @@ export function Timeline({
     handleUpdateEvent,
     handleMoveEvent,
     handleMoveMultipleEvents,
+    handleUpdatePlayer,
 }: TimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const trackRef = useRef<HTMLDivElement>(null);
@@ -136,6 +138,7 @@ export function Timeline({
                         players={players}
                         selectedPlayer={effectivePlayer}
                         onSelectPlayer={(p) => setSelectedPlayerId(p.id)}
+                        onEditPlayer={handleUpdatePlayer}
                     />
                 </ResizablePanel>
                 <ResizableHandle />

@@ -89,6 +89,35 @@ export function ensureBorderCrop(
     return { img: 'loading', frame: null };
 }
 
+export async function verifyCard(cardName: string, edition?: string): Promise<boolean> {
+    const key = edition ?? '*';
+    if (cardDataCache[cardName]?.[key]) return true;
+
+    const endpoint = edition
+        ? `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}&set=${encodeURIComponent(edition)}`
+        : `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`;
+
+    const response = await slowFetch(endpoint);
+    if (response.status === 404) return false;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const data = await response.json();
+    const setCode: string = data.set;
+    const face = data.card_faces?.[0] ?? data;
+    const allUris: Record<string, string> = face.image_uris ?? {};
+    const uris: Record<string, string> = {};
+    if (allUris.normal) uris.normal = allUris.normal;
+    if (allUris.border_crop) uris.border_crop = allUris.border_crop;
+    const setData: SetData = { image_uris: uris, ...(data.frame && { frame: data.frame }) };
+
+    if (!cardDataCache[cardName]) cardDataCache[cardName] = {};
+    cardDataCache[cardName][setCode] = setData;
+    if (!edition) cardDataCache[cardName]['*'] = setData;
+
+    try { localStorage.setItem(CARD_CACHE_KEY, JSON.stringify(cardDataCache)); } catch {}
+    return true;
+}
+
 export function serializeCardDataCache(): Record<string, Record<string, SetData>> {
     return cardDataCache;
 }

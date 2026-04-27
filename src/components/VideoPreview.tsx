@@ -68,6 +68,9 @@ function VideoPreview({
     useEffect(() => {
         playersRef.current = players;
         derivedCacheRef.current = null;
+        if (!isPlaying && video) drawFrame();
+        // isPlaying and video intentionally omitted — effect scoped to players changes only
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [players]);
 
     useEffect(() => {

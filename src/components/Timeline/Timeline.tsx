@@ -88,7 +88,7 @@ export function Timeline({
     // Snap cursor on seek or zoom change while paused
     useEffect(() => {
         if (!isPlaying) {
-            cursorRef.current?.setPosition(currentTimeRef.current * zoomRef.current);
+            cursorRef.current?.setPosition(currentTime * zoomRef.current);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentTime, zoom]);

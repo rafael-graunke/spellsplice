@@ -47,7 +47,6 @@ function VideoPreview({
     const videoRef = useRef<HTMLVideoElement>(null);
     const playersRef = useRef(players);
     const prevTimeRef = useRef(-1);
-    const prevIsPlayingRef = useRef(false);
     const d20Ref = useRef<HTMLImageElement | null>(null);
     const eyeRef = useRef<HTMLImageElement | null>(null);
     const derivedCacheRef = useRef<{
@@ -233,12 +232,6 @@ function VideoPreview({
         if (!video) return;
 
         const v = video.videoEl;
-        const justPaused = prevIsPlayingRef.current && !isPlaying;
-        prevIsPlayingRef.current = isPlaying;
-
-        // Skip on pause transition — play effect already synced video + state
-        if (justPaused) return;
-
         const threshold = isPlaying ? 0.5 : 0.01;
 
         if (Math.abs(v.currentTime - currentTime) > threshold) {
@@ -249,7 +242,11 @@ function VideoPreview({
                 v.addEventListener('seeked', handler, { once: true });
             }
         }
-    }, [currentTime, video, isPlaying]);
+        // isPlaying intentionally omitted — seek is driven by currentTime changes only.
+        // On pause, play effect syncs currentTime to v.currentTime so this never
+        // fires with a stale value and seeks backward.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentTime, video]);
 
     useEffect(() => {
         if (!video) return;

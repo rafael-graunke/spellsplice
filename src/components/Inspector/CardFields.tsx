@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { XIcon } from 'lucide-react';
+import { Trash2Icon } from 'lucide-react';
 import { useCardSearch } from '@/hooks/useCardSearch';
 import { useCardPrintings } from '@/hooks/useCardPrintings';
 import {
@@ -161,10 +161,10 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true 
                                 )}
                                 <Button
                                     variant="ghost"
-                                    size="icon-xs"
+                                    size="icon-sm"
                                     onClick={() => removeCard(card.name)}
                                 >
-                                    <XIcon />
+                                    <Trash2Icon />
                                 </Button>
                             </ItemActions>
                         </Item>

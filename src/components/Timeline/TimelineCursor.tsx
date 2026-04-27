@@ -15,7 +15,7 @@ function TimelineCursor({
         <div id="timeline-cursor">
             <Diamond
                 style={{ left: currentPosition - 9 }}
-                className="top-1 cursor-col-resize absolute left-2 text-red-500 z-101"
+                className="top-1 cursor-col-resize absolute left-2 text-red-500 z-21"
                 size={20}
                 fill="red"
                 onMouseDown={() => {
@@ -25,7 +25,7 @@ function TimelineCursor({
             />
             <div
                 style={{ left: currentPosition }}
-                className="cursor-col-resize absolute top-0 bottom-0 w-[2px] bg-red-500 z-100"
+                className="cursor-col-resize absolute top-0 bottom-0 w-[2px] bg-red-500 z-20"
                 onMouseDown={() => {
                     setIsDragging(true);
                     setIsPlaying(false);

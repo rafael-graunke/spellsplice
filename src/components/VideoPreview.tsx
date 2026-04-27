@@ -22,6 +22,7 @@ import { ensureImage } from '@/lib/cardCache';
 interface VideoPreviewProps {
     isPlaying: boolean;
     currentTime: number;
+    currentTimeRef: React.MutableRefObject<number>;
     setCurrentTime: React.Dispatch<React.SetStateAction<number>>;
     setIsPlaying: (playing: boolean) => void;
     video: VideoState | null;
@@ -33,6 +34,7 @@ interface VideoPreviewProps {
 function VideoPreview({
     isPlaying,
     currentTime,
+    currentTimeRef,
     setCurrentTime,
     setIsPlaying,
     video,
@@ -45,6 +47,7 @@ function VideoPreview({
     const videoRef = useRef<HTMLVideoElement>(null);
     const playersRef = useRef(players);
     const prevTimeRef = useRef(-1);
+    const prevIsPlayingRef = useRef(false);
     const d20Ref = useRef<HTMLImageElement | null>(null);
     const eyeRef = useRef<HTMLImageElement | null>(null);
     const derivedCacheRef = useRef<{
@@ -203,6 +206,8 @@ function VideoPreview({
             return () => v.removeEventListener('ended', handleEnded);
         } else {
             v.pause();
+            currentTimeRef.current = v.currentTime;
+            setCurrentTime(v.currentTime);
         }
     }, [isPlaying, video]);
 
@@ -213,6 +218,7 @@ function VideoPreview({
 
         const loop = () => {
             drawFrame();
+            currentTimeRef.current = video.videoEl.currentTime;
             raf = requestAnimationFrame(loop);
         };
 
@@ -227,6 +233,12 @@ function VideoPreview({
         if (!video) return;
 
         const v = video.videoEl;
+        const justPaused = prevIsPlayingRef.current && !isPlaying;
+        prevIsPlayingRef.current = isPlaying;
+
+        // Skip on pause transition — play effect already synced video + state
+        if (justPaused) return;
+
         const threshold = isPlaying ? 0.5 : 0.01;
 
         if (Math.abs(v.currentTime - currentTime) > threshold) {

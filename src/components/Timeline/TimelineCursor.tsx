@@ -1,38 +1,52 @@
+import { useRef, useImperativeHandle, forwardRef } from 'react';
 import { Diamond } from 'lucide-react';
 
+export interface TimelineCursorHandle {
+    setPosition(px: number): void;
+}
+
 interface TimelineCursorProps {
-    currentPosition: number;
     setIsDragging: (dragging: boolean) => void;
     setIsPlaying: (playing: boolean) => void;
 }
 
-function TimelineCursor({
-    currentPosition,
-    setIsDragging,
-    setIsPlaying,
-}: TimelineCursorProps) {
-    return (
-        <div id="timeline-cursor">
-            <Diamond
-                style={{ left: currentPosition - 9 }}
-                className="top-1 cursor-col-resize absolute left-2 text-red-500 z-21"
-                size={20}
-                fill="red"
-                onMouseDown={() => {
-                    setIsDragging(true);
-                    setIsPlaying(false);
-                }}
-            />
-            <div
-                style={{ left: currentPosition }}
-                className="cursor-col-resize absolute top-0 bottom-0 w-[2px] bg-red-500 z-20"
-                onMouseDown={() => {
-                    setIsDragging(true);
-                    setIsPlaying(false);
-                }}
-            />
-        </div>
-    );
-}
+const TimelineCursor = forwardRef<TimelineCursorHandle, TimelineCursorProps>(
+    function TimelineCursor({ setIsDragging, setIsPlaying }, ref) {
+        const lineRef = useRef<HTMLDivElement>(null);
+        const handleRef = useRef<SVGSVGElement>(null);
+
+        useImperativeHandle(ref, () => ({
+            setPosition(px: number) {
+                if (lineRef.current) lineRef.current.style.left = `${px}px`;
+                if (handleRef.current) handleRef.current.style.left = `${px - 9}px`;
+            },
+        }));
+
+        return (
+            <div id="timeline-cursor">
+                <Diamond
+                    ref={handleRef}
+                    style={{ left: 0 }}
+                    className="top-1 cursor-col-resize absolute text-red-500 z-21"
+                    size={20}
+                    fill="red"
+                    onMouseDown={() => {
+                        setIsDragging(true);
+                        setIsPlaying(false);
+                    }}
+                />
+                <div
+                    ref={lineRef}
+                    style={{ left: 0 }}
+                    className="cursor-col-resize absolute top-0 bottom-0 w-[2px] bg-red-500 z-20"
+                    onMouseDown={() => {
+                        setIsDragging(true);
+                        setIsPlaying(false);
+                    }}
+                />
+            </div>
+        );
+    }
+);
 
 export default TimelineCursor;

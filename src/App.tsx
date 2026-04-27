@@ -50,6 +50,9 @@ function App() {
     const [isDirty, setIsDirty] = useState(false);
     const isFirstPlayersRender = useRef(true);
     const skipDirtyRef = useRef(false);
+    const currentTimeRef = useRef(0);
+
+    useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
     const [savedPlayersInit] = useState(loadSavedPlayers);
 
     const {
@@ -134,6 +137,7 @@ function App() {
                                 <VideoPreview
                                     isPlaying={isPlaying}
                                     currentTime={currentTime}
+                                    currentTimeRef={currentTimeRef}
                                     video={video}
                                     setVideo={setVideo}
                                     setCurrentTime={setCurrentTime}
@@ -167,6 +171,7 @@ function App() {
                             handleMoveEvent={handleMoveEvent}
                             handleMoveMultipleEvents={handleMoveMultipleEvents}
                             handleUpdatePlayer={handleUpdatePlayer}
+                            currentTimeRef={currentTimeRef}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>

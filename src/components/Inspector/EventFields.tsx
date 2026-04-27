@@ -2,6 +2,7 @@ import type { TrackEvent, EventMeta } from '../types/event';
 import type { Player } from '../types/player';
 import { LifeFields } from './LifeFields';
 import { CardFields } from './CardFields';
+import { RevealFromHandFields } from './RevealFromHandFields';
 
 interface EventFieldsProps {
     event: TrackEvent;
@@ -20,6 +21,8 @@ export function EventFields({ event, onUpdate, player }: EventFieldsProps) {
             return <CardFields event={event} multi={true} onUpdate={onUpdate} player={player} />;
             
         case 'REVEAL_FROM_HAND':
+            return <RevealFromHandFields event={event} onUpdate={onUpdate} player={player} />;
+
         case 'REMOVE_FROM_HAND':
             return <CardFields event={event} multi={true} onUpdate={onUpdate} player={player} showEdition={false} />;
 

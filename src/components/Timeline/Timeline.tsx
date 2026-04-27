@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef } from 'react';
 import {
     ResizableHandle,
     ResizablePanel,
@@ -10,7 +10,7 @@ import type { Player } from '../types/player';
 import { cn } from '@/lib/utils';
 import TimelineTrackControl from './TimelineTrackControl';
 import TimelineRuler from './TimelineRuler';
-import TimelineCursor, { type TimelineCursorHandle } from './TimelineCursor';
+import TimelineCursor from './TimelineCursor';
 import TimelineTrack from './TimelineTrack';
 import TimelineEventIcon from './TimelineEventIcon';
 import { useZoom } from './hooks/useZoom';
@@ -37,8 +37,6 @@ interface TimelineProps {
     handleMoveMultipleEvents: (
         moves: Array<{ playerId: string; eventId: number; newTime: number; newLayer: number }>
     ) => void;
-    handleUpdatePlayer: (playerId: string, updates: { name?: string; deckName?: string; decklist?: import('../types/player').Decklist }) => void;
-    currentTimeRef: React.MutableRefObject<number>;
 }
 
 export function Timeline({
@@ -57,42 +55,16 @@ export function Timeline({
     handleUpdateEvent,
     handleMoveEvent,
     handleMoveMultipleEvents,
-    handleUpdatePlayer,
-    currentTimeRef,
 }: TimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const trackRef = useRef<HTMLDivElement>(null);
     const innerRef = useRef<HTMLDivElement>(null);
-    const cursorRef = useRef<TimelineCursorHandle>(null);
 
     const { zoom, zoomPercent, zoomRef, handleZoomChange } = useZoom(
         containerRef,
         trackRef,
         innerRef
     );
-
-    // 60fps cursor during playback via direct DOM mutation
-    useEffect(() => {
-        let raf: number;
-        const tick = () => {
-            cursorRef.current?.setPosition(currentTimeRef.current * zoomRef.current);
-            raf = requestAnimationFrame(tick);
-        };
-        if (isPlaying) {
-            raf = requestAnimationFrame(tick);
-        }
-        return () => cancelAnimationFrame(raf);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isPlaying]);
-
-    // Snap cursor on seek or zoom change while paused
-    useEffect(() => {
-        if (!isPlaying) {
-            cursorRef.current?.setPosition(currentTime * zoomRef.current);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentTime, zoom]);
-
     const { setIsDragging } = useSeekDrag(
         innerRef,
         zoom,
@@ -164,7 +136,6 @@ export function Timeline({
                         players={players}
                         selectedPlayer={effectivePlayer}
                         onSelectPlayer={(p) => setSelectedPlayerId(p.id)}
-                        onEditPlayer={handleUpdatePlayer}
                     />
                 </ResizablePanel>
                 <ResizableHandle />
@@ -172,7 +143,7 @@ export function Timeline({
                     <div ref={trackRef} className="pl-4 overflow-x-auto h-full">
                         <div ref={innerRef} className="relative h-full w-full">
                             <TimelineCursor
-                                ref={cursorRef}
+                                currentPosition={currentTime * zoom}
                                 setIsDragging={setIsDragging}
                                 setIsPlaying={setIsPlaying}
                             />

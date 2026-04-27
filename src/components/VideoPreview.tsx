@@ -22,7 +22,6 @@ import { ensureImage } from '@/lib/cardCache';
 interface VideoPreviewProps {
     isPlaying: boolean;
     currentTime: number;
-    currentTimeRef: React.MutableRefObject<number>;
     setCurrentTime: React.Dispatch<React.SetStateAction<number>>;
     setIsPlaying: (playing: boolean) => void;
     video: VideoState | null;
@@ -34,7 +33,6 @@ interface VideoPreviewProps {
 function VideoPreview({
     isPlaying,
     currentTime,
-    currentTimeRef,
     setCurrentTime,
     setIsPlaying,
     video,
@@ -70,9 +68,6 @@ function VideoPreview({
     useEffect(() => {
         playersRef.current = players;
         derivedCacheRef.current = null;
-        if (!isPlaying && video) drawFrame();
-        // isPlaying and video intentionally omitted — effect scoped to players changes only
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [players]);
 
     useEffect(() => {
@@ -205,8 +200,6 @@ function VideoPreview({
             return () => v.removeEventListener('ended', handleEnded);
         } else {
             v.pause();
-            currentTimeRef.current = v.currentTime;
-            setCurrentTime(v.currentTime);
         }
     }, [isPlaying, video]);
 
@@ -217,7 +210,6 @@ function VideoPreview({
 
         const loop = () => {
             drawFrame();
-            currentTimeRef.current = video.videoEl.currentTime;
             raf = requestAnimationFrame(loop);
         };
 
@@ -242,11 +234,7 @@ function VideoPreview({
                 v.addEventListener('seeked', handler, { once: true });
             }
         }
-        // isPlaying intentionally omitted — seek is driven by currentTime changes only.
-        // On pause, play effect syncs currentTime to v.currentTime so this never
-        // fires with a stale value and seeks backward.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentTime, video]);
+    }, [currentTime, video, isPlaying]);
 
     useEffect(() => {
         if (!video) return;

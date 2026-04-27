@@ -1,14 +1,12 @@
 import type { TrackEvent, EventMeta } from '../types/event';
-import type { Player } from '../types/player';
 import { EventFields } from './EventFields';
 
 interface InspectorProps {
     editObject: TrackEvent[] | null;
     onUpdate: (eventId: number, meta: EventMeta) => void;
-    player?: Player | null;
 }
 
-export function Inspector({ editObject, onUpdate, player }: InspectorProps) {
+export function Inspector({ editObject, onUpdate }: InspectorProps) {
     const event = editObject?.[0] ?? null;
     const count = editObject?.length ?? 0;
 
@@ -27,7 +25,6 @@ export function Inspector({ editObject, onUpdate, player }: InspectorProps) {
                     <EventFields
                         event={event}
                         onUpdate={(meta) => onUpdate(event.id, meta)}
-                        player={player}
                     />
                 </>
             ) : (

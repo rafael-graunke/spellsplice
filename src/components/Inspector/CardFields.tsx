@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Trash2Icon } from 'lucide-react';
+import { XIcon } from 'lucide-react';
 import { useCardSearch } from '@/hooks/useCardSearch';
 import { useCardPrintings } from '@/hooks/useCardPrintings';
 import {
@@ -19,14 +19,11 @@ import { Button } from '@/components/ui/button';
 import { cardDataCache } from '@/lib/cardCache';
 import type { TrackEvent, EventMeta } from '../types/event';
 import type { Card } from '../types/card';
-import type { Player } from '../types/player';
 
 interface CardFieldsProps {
     event: TrackEvent;
     multi: boolean;
     onUpdate: (meta: EventMeta) => void;
-    player?: Player | null;
-    showEdition?: boolean;
 }
 
 function EditionPicker({ card, onSelect }: { card: Card; onSelect: (edition: string) => void }) {
@@ -66,10 +63,10 @@ function EditionPicker({ card, onSelect }: { card: Card; onSelect: (edition: str
     );
 }
 
-export function CardFields({ event, multi, onUpdate, player, showEdition = true }: CardFieldsProps) {
+export function CardFields({ event, multi, onUpdate }: CardFieldsProps) {
     const [query, setQuery] = useState('');
     const [comboKey, setComboKey] = useState(0);
-    const { data: suggestions, isFetching } = useCardSearch(query, player);
+    const { data: suggestions, isFetching } = useCardSearch(query);
 
     const selected: Card[] = event.meta?.cards ?? [];
 
@@ -153,18 +150,16 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true 
                                 <ItemTitle className="text-xs">{card.name}</ItemTitle>
                             </ItemContent>
                             <ItemActions>
-                                {showEdition && (
-                                    <EditionPicker
-                                        card={card}
-                                        onSelect={(edition) => updateEdition(i, edition)}
-                                    />
-                                )}
+                                <EditionPicker
+                                    card={card}
+                                    onSelect={(edition) => updateEdition(i, edition)}
+                                />
                                 <Button
                                     variant="ghost"
-                                    size="icon-sm"
+                                    size="icon-xs"
                                     onClick={() => removeCard(card.name)}
                                 >
-                                    <Trash2Icon />
+                                    <XIcon />
                                 </Button>
                             </ItemActions>
                         </Item>

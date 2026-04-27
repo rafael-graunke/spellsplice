@@ -60,6 +60,7 @@ function App() {
         handleMoveEvent,
         handleMoveMultipleEvents,
         handleUpdateMeta,
+        handleUpdatePlayer,
         resetPlayers,
     } = usePlayerTracks(initialPlayers, currentTime, setSelectedEvents, savedPlayersInit);
 
@@ -143,7 +144,7 @@ function App() {
                             </ResizablePanel>
                             <ResizableHandle />
                             <ResizablePanel minSize={100} defaultSize="25%">
-                                <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} />
+                                <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} player={selectedPlayer} />
                             </ResizablePanel>
                         </ResizablePanelGroup>
                     </ResizablePanel>
@@ -165,6 +166,7 @@ function App() {
                             handleUpdateEvent={handleUpdateEvent}
                             handleMoveEvent={handleMoveEvent}
                             handleMoveMultipleEvents={handleMoveMultipleEvents}
+                            handleUpdatePlayer={handleUpdatePlayer}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>

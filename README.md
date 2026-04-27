@@ -93,12 +93,12 @@ Everything needed to produce a complete, finished video.
 - [x] Two players, each with their own multi-layer track
 - [x] Live overlay: player name, life total, hand size
 - [x] Inspector panel: edit event properties (cards via Scryfall autocomplete, life amounts)
-- [ ] **Decklist import** - paste a decklist in MTGO format per player; card data and images are bulk-fetched from Scryfall once and cached locally for the session
-  - [ ] Autocomplete in event fields draws from the cached deck first, falling back to global Scryfall search for off-deck cards
+- [x] **Decklist import** - paste a decklist in MTGO format per player; card data and images are bulk-fetched from Scryfall once and cached locally for the session
+  - [x] Autocomplete in event fields draws from the cached deck first, falling back to global Scryfall search for off-deck cards
 - [x] **Cards-in-hand display** - always-visible stacked card title crops per player (Card Kingdom / Mengu's Workshop style), rendered from the local image cache
 - [x] **Project export/import** - save and load the full timeline (players, events, deck data) to a JSON file
 - [ ] **Video export** - render the overlay baked into the video, or export overlay-only, directly in the browser via WebAssembly FFmpeg
-- [ ] **Player name & deck name editing** in Inspector - changes reflect on the overlay in real time
+- [x] **Player name & deck name editing** in Inspector - changes reflect on the overlay in real time
 - [ ] Complete all event types and state handlers:
   - [x] Add to Hand
   - [x] Remove from Hand
@@ -120,3 +120,4 @@ Live streaming support and full creative control over the overlay.
 - [ ] **Layout export & sharing** - export your overlay layout to a file and share it with others
 - [ ] **Built-in macro library** - predefined event sequences for common spells (e.g. Brainstorm: +3 to hand, −2 from hand, stack top ×2)
 - [ ] **User-defined macros** - create, name, and reuse custom event sequences without waiting for app-side support
+- [ ] **Non-linear video editing** - Sources panel holds imported video files; drag clips onto a dedicated video track on the timeline just like events; cuts and trims work without affecting overlay event timing since everything lives in output-timeline time

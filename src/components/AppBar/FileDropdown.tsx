@@ -26,9 +26,10 @@ interface FileDropdownProps {
     onNew: () => void;
     onExport: () => Promise<void>;
     onImport: (file: File) => void;
+    onExportVideo: () => void;
 }
 
-function FileDropdown({ isDirty, onNew, onExport, onImport }: FileDropdownProps) {
+function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: FileDropdownProps) {
     const importRef = useRef<HTMLInputElement>(null);
     const [showNewModal, setShowNewModal] = useState(false);
 
@@ -94,7 +95,7 @@ function FileDropdown({ isDirty, onNew, onExport, onImport }: FileDropdownProps)
                                         Project
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem disabled>Video</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={onExportVideo}>Video</DropdownMenuItem>
                                     <DropdownMenuItem disabled>Overlay</DropdownMenuItem>
                                 </DropdownMenuSubContent>
                             </DropdownMenuPortal>

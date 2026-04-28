@@ -33,8 +33,6 @@ function phaseLabel(p: ExportProgress): string {
         case 'loading': return 'Loading encoder…';
         case 'audio': return 'Extracting audio…';
         case 'frames': return `Frame ${p.currentFrame.toLocaleString()} / ${p.totalFrames.toLocaleString()}  —  ETA ${formatEta(p.eta)}`;
-        case 'segments': return p.message;
-        case 'concat': return 'Concatenating segments…';
     }
 }
 
@@ -42,7 +40,7 @@ export function ExportDialog({ open, onClose, video, players }: ExportDialogProp
     const [status, setStatus] = useState<Status>('idle');
     const [progress, setProgress] = useState<ExportProgress | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [fps, setFps] = useState(24);
+    const [fps, setFps] = useState(60);
     const abortRef = useRef<AbortController | null>(null);
 
     const pct = progress && progress.totalFrames > 0
@@ -92,7 +90,7 @@ export function ExportDialog({ open, onClose, video, players }: ExportDialogProp
                     <DialogTitle>Export Video</DialogTitle>
                     {status === 'idle' && (
                         <DialogDescription>
-                            Renders all overlays and exports as MP4. The first export loads the encoder (~30 MB).
+                            Renders all overlays and exports as MP4 or WebM.
                         </DialogDescription>
                     )}
                 </DialogHeader>
@@ -107,9 +105,8 @@ export function ExportDialog({ open, onClose, video, players }: ExportDialogProp
                                     onChange={(e) => setFps(Number(e.target.value))}
                                     className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
                                 >
-                                    <option value={24}>24 fps</option>
-                                    <option value={30}>30 fps</option>
                                     <option value={60}>60 fps</option>
+                                    <option value={30}>30 fps</option>
                                 </select>
                             </label>
                             </div>
@@ -149,7 +146,7 @@ export function ExportDialog({ open, onClose, video, players }: ExportDialogProp
                 {status === 'done' && (
                     <>
                         <p className="py-2 text-sm text-muted-foreground">
-                            Export complete — file saved to your downloads.
+                            Export complete — file saved.
                         </p>
                         <DialogFooter>
                             <Button onClick={handleClose}>Close</Button>

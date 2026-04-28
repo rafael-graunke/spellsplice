@@ -7,6 +7,13 @@ export interface VideoTrackMeta {
     duration: number;
 }
 
+export interface AudioTrackMeta {
+    sampleRate: number;
+    numberOfChannels: number;
+    codec: string;
+    description: Uint8Array;
+}
+
 function getDescription(mp4file: ISOFile, trackId: number): Uint8Array {
     const trak = mp4file.getTrackById(trackId);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -17,6 +24,16 @@ function getDescription(mp4file: ISOFile, trackId: number): Uint8Array {
     box.write(stream);
     // skip 4-byte size + 4-byte fourCC box type header
     return new Uint8Array((stream as unknown as { buffer: ArrayBuffer }).buffer, 8);
+}
+
+function getAudioDescription(mp4file: ISOFile, trackId: number): Uint8Array {
+    const trak = mp4file.getTrackById(trackId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = (trak as any).mdia.minf.stbl.stsd.entries[0];
+    // AudioSpecificConfig lives in: stsd entry → esds → ESD → DecoderConfigDescriptor → DecoderSpecificInfo → data
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const asc: Uint8Array | undefined = (entry as any)?.esds?.esd?.descs?.[0]?.descs?.[0]?.descs?.[0]?.data;
+    return asc ?? new Uint8Array(0);
 }
 
 async function feedFile(mp4: ISOFile, file: File, signal: AbortSignal): Promise<void> {
@@ -65,6 +82,34 @@ export function getVideoTrackMeta(file: File): Promise<VideoTrackMeta> {
     });
 }
 
+export function getAudioTrackMeta(file: File): Promise<AudioTrackMeta | null> {
+    return new Promise((resolve, reject) => {
+        const mp4 = createFile();
+        const controller = new AbortController();
+
+        mp4.onReady = (info) => {
+            const track = info.audioTracks[0];
+            if (!track) { controller.abort(); resolve(null); return; }
+
+            if (!track.audio) { controller.abort(); resolve(null); return; }
+            const description = getAudioDescription(mp4, track.id);
+            controller.abort();
+            resolve({
+                sampleRate: track.audio.sample_rate,
+                numberOfChannels: track.audio.channel_count,
+                codec: track.codec,
+                description,
+            });
+        };
+
+        mp4.onError = (_module: string, message: string) => reject(new Error(message));
+
+        feedFile(mp4, file, controller.signal).catch((err) => {
+            if (!(err instanceof DOMException && err.name === 'AbortError')) reject(err);
+        });
+    });
+}
+
 export async function* streamVideoChunks(
     file: File,
     signal: AbortSignal,
@@ -101,6 +146,73 @@ export async function* streamVideoChunks(
             if (!s.data) continue;
             push(new EncodedVideoChunk({
                 type: s.is_sync ? 'key' : 'delta',
+                timestamp: (s.cts / s.timescale) * 1e6,
+                duration: (s.duration / s.timescale) * 1e6,
+                data: s.data,
+            }));
+        }
+    };
+
+    mp4.onError = (_module: string, message: string) => {
+        error = new Error(message);
+        resolve?.();
+    };
+
+    feedFile(mp4, file, signal)
+        .then(() => { done = true; resolve?.(); })
+        .catch((err) => {
+            if (err instanceof DOMException && err.name === 'AbortError') {
+                done = true;
+            } else {
+                error = err;
+            }
+            resolve?.();
+        });
+
+    while (true) {
+        await wait();
+        if (error) throw error;
+        while (queue.length > 0) yield queue.shift()!;
+        if (done) break;
+    }
+}
+
+export async function* streamAudioChunks(
+    file: File,
+    signal: AbortSignal,
+): AsyncGenerator<EncodedAudioChunk> {
+    const queue: EncodedAudioChunk[] = [];
+    let resolve: (() => void) | null = null;
+    let done = false;
+    let error: unknown = null;
+
+    const push = (chunk: EncodedAudioChunk) => {
+        queue.push(chunk);
+        resolve?.();
+        resolve = null;
+    };
+
+    const wait = () => new Promise<void>((r) => {
+        if (queue.length > 0) r();
+        else resolve = r;
+    });
+
+    const mp4 = createFile();
+    let trackId = -1;
+
+    mp4.onReady = (info) => {
+        const track = info.audioTracks[0];
+        if (!track) { done = true; resolve?.(); return; }
+        trackId = track.id;
+        mp4.setExtractionOptions(trackId, null, { nbSamples: 100 });
+        mp4.start();
+    };
+
+    mp4.onSamples = (_id: number, _user: unknown, samples: Sample[]) => {
+        for (const s of samples) {
+            if (!s.data) continue;
+            push(new EncodedAudioChunk({
+                type: 'key',
                 timestamp: (s.cts / s.timescale) * 1e6,
                 duration: (s.duration / s.timescale) * 1e6,
                 data: s.data,

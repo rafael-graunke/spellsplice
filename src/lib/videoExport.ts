@@ -1,20 +1,17 @@
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { toBlobURL, fetchFile } from '@ffmpeg/util';
 import type { VideoState } from '@/components/types/video';
 import type { Player } from '@/components/types/player';
 import { derivePlayerState, getActiveWindowedEvents } from './deriveState';
 import { renderPlayerState } from '@/renders/renderPlayerState';
 import { renderHandStack } from '@/renders/renderHandStack';
 import { ensureImage } from './cardCache';
-import { getVideoTrackMeta, streamVideoChunks } from './videoDemux';
+import { getVideoTrackMeta, getAudioTrackMeta, streamVideoChunks, streamAudioChunks } from './videoDemux';
 
 export interface ExportOptions {
     fps?: number;
-    framesPerSegment?: number;
 }
 
 export interface ExportProgress {
-    phase: 'loading' | 'audio' | 'frames' | 'segments' | 'concat';
+    phase: 'loading' | 'audio' | 'frames';
     currentFrame: number;
     totalFrames: number;
     rate: number;
@@ -24,39 +21,15 @@ export interface ExportProgress {
 
 type ContainerFormat = 'mp4' | 'webm';
 
-let ff: FFmpeg | null = null;
-let ffLoadPromise: Promise<boolean> | null = null;
-
-async function getFFmpeg(): Promise<FFmpeg> {
-    if (ff?.loaded) return ff;
-    if (!ffLoadPromise) {
-        const newFf = new FFmpeg();
-        ff = newFf;
-        ffLoadPromise = Promise.all([
-            toBlobURL('/ffmpeg/ffmpeg-core.js', 'text/javascript'),
-            toBlobURL('/ffmpeg/ffmpeg-core.wasm', 'application/wasm'),
-            toBlobURL('/ffmpeg/ffmpeg-core.worker.js', 'text/javascript'),
-        ])
-            .then(([coreURL, wasmURL, workerURL]) =>
-                newFf.load({ coreURL, wasmURL, workerURL })
-            )
-            .catch((err) => {
-                ffLoadPromise = null;
-                ff = null;
-                throw err;
-            });
-    }
-    await ffLoadPromise;
-    return ff!;
-}
-
 async function pickCodec(fps: number): Promise<{ codec: string; format: ContainerFormat }> {
     for (const [codec, format] of [
         ['avc1.42001f', 'mp4'],
         ['vp09.00.10.08', 'webm'],
     ] as const) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { supported } = await VideoEncoder.isConfigSupported({
-            codec, width: 1920, height: 1080, bitrate: 8_000_000, framerate: fps,
+            codec, width: 1920, height: 1080, framerate: fps,
+            bitrateMode: 'variable', bitrate: 2_000_000,
         });
         if (supported) return { codec, format };
     }
@@ -70,18 +43,6 @@ function loadImg(src: string): Promise<HTMLImageElement> {
         img.onerror = reject;
         img.src = src;
     });
-}
-
-function pad(n: number, digits: number): string {
-    return String(n).padStart(digits, '0');
-}
-
-function concatenateChunks(chunks: Uint8Array[]): Uint8Array {
-    const total = chunks.reduce((s, c) => s + c.byteLength, 0);
-    const out = new Uint8Array(total);
-    let off = 0;
-    for (const c of chunks) { out.set(c, off); off += c.byteLength; }
-    return out;
 }
 
 function renderOverlays(
@@ -131,14 +92,10 @@ export async function exportVideo(
     signal: AbortSignal,
     options: ExportOptions = {},
 ): Promise<void> {
-    const {
-        fps = 30,
-        framesPerSegment = 150,
-    } = options;
+    const { fps = 30 } = options;
+    const FLUSH_INTERVAL = 150;
 
     const totalFrames = Math.ceil(video.duration * fps);
-    const totalSegments = Math.ceil(totalFrames / framesPerSegment);
-
     let framesEncoded = 0;
     let exportStartTime = 0;
 
@@ -149,30 +106,23 @@ export async function exportVideo(
         onProgress({ phase, currentFrame: framesEncoded, totalFrames, rate, eta, message });
     };
 
-    const tempFiles: string[] = [];
     const pendingFrames: VideoFrame[] = [];
     let writableStream: FileSystemWritableFileStream | null = null;
-    const tryDelete = async (name: string) => {
-        try { await ff!.deleteFile(name); } catch { /* already gone */ }
-    };
 
     try {
         emit('loading', 'Loading encoder…');
-        const ffmpeg = await getFFmpeg();
+        const { codec, format } = await pickCodec(fps);
         if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
-        const { codec, format } = await pickCodec(fps);
-
-        // Show save dialog before encoding begins — no wasted work if user cancels.
-        // showSaveFilePicker throws DOMException AbortError on cancel, same as our signal.
-        if (format === 'webm') {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const handle: FileSystemFileHandle = await (window as any).showSaveFilePicker({
-                suggestedName: `spellsplice-export-${Date.now()}.webm`,
-                types: [{ description: 'WebM Video', accept: { 'video/webm': ['.webm'] } }],
-            });
-            writableStream = await handle.createWritable();
-        }
+        // Show save dialog before encoding — no wasted work if user cancels.
+        // showSaveFilePicker throws DOMException AbortError on cancel.
+        const ext = format === 'mp4' ? 'mp4' : 'webm';
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const handle: FileSystemFileHandle = await (window as any).showSaveFilePicker({
+            suggestedName: `spellsplice-export-${Date.now()}.${ext}`,
+            types: [{ description: 'Video File', accept: { [`video/${ext}`]: [`.${ext}`] } }],
+        });
+        writableStream = await handle.createWritable();
 
         emit('loading', 'Parsing video…');
         const { config: decoderConfig, fps: sourceFps } = await getVideoTrackMeta(video.file);
@@ -187,35 +137,15 @@ export async function exportVideo(
         const d20Img = imgResults[0].status === 'fulfilled' ? imgResults[0].value : null;
         const eyeImg = imgResults[1].status === 'fulfilled' ? imgResults[1].value : null;
 
-        // Audio extraction — MP4 only; AAC in WebM is non-standard
-        let hasAudio = false;
-        const MAX_AUDIO_BYTES = 200 * 1024 * 1024;
-
-        if (format === 'mp4' && video.file.size <= MAX_AUDIO_BYTES) {
-            emit('audio', 'Extracting audio…');
-            try {
-                await ffmpeg.writeFile('src_video', await fetchFile(video.file));
-                tempFiles.push('src_video');
-
-                const ret = await ffmpeg.exec([
-                    '-i', 'src_video', '-vn', '-c:a', 'aac', '-b:a', '192k', 'audio.aac',
-                ]);
-
-                await tryDelete('src_video');
-                tempFiles.splice(tempFiles.indexOf('src_video'), 1);
-
-                if (ret === 0) {
-                    hasAudio = true;
-                    tempFiles.push('audio.aac');
-                } else {
-                    await tryDelete('audio.aac');
-                }
-            } catch {
-                await tryDelete('src_video');
-                await tryDelete('audio.aac');
+        // Collect audio chunks upfront — AAC is small (~10 MB/hr), copying avoids re-encode
+        emit('audio', 'Extracting audio…');
+        const audioMeta = format === 'mp4' ? await getAudioTrackMeta(video.file) : null;
+        const audioChunks: EncodedAudioChunk[] = [];
+        if (audioMeta) {
+            for await (const chunk of streamAudioChunks(video.file, signal)) {
+                audioChunks.push(chunk);
             }
         }
-
         if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
         const canvas = document.createElement('canvas');
@@ -223,50 +153,49 @@ export async function exportVideo(
         canvas.height = 1080;
         const ctx = canvas.getContext('2d')!;
 
-        let offsetX = 0;
-        let offsetY = 0;
-        let drawW = 1920;
-        let drawH = 1080;
-        let layoutReady = false;
+        let offsetX = 0, offsetY = 0, drawW = 1920, drawH = 1080, layoutReady = false;
 
         exportStartTime = performance.now();
 
-        // webm-muxer for VP9 path — streams directly to disk, no in-memory buffer
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let mp4Muxer: import('mp4-muxer').Muxer<any> | null = null;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let webmMuxer: import('webm-muxer').Muxer<any> | null = null;
-        if (format === 'webm') {
+
+        if (format === 'mp4') {
+            const { Muxer, FileSystemWritableFileStreamTarget } = await import('mp4-muxer');
+            mp4Muxer = new Muxer({
+                target: new FileSystemWritableFileStreamTarget(writableStream),
+                video: { codec: 'avc', width: 1920, height: 1080, frameRate: fps },
+                audio: audioMeta
+                    ? { codec: 'aac', sampleRate: audioMeta.sampleRate, numberOfChannels: audioMeta.numberOfChannels }
+                    : undefined,
+                firstTimestampBehavior: 'offset',
+                fastStart: false,
+            });
+        } else {
             const { Muxer, FileSystemWritableFileStreamTarget } = await import('webm-muxer');
             webmMuxer = new Muxer({
-                target: new FileSystemWritableFileStreamTarget(writableStream!),
+                target: new FileSystemWritableFileStreamTarget(writableStream),
                 video: { codec: 'V_VP9', width: 1920, height: 1080, frameRate: fps },
                 firstTimestampBehavior: 'offset',
             });
         }
-
-        const segmentChunksH264: Uint8Array[] = [];
 
         // WebCodecs errors don't propagate from callbacks into async context — collect and rethrow
         let pipelineError: unknown = null;
 
         const encoder = new VideoEncoder({
             output: (chunk, meta) => {
-                if (format === 'mp4') {
-                    const buf = new Uint8Array(chunk.byteLength);
-                    chunk.copyTo(buf);
-                    segmentChunksH264.push(buf);
-                } else {
-                    webmMuxer!.addVideoChunk(chunk, meta);
-                }
+                if (format === 'mp4') mp4Muxer!.addVideoChunk(chunk, meta);
+                else webmMuxer!.addVideoChunk(chunk, meta);
             },
             error: (e) => { pipelineError = e; },
         });
 
         const encoderConfig: VideoEncoderConfig = {
-            codec,
-            width: 1920,
-            height: 1080,
-            bitrate: 8_000_000,
-            framerate: fps,
+            codec, width: 1920, height: 1080, framerate: fps,
+            bitrateMode: 'variable', bitrate: 2_000_000,
         };
         if (format === 'mp4') encoderConfig.avc = { format: 'annexb' };
         encoder.configure(encoderConfig);
@@ -279,29 +208,30 @@ export async function exportVideo(
 
         const targetTimes = Array.from({ length: totalFrames }, (_, i) => i / fps);
         let targetIdx = 0;
-        let segIdx = 0;
-        const segmentFiles: string[] = [];
+        let audioIdx = 0;
+        // Pass AudioSpecificConfig on the first addAudioChunk call so mp4-muxer writes the esds box correctly
+        let audioMetaSent = false;
 
-        const flushSegment = async () => {
-            emit('segments', `Encoding segment ${segIdx + 1} of ${totalSegments}…`);
-            await encoder.flush();
-            if (pipelineError) throw pipelineError;
-
-            const raw = concatenateChunks(segmentChunksH264);
-            segmentChunksH264.length = 0;
-            const segName = `seg${pad(segIdx, 4)}.mp4`;
-            await ffmpeg.writeFile('raw.h264', raw);
-            tempFiles.push('raw.h264');
-            const ret = await ffmpeg.exec(['-f', 'h264', '-framerate', String(fps), '-i', 'raw.h264', '-c:v', 'copy', segName]);
-            await tryDelete('raw.h264');
-            tempFiles.splice(tempFiles.indexOf('raw.h264'), 1);
-            if (ret !== 0) throw new Error(`Segment ${segIdx} mux failed (ffmpeg exit ${ret})`);
-            tempFiles.push(segName);
-            segmentFiles.push(segName);
-            segIdx++;
+        const flushAudioUpTo = (videoTimestampUs: number) => {
+            if (!audioMeta || format !== 'mp4') return;
+            while (audioIdx < audioChunks.length && audioChunks[audioIdx].timestamp <= videoTimestampUs) {
+                const meta = !audioMetaSent ? {
+                    decoderConfig: {
+                        codec: audioMeta.codec,
+                        sampleRate: audioMeta.sampleRate,
+                        numberOfChannels: audioMeta.numberOfChannels,
+                        ...(audioMeta.description.byteLength > 0 ? { description: audioMeta.description } : {}),
+                    },
+                } : undefined;
+                mp4Muxer!.addAudioChunk(audioChunks[audioIdx++], meta);
+                audioMetaSent = true;
+            }
         };
 
+        const tolerance = 0.5 / (sourceFps || fps);
+
         const encodeFrame = (frame: VideoFrame, targetSec: number) => {
+            flushAudioUpTo(Math.round(targetSec * 1e6));
             ctx.clearRect(0, 0, 1920, 1080);
             ctx.drawImage(frame, offsetX, offsetY, drawW, drawH);
             renderOverlays(ctx, players, targetSec, offsetX, offsetY, drawW, drawH, d20Img, eyeImg);
@@ -313,8 +243,6 @@ export async function exportVideo(
             encoder.encode(vf, { keyFrame: isKeyFrame });
             vf.close();
         };
-
-        const tolerance = 0.5 / (sourceFps || fps);
 
         const drainPendingFrames = async () => {
             while (pendingFrames.length > 0 && targetIdx < totalFrames) {
@@ -336,15 +264,9 @@ export async function exportVideo(
                     targetIdx++;
                     emit('frames', `Frame ${framesEncoded} / ${totalFrames}`);
 
-                    if ((targetIdx % framesPerSegment === 0 || targetIdx === totalFrames)) {
-                        if (format === 'mp4' && segmentChunksH264.length > 0) {
-                            await flushSegment();
-                        } else if (format === 'webm') {
-                            // Drain encoder queue so output callback fires and
-                            // encode queue doesn't grow to totalFrames → OOM
-                            await encoder.flush();
-                            if (pipelineError) throw pipelineError;
-                        }
+                    if (targetIdx % FLUSH_INTERVAL === 0 || targetIdx === totalFrames) {
+                        await encoder.flush();
+                        if (pipelineError) throw pipelineError;
                     }
                 }
 
@@ -359,8 +281,7 @@ export async function exportVideo(
 
             decoder.decode(chunk);
 
-            // Back-pressure: yield to the macrotask queue (where WebCodecs fires output
-            // callbacks) so decodeQueueSize can actually decrease.
+            // Back-pressure: yield to the macrotask queue so decodeQueueSize can decrease
             while (decoder.decodeQueueSize > 10) {
                 await new Promise<void>(r => setTimeout(r, 0));
             }
@@ -371,59 +292,25 @@ export async function exportVideo(
         if (pipelineError) throw pipelineError;
         await drainPendingFrames();
 
-        if (format === 'webm') {
-            await encoder.flush();
-            if (pipelineError) throw pipelineError;
-            encoder.close();
-            decoder.close();
+        // Flush remaining audio (tail beyond last video frame)
+        flushAudioUpTo(Number.MAX_SAFE_INTEGER);
 
-            webmMuxer!.finalize();
-            await writableStream!.close();
-            writableStream = null;  // mark closed so finally doesn't abort it
-        } else {
-            if (segmentChunksH264.length > 0 || encoder.encodeQueueSize > 0) {
-                await flushSegment();
-            }
+        await encoder.flush();
+        if (pipelineError) throw pipelineError;
+        encoder.close();
+        decoder.close();
 
-            decoder.close();
-            encoder.close();
+        if (format === 'mp4') mp4Muxer!.finalize();
+        else webmMuxer!.finalize();
 
-            // Concatenate segments and mux audio
-            emit('concat', 'Concatenating segments…');
-            const outputFile = 'output.mp4';
-            const concatList = segmentFiles.map((f) => `file '${f}'`).join('\n');
-            await ffmpeg.writeFile('segs.txt', concatList);
-            tempFiles.push('segs.txt');
+        await writableStream.close();
+        writableStream = null;
 
-            const concatArgs: string[] = ['-f', 'concat', '-safe', '0', '-i', 'segs.txt'];
-            if (hasAudio) concatArgs.push('-i', 'audio.aac');
-            concatArgs.push('-c:v', 'copy');
-            if (hasAudio) concatArgs.push('-c:a', 'copy', '-shortest');
-            concatArgs.push(outputFile);
-
-            const ret = await ffmpeg.exec(concatArgs);
-            if (ret !== 0) throw new Error(`Concat failed (ffmpeg exit ${ret})`);
-            tempFiles.push(outputFile);
-
-            const data = await ffmpeg.readFile(outputFile) as Uint8Array;
-            const blob = new Blob([new Uint8Array(data)], { type: 'video/mp4' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `spellsplice-export-${Date.now()}.mp4`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
     } finally {
         for (const frame of pendingFrames) frame.close();
         pendingFrames.length = 0;
         if (writableStream) {
             try { await writableStream.abort(); } catch { /* ignore */ }
-        }
-        if (ff?.loaded) {
-            for (const f of tempFiles) await tryDelete(f);
         }
     }
 }

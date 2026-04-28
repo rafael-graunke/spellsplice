@@ -7,14 +7,10 @@
         "dev": "vite",
         "build": "tsc -b && vite build",
         "lint": "eslint .",
-        "preview": "vite preview",
-        "postinstall": "node -e \"const fs=require('fs');const src='node_modules/@ffmpeg/core-mt/dist/esm';const dst='public/ffmpeg';fs.mkdirSync(dst,{recursive:true});['ffmpeg-core.js','ffmpeg-core.wasm','ffmpeg-core.worker.js'].forEach(f=>fs.copyFileSync(src+'/'+f,dst+'/'+f));\""
+        "preview": "vite preview"
     },
     "dependencies": {
         "@base-ui/react": "^1.4.1",
-        "@ffmpeg/core-mt": "^0.12.10",
-        "@ffmpeg/ffmpeg": "^0.12.15",
-        "@ffmpeg/util": "^0.12.2",
         "@fontsource-variable/geist": "^5.2.8",
         "@tailwindcss/vite": "^4.2.2",
         "@tanstack/react-query": "^5.99.2",
@@ -24,6 +20,7 @@
         "cmdk": "^1.1.1",
         "jszip": "^3.10.1",
         "lucide-react": "^1.7.0",
+        "mp4-muxer": "^5.2.2",
         "mp4box": "^2.3.0",
         "radix-ui": "^1.4.3",
         "react": "^19.2.4",

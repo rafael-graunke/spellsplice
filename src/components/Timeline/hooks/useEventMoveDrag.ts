@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { RefObject, MouseEvent as ReactMouseEvent } from 'react';
 import type { Player, } from '../../types/player';
 import type { TrackEvent, EventType } from '../../types/event';
-import { RULER_HEIGHT, TRACK_HEIGHT } from '../constants';
+import { TRACK_HEIGHT } from '../constants';
 
 interface GhostPos {
     left: number;
@@ -40,8 +40,8 @@ function makeGhost(data: EventDragData, newTime: number, layerIndex: number, zoo
     return {
         left: newTime * zoom,
         top: data.isWaypoint
-            ? RULER_HEIGHT + layerIndex * TRACK_HEIGHT
-            : RULER_HEIGHT + layerIndex * TRACK_HEIGHT + 4,
+            ? layerIndex * TRACK_HEIGHT
+            : layerIndex * TRACK_HEIGHT + 4,
         width: data.isWaypoint ? 44 : data.startDuration * zoom,
         type: data.type,
         isWaypoint: data.isWaypoint,
@@ -139,7 +139,7 @@ export function useEventMoveDrag(
             const deltaTime = deltaX / zoom;
 
             const yInInner = e.clientY - rect.top;
-            const rawIndex = Math.floor((yInInner - RULER_HEIGHT) / TRACK_HEIGHT);
+            const rawIndex = Math.floor(yInInner / TRACK_HEIGHT);
             const primaryLayer = Math.max(0, Math.min(totalLayers - 1, rawIndex));
             const layerDelta = primaryLayer - drag.startLayer;
 
@@ -172,7 +172,7 @@ export function useEventMoveDrag(
             const deltaTime = deltaX / zoom;
 
             const yInInner = e.clientY - rect.top;
-            const rawIndex = Math.floor((yInInner - RULER_HEIGHT) / TRACK_HEIGHT);
+            const rawIndex = Math.floor(yInInner / TRACK_HEIGHT);
             const primaryLayer = Math.max(0, Math.min(totalLayers - 1, rawIndex));
             const layerDelta = primaryLayer - drag.startLayer;
 

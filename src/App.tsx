@@ -15,6 +15,7 @@ import type { VideoState } from './components/types/video';
 import { Inspector } from './components/Inspector';
 import { usePlayerTracks } from './components/Timeline/hooks/usePlayerTracks';
 import AppBar from './components/AppBar';
+import { ExportDialog } from './components/ExportDialog';
 
 type PlayerInit = Omit<Player, 'track'>;
 
@@ -48,6 +49,7 @@ function App() {
     );
     const [fileToLoad, setFileToLoad] = useState<File | null>(null);
     const [isDirty, setIsDirty] = useState(false);
+    const [exportDialogOpen, setExportDialogOpen] = useState(false);
     const isFirstPlayersRender = useRef(true);
     const skipDirtyRef = useRef(false);
     const currentTimeRef = useRef(0);
@@ -125,6 +127,13 @@ function App() {
                     onNew={handleNew}
                     onExport={handleExport}
                     onImport={handleImport}
+                    onExportVideo={() => setExportDialogOpen(true)}
+                />
+                <ExportDialog
+                    open={exportDialogOpen}
+                    onClose={() => setExportDialogOpen(false)}
+                    video={video}
+                    players={players}
                 />
                 <ResizablePanelGroup orientation="vertical" className="flex-1">
                     <ResizablePanel minSize={100} defaultSize="70%">

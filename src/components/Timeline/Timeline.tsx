@@ -191,7 +191,7 @@ export function Timeline({
                 </ResizablePanel>
                 <ResizableHandle />
                 <ResizablePanel minSize={100} defaultSize="80%">
-                    <div className="relative flex flex-col h-full">
+                    <div className="relative flex flex-col h-full overflow-x-hidden">
                         <TimelineCursor
                             ref={cursorRef}
                             setIsDragging={setIsDragging}

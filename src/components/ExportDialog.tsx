@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import type { VideoState } from '@/components/types/video';
 import type { Player } from '@/components/types/player';
-import { exportVideo, type ExportProgress } from '@/lib/videoExport';
+import { exportVideo, type ExportProgress } from '@/lib/export';
 
 interface ExportDialogProps {
     open: boolean;
@@ -35,6 +35,8 @@ function phaseLabel(p: ExportProgress): string {
         case 'frames': return `Frame ${p.currentFrame.toLocaleString()} / ${p.totalFrames.toLocaleString()}  —  ETA ${formatEta(p.eta)}`;
     }
 }
+
+const canExport = 'showSaveFilePicker' in window;
 
 export function ExportDialog({ open, onClose, video, players }: ExportDialogProps) {
     const [status, setStatus] = useState<Status>('idle');
@@ -112,9 +114,16 @@ export function ExportDialog({ open, onClose, video, players }: ExportDialogProp
                             </div>
                         <DialogFooter>
                             <Button variant="outline" onClick={handleClose}>Cancel</Button>
-                            <Button onClick={startExport} disabled={!video}>
-                                Export
-                            </Button>
+                            <span className="group relative">
+                                <Button onClick={startExport} disabled={!video || !canExport}>
+                                    Export
+                                </Button>
+                                {!canExport && (
+                                    <span className="pointer-events-none absolute bottom-full left-1/2 mb-2 w-56 -translate-x-1/2 rounded-md bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md opacity-0 group-hover:opacity-100 transition-opacity">
+                                        Video export requires Chrome or Edge. Save your project and open it there.
+                                    </span>
+                                )}
+                            </span>
                         </DialogFooter>
                     </>
                 )}

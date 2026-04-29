@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -13,11 +13,7 @@ import {
     DropdownMenuContent,
     DropdownMenuGroup,
     DropdownMenuItem,
-    DropdownMenuPortal,
-    DropdownMenuSeparator,
-    DropdownMenuSub,
-    DropdownMenuSubContent,
-    DropdownMenuSubTrigger,
+    DropdownMenuShortcut,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
@@ -37,6 +33,24 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: Fil
         if (isDirty) setShowNewModal(true);
         else onNew();
     };
+
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (e.ctrlKey && !e.altKey && e.code === 'KeyS') {
+                e.preventDefault();
+                onExport();
+            } else if (e.ctrlKey && !e.altKey && e.code === 'KeyO') {
+                e.preventDefault();
+                importRef.current?.click();
+            } else if (e.ctrlKey && e.altKey && e.code === 'KeyN') {
+                e.preventDefault();
+                if (isDirty) setShowNewModal(true);
+                else onNew();
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [isDirty, onExport, onNew]);
 
     return (
         <>
@@ -81,25 +95,18 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: Fil
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost">File</Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent>
+                <DropdownMenuContent className="w-48">
                     <DropdownMenuGroup>
-                        <DropdownMenuItem onClick={handleNew}>New...</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => importRef.current?.click()}>
-                            Open...
+                        <DropdownMenuItem onClick={handleNew}>
+                            New...<DropdownMenuShortcut>Ctrl+Alt+N</DropdownMenuShortcut>
                         </DropdownMenuItem>
-                        <DropdownMenuSub>
-                            <DropdownMenuSubTrigger>Export</DropdownMenuSubTrigger>
-                            <DropdownMenuPortal>
-                                <DropdownMenuSubContent>
-                                    <DropdownMenuItem onClick={onExport}>
-                                        Project
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={onExportVideo}>Video</DropdownMenuItem>
-                                    <DropdownMenuItem disabled>Overlay</DropdownMenuItem>
-                                </DropdownMenuSubContent>
-                            </DropdownMenuPortal>
-                        </DropdownMenuSub>
+                        <DropdownMenuItem onClick={() => importRef.current?.click()}>
+                            Open...<DropdownMenuShortcut>Ctrl+O</DropdownMenuShortcut>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={onExport}>
+                            Save<DropdownMenuShortcut>Ctrl+S</DropdownMenuShortcut>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={onExportVideo}>Export...</DropdownMenuItem>
                     </DropdownMenuGroup>
                 </DropdownMenuContent>
             </DropdownMenu>

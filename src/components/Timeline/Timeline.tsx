@@ -64,6 +64,8 @@ export function Timeline({
     const trackRef = useRef<HTMLDivElement>(null);
     const innerRef = useRef<HTMLDivElement>(null);
     const cursorRef = useRef<TimelineCursorHandle>(null);
+    const rulerScrollRef = useRef<HTMLDivElement>(null);
+    const trackScrollLeftRef = useRef(0);
 
     const { zoom, zoomPercent, zoomRef, handleZoomChange } = useZoom(
         containerRef,
@@ -71,11 +73,15 @@ export function Timeline({
         innerRef
     );
 
+    const updateCursorPosition = (time: number, scrollLeft: number) => {
+        cursorRef.current?.setPosition(time * zoomRef.current - scrollLeft + 16);
+    };
+
     // 60fps cursor during playback via direct DOM mutation
     useEffect(() => {
         let raf: number;
         const tick = () => {
-            cursorRef.current?.setPosition(currentTimeRef.current * zoomRef.current);
+            updateCursorPosition(currentTimeRef.current, trackScrollLeftRef.current);
             raf = requestAnimationFrame(tick);
         };
         if (isPlaying) {
@@ -88,10 +94,23 @@ export function Timeline({
     // Snap cursor on seek or zoom change while paused
     useEffect(() => {
         if (!isPlaying) {
-            cursorRef.current?.setPosition(currentTime * zoomRef.current);
+            updateCursorPosition(currentTime, trackScrollLeftRef.current);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentTime, zoom]);
+
+    useEffect(() => {
+        const el = trackRef.current;
+        if (!el) return;
+        const onScroll = () => {
+            trackScrollLeftRef.current = el.scrollLeft;
+            if (rulerScrollRef.current) rulerScrollRef.current.style.transform = `translateX(-${el.scrollLeft}px)`;
+            updateCursorPosition(currentTimeRef.current, el.scrollLeft);
+        };
+        el.addEventListener('scroll', onScroll, { passive: true });
+        return () => el.removeEventListener('scroll', onScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const { setIsDragging } = useSeekDrag(
         innerRef,
@@ -163,28 +182,36 @@ export function Timeline({
                     <TimelineTrackControl
                         players={players}
                         selectedPlayer={effectivePlayer}
-                        onSelectPlayer={(p) => setSelectedPlayerId(p.id)}
+                        onSelectPlayer={(p) => {
+                            setSelectedPlayerId(p.id);
+                            setSelectedEvents([]);
+                        }}
                         onEditPlayer={handleUpdatePlayer}
                     />
                 </ResizablePanel>
                 <ResizableHandle />
                 <ResizablePanel minSize={100} defaultSize="80%">
-                    <div ref={trackRef} className="pl-4 overflow-x-auto h-full">
-                        <div ref={innerRef} className="relative h-full w-full">
-                            <TimelineCursor
-                                ref={cursorRef}
-                                setIsDragging={setIsDragging}
-                                setIsPlaying={setIsPlaying}
-                            />
-                            <TimelineRuler
-                                duration={duration}
-                                zoom={zoom}
-                                onSeek={setCurrentTime}
-                                onScrollDelta={(delta) => {
-                                    if (trackRef.current)
-                                        trackRef.current.scrollLeft -= delta;
-                                }}
-                            />
+                    <div className="relative flex flex-col h-full">
+                        <TimelineCursor
+                            ref={cursorRef}
+                            setIsDragging={setIsDragging}
+                            setIsPlaying={setIsPlaying}
+                        />
+                        <div className="shrink-0 pl-4 overflow-x-hidden">
+                            <div ref={rulerScrollRef}>
+                                <TimelineRuler
+                                    duration={duration}
+                                    zoom={zoom}
+                                    onSeek={setCurrentTime}
+                                    onScrollDelta={(delta) => {
+                                        if (trackRef.current)
+                                            trackRef.current.scrollLeft -= delta;
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    <div ref={trackRef} className="pl-4 overflow-auto flex-1 scrollbar-thin">
+                        <div ref={innerRef} className="relative">
                             {Array.from({ length: layerCount }, (_, layerIndex) => (
                                 <TimelineTrack
                                     key={layerIndex}
@@ -259,6 +286,7 @@ export function Timeline({
                                 )
                             )}
                         </div>
+                    </div>
                     </div>
                 </ResizablePanel>
             </ResizablePanelGroup>

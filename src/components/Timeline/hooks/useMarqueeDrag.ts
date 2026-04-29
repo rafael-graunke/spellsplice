@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import type { RefObject } from 'react';
 import type { Player } from '../../types/player';
 import type { TrackEvent } from '../../types/event';
-import { RULER_HEIGHT, TRACK_HEIGHT } from '../constants';
+import { TRACK_HEIGHT } from '../constants';
 
 interface MarqueeRect {
     x: number;
@@ -79,7 +79,7 @@ export function useMarqueeDrag(
             const events = selectedPlayer?.track.events ?? [];
 
             for (let layerIndex = 0; layerIndex < totalLayers; layerIndex++) {
-                const trackTop = RULER_HEIGHT + layerIndex * TRACK_HEIGHT;
+                const trackTop = layerIndex * TRACK_HEIGHT;
                 const trackBottom = trackTop + TRACK_HEIGHT;
                 if (rect.y + rect.h < trackTop || rect.y > trackBottom) continue;
 

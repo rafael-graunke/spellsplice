@@ -11,9 +11,10 @@ interface Props {
     event: TrackEvent;
     onUpdate: (meta: EventMeta) => void;
     player?: Player | null;
+    label?: string;
 }
 
-export function RevealFromHandFields({ event, onUpdate, player }: Props) {
+export function HandPickerFields({ event, onUpdate, player, label = 'Cards in Hand' }: Props) {
     const handCards = useMemo(() => {
         if (!player) return [] as Card[];
         const derived = derivePlayerState(
@@ -65,7 +66,7 @@ export function RevealFromHandFields({ event, onUpdate, player }: Props) {
     return (
         <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-                <label className="text-xs text-muted-foreground">Cards in Hand</label>
+                <label className="text-xs text-muted-foreground">{label}</label>
                 <Button variant="ghost" size="xs" onClick={toggleAll}>
                     {allSelected ? 'Deselect all' : 'Select all'}
                 </Button>

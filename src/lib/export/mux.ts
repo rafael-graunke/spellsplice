@@ -52,12 +52,32 @@ export async function createMuxer(
         const muxer = new Muxer({
             target: new FileSystemWritableFileStreamTarget(writableStream),
             video: { codec: 'V_VP9', width, height, frameRate: fps },
+            audio: audioMeta
+                ? { codec: 'A_OPUS', sampleRate: audioMeta.sampleRate, numberOfChannels: audioMeta.numberOfChannels }
+                : undefined,
             firstTimestampBehavior: 'offset',
         });
 
+        let audioIdx = 0;
+        let audioMetaSent = false;
+
         return {
             addVideoChunk: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-            feedAudioUpTo: () => { /* WebM export has no audio passthrough */ },
+            feedAudioUpTo: (chunks, timestampUs) => {
+                if (!audioMeta) return;
+                while (audioIdx < chunks.length && chunks[audioIdx].timestamp <= timestampUs) {
+                    const chunkMeta = !audioMetaSent ? {
+                        decoderConfig: {
+                            codec: 'opus',
+                            sampleRate: audioMeta.sampleRate,
+                            numberOfChannels: audioMeta.numberOfChannels,
+                            ...(audioMeta.description.byteLength > 0 ? { description: audioMeta.description } : {}),
+                        },
+                    } : undefined;
+                    muxer.addAudioChunk(chunks[audioIdx++], chunkMeta);
+                    audioMetaSent = true;
+                }
+            },
             finalize: () => muxer.finalize(),
         };
     }

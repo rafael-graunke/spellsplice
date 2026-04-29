@@ -3,6 +3,7 @@ import type { Player } from '@/components/types/player';
 import { getNextChangeTime } from '@/lib/deriveState';
 import { getVideoTrackMeta, getAudioTrackMeta, streamVideoChunks, streamAudioChunks } from './demux';
 import type { AudioTrackMeta } from './demux';
+import { transcodeToOpus } from './transcode';
 import { pickCodec, openSaveDialog } from './codec';
 import { Encoder } from './encode';
 import { createMuxer } from './mux';
@@ -85,11 +86,20 @@ export async function exportVideo(
     const eyeImg = imgResults[1].status === 'fulfilled' ? imgResults[1].value : null;
 
     emit('audio', 'Extracting audio…');
-    const audioMeta: AudioTrackMeta | null = format === 'mp4' ? await getAudioTrackMeta(video.file) : null;
-    const audioChunks: EncodedAudioChunk[] = audioMeta ? await collectAudioChunks(video.file, signal) : [];
+    const audioMeta: AudioTrackMeta | null = await getAudioTrackMeta(video.file);
+    const rawAudioChunks: EncodedAudioChunk[] = audioMeta ? await collectAudioChunks(video.file, signal) : [];
     if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
-    const muxer = await createMuxer(format, writableStream, { fps, width: OUT_W, height: OUT_H, audioMeta });
+    let audioChunks = rawAudioChunks;
+    let muxerAudioMeta = audioMeta;
+    if (format === 'webm' && audioMeta && rawAudioChunks.length > 0) {
+        emit('audio', 'Transcoding audio to Opus…');
+        const opus = await transcodeToOpus(audioMeta, rawAudioChunks);
+        audioChunks = opus.chunks;
+        muxerAudioMeta = opus.meta;
+    }
+
+    const muxer = await createMuxer(format, writableStream, { fps, width: OUT_W, height: OUT_H, audioMeta: muxerAudioMeta });
     const encoder = new Encoder(codec, fps, OUT_W, OUT_H, (chunk, meta) => muxer.addVideoChunk(chunk, meta));
     const compositor = new Compositor(OUT_W, OUT_H);
     compositor.setLayout(drawW, drawH, offsetX, offsetY);

@@ -39,7 +39,7 @@ void main() {
 
 export class Compositor {
     private gl: WebGLRenderingContext;
-    private glCanvas: OffscreenCanvas;
+    private glCanvas: HTMLCanvasElement | OffscreenCanvas;
     private overlayCanvas: OffscreenCanvas;
     private overlayCtx: OffscreenCanvasRenderingContext2D;
     private program: WebGLProgram;
@@ -53,13 +53,13 @@ export class Compositor {
     private offsetX = 0;
     private offsetY = 0;
 
-    constructor(outWidth: number, outHeight: number) {
+    constructor(outWidth: number, outHeight: number, canvas?: HTMLCanvasElement | OffscreenCanvas) {
         this.outW = outWidth;
         this.outH = outHeight;
 
-        this.glCanvas = new OffscreenCanvas(outWidth, outHeight);
-        const gl = this.glCanvas.getContext('webgl');
-        if (!gl) throw new Error('WebGL not available in OffscreenCanvas');
+        this.glCanvas = canvas ?? new OffscreenCanvas(outWidth, outHeight);
+        const gl = this.glCanvas.getContext('webgl') as WebGLRenderingContext | null;
+        if (!gl) throw new Error('WebGL not available');
         this.gl = gl;
 
         this.overlayCanvas = new OffscreenCanvas(outWidth, outHeight);
@@ -107,6 +107,13 @@ export class Compositor {
             (offsetX + drawW) / this.outW,
             (offsetY + drawH) / this.outH,
         );
+    }
+
+    uploadVideoElement(videoEl: HTMLVideoElement): void {
+        const { gl } = this;
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.videoTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoEl);
     }
 
     uploadVideoFrame(frame: VideoFrame): void {
@@ -161,9 +168,13 @@ export class Compositor {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, overlayCanvas);
     }
 
+    draw(): void {
+        this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
+    }
+
     compose(timestamp: number, duration: number): VideoFrame {
         this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
-        return new VideoFrame(this.glCanvas, { timestamp, duration });
+        return new VideoFrame(this.glCanvas as OffscreenCanvas, { timestamp, duration });
     }
 
     dispose(): void {

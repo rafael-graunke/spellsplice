@@ -10,14 +10,8 @@ import {
 } from './ui/empty';
 import type { VideoState } from './types/video';
 import type { Player } from './types/player';
-import {
-    derivePlayerState,
-    getActiveWindowedEvents,
-    getNextChangeTime,
-} from '@/lib/deriveState';
-import { renderPlayerState } from '@/renders/renderPlayerState';
-import { renderHandStack } from '@/renders/renderHandStack';
-import { ensureImage } from '@/lib/cardCache';
+import { getNextChangeTime } from '@/lib/deriveState';
+import { Compositor } from '@/lib/export/compose';
 
 interface VideoPreviewProps {
     isPlaying: boolean;
@@ -49,11 +43,8 @@ function VideoPreview({
     const prevTimeRef = useRef(-1);
     const d20Ref = useRef<HTMLImageElement | null>(null);
     const eyeRef = useRef<HTMLImageElement | null>(null);
-    const derivedCacheRef = useRef<{
-        playerStates: (ReturnType<typeof derivePlayerState> | null)[];
-        activeEvents: ReturnType<typeof getActiveWindowedEvents>[];
-        validUntil: number;
-    } | null>(null);
+    const compositorRef = useRef<Compositor | null>(null);
+    const derivedCacheRef = useRef<{ validUntil: number } | null>(null);
 
     useEffect(() => {
         const img = new Image();
@@ -70,7 +61,7 @@ function VideoPreview({
     useEffect(() => {
         playersRef.current = players;
         derivedCacheRef.current = null;
-        if (!isPlaying && video) drawFrame();
+        if (!isPlaying && video) renderFrame();
         // isPlaying and video intentionally omitted — effect scoped to players changes only
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [players]);
@@ -98,96 +89,51 @@ function VideoPreview({
         };
     };
 
-    const drawFrame = () => {
-        if (!video || !canvasRef.current) return;
-
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        const canvasW = 1920;
-        const canvasH = 1080;
+    const renderFrame = () => {
+        const compositor = compositorRef.current;
+        if (!compositor || !video) return;
         const v = video.videoEl;
-        const videoW = v.videoWidth;
-        const videoH = v.videoHeight;
-
-        if (!videoW || !videoH) return;
-
-        const scale = Math.min(canvasW / videoW, canvasH / videoH);
-        const drawW = Math.round(videoW * scale);
-        const drawH = Math.round(videoH * scale);
-        const offsetX = Math.round((canvasW - drawW) / 2);
-        const offsetY = Math.round((canvasH - drawH) / 2);
-
-        ctx.save();
-
-        ctx.clearRect(0, 0, canvasW, canvasH);
-        ctx.drawImage(v, offsetX, offsetY, drawW, drawH);
+        if (!v.videoWidth || !v.videoHeight) return;
 
         const time = v.currentTime;
-
         const cache = derivedCacheRef.current;
-        const needsRederive =
-            !cache || time >= cache.validUntil || time < prevTimeRef.current;
+        const overlayStale = !cache || time >= cache.validUntil || time < prevTimeRef.current;
 
-        if (needsRederive) {
-            const playerStates = playersRef.current.map((p) =>
-                derivePlayerState(p, p.track.events, time)
-            );
-            const activeEvents = playersRef.current.map((p) =>
-                getActiveWindowedEvents(p.track.events, time)
-            );
+        compositor.uploadVideoElement(v);
+
+        if (overlayStale) {
+            compositor.updateOverlay(playersRef.current, time, d20Ref.current, eyeRef.current);
             derivedCacheRef.current = {
-                playerStates,
-                activeEvents,
-                validUntil: getNextChangeTime(
-                    playersRef.current.map((p) => p.track),
-                    time
-                ),
+                validUntil: getNextChangeTime(playersRef.current.map((p) => p.track), time),
             };
         }
+
         prevTimeRef.current = time;
-
-        const { playerStates, activeEvents } = derivedCacheRef.current!;
-
-        renderPlayerState(ctx, playerStates, offsetX, offsetY, drawW, drawH, d20Ref.current);
-        renderHandStack(ctx, playerStates, offsetX, offsetY, drawW, drawH, eyeRef.current);
-
-        // Active windowed event card images
-        const cardH = drawH * 0.5;
-        const cardW = cardH * (223 / 310);
-        let cardOffset = 0;
-
-        activeEvents.forEach((events) => {
-            events.forEach((event) => {
-                const card = event.meta?.cards?.[0];
-                if (!card?.name) return;
-
-                const cached = ensureImage(card.name, card.edition);
-                if (cached === 'loading' || cached === 'error') return;
-
-                const cardX =
-                    offsetX + drawW / 2 - (cardW / 2) + cardOffset * (cardW + 8);
-                const cardY = offsetY + drawH / 2 - cardH / 2;
-
-                ctx.save();
-                ctx.beginPath();
-                ctx.roundRect(cardX, cardY, cardW, cardH, 20);
-                ctx.clip();
-                ctx.drawImage(cached, cardX, cardY, cardW, cardH);
-                ctx.restore();
-
-                cardOffset++;
-            });
-        });
+        compositor.draw();
     };
 
     useEffect(() => {
-        if (!canvasRef.current) return;
+        if (!canvasRef.current || !video) return;
+
         const canvas = canvasRef.current;
         canvas.width = 1920;
         canvas.height = 1080;
-        drawFrame();
+
+        compositorRef.current?.dispose();
+        const v = video.videoEl;
+        const scale = Math.min(1920 / v.videoWidth, 1080 / v.videoHeight);
+        const drawW = Math.round(v.videoWidth * scale);
+        const drawH = Math.round(v.videoHeight * scale);
+        const comp = new Compositor(1920, 1080, canvas);
+        comp.setLayout(drawW, drawH, Math.round((1920 - drawW) / 2), Math.round((1080 - drawH) / 2));
+        compositorRef.current = comp;
+        derivedCacheRef.current = null;
+        renderFrame();
+
+        return () => {
+            comp.dispose();
+            compositorRef.current = null;
+        };
     }, [video]);
 
     useEffect(() => {
@@ -211,21 +157,30 @@ function VideoPreview({
     }, [isPlaying, video]);
 
     useEffect(() => {
-        if (!video) return;
+        if (!video || !isPlaying) return;
 
-        let raf: number;
+        const v = video.videoEl;
+        let handle: number;
 
-        const loop = () => {
-            drawFrame();
-            currentTimeRef.current = video.videoEl.currentTime;
-            raf = requestAnimationFrame(loop);
-        };
-
-        if (isPlaying) {
-            raf = requestAnimationFrame(loop);
+        if (v.requestVideoFrameCallback) {
+            const rVFC = v.requestVideoFrameCallback.bind(v);
+            const cVFC = v.cancelVideoFrameCallback!.bind(v);
+            const loop = () => {
+                renderFrame();
+                currentTimeRef.current = v.currentTime;
+                handle = rVFC(loop);
+            };
+            handle = rVFC(loop);
+            return () => cVFC(handle);
+        } else {
+            const loop = () => {
+                renderFrame();
+                currentTimeRef.current = v.currentTime;
+                handle = requestAnimationFrame(loop);
+            };
+            handle = requestAnimationFrame(loop);
+            return () => cancelAnimationFrame(handle);
         }
-
-        return () => cancelAnimationFrame(raf);
     }, [isPlaying, video]);
 
     useEffect(() => {
@@ -238,13 +193,11 @@ function VideoPreview({
             v.currentTime = currentTime;
 
             if (!isPlaying) {
-                const handler = () => drawFrame();
+                const handler = () => renderFrame();
                 v.addEventListener('seeked', handler, { once: true });
             }
         }
         // isPlaying intentionally omitted — seek is driven by currentTime changes only.
-        // On pause, play effect syncs currentTime to v.currentTime so this never
-        // fires with a stale value and seeks backward.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentTime, video]);
 

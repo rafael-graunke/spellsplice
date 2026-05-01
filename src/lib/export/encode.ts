@@ -16,6 +16,7 @@ export class Encoder {
         const config: VideoEncoderConfig = {
             codec, width, height, framerate: fps,
             bitrate: 20_000_000,
+            latencyMode: 'realtime',
         };
         if (codec.startsWith('avc')) config.avc = { format: 'annexb' };
         this.enc.configure(config);

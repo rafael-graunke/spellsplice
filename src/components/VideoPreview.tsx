@@ -49,13 +49,13 @@ function VideoPreview({
     useEffect(() => {
         const img = new Image();
         img.onload = () => { d20Ref.current = img; };
-        img.src = '/d20.svg';
+        img.src = '/assets/d20.svg';
     }, []);
 
     useEffect(() => {
         const img = new Image();
         img.onload = () => { eyeRef.current = img; };
-        img.src = '/eye.svg';
+        img.src = '/assets/eye.svg';
     }, []);
 
     useEffect(() => {

@@ -15,7 +15,7 @@ export class Encoder {
         });
         const config: VideoEncoderConfig = {
             codec, width, height, framerate: fps,
-            bitrateMode: 'variable', bitrate: 2_000_000,
+            bitrate: 20_000_000,
         };
         if (codec.startsWith('avc')) config.avc = { format: 'annexb' };
         this.enc.configure(config);

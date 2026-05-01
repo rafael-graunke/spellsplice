@@ -137,7 +137,7 @@ export async function exportVideo(
 
                     compositor.uploadVideoFrame(frame);
                     const composed = compositor.compose(timestampUs, Math.round(1e6 / fps));
-                    encoder.encode(composed, frameIdx % (Math.round(fps) * 2) === 0);
+                    encoder.encode(composed, frameIdx % (Math.round(fps) * 10) === 0);
                     composed.close();
 
                     muxer.feedAudioUpTo(audioChunks, timestampUs);

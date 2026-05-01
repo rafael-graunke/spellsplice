@@ -81,7 +81,7 @@ export async function exportVideo(
     const offsetX = Math.round((OUT_W - drawW) / 2);
     const offsetY = Math.round((OUT_H - drawH) / 2);
 
-    const imgResults = await Promise.allSettled([loadImg('/d20.svg'), loadImg('/eye.svg')]);
+    const imgResults = await Promise.allSettled([loadImg('/assets/d20.svg'), loadImg('/assets/eye.svg')]);
     const d20Img = imgResults[0].status === 'fulfilled' ? imgResults[0].value : null;
     const eyeImg = imgResults[1].status === 'fulfilled' ? imgResults[1].value : null;
 

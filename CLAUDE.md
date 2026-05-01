@@ -175,6 +175,7 @@ shadcn/ui + Radix UI + Tailwind CSS v4. Components live in `src/components/ui/`.
 | **v0** | Foundation | ✅ Done |
 | **v1** | Export Ready | 🟡 Current |
 | **v2** | Streaming & Creator Tools | ⬜ Future |
+| **v3** | Desktop App | ⬜ Future |
 
 **v1 targets**:
 - ✅ Decklist import (MTGO format) per player — `parseDecklist` + `handleUpdatePlayer`
@@ -190,6 +191,11 @@ shadcn/ui + Radix UI + Tailwind CSS v4. Components live in `src/components/ui/`.
 - Full overlay UI editor (drag/resize/style any element) + layout export & sharing
 - Built-in macro library (common spell sequences like Brainstorm) + user-defined macros
 - **Non-linear video editing** — Sources panel holds imported video files; clips are dragged onto a dedicated video track on the timeline (same drag mechanics as events); playback engine seeks the hidden `<video>` to `clip.sourceOffset + (currentTime - clip.startTime)` per frame; overlay events stay in output-timeline time so no time remapping needed; seeking latency mitigated with a small pool of preloading video elements
+
+**v3 targets**:
+- Tauri wrapper (Rust backend + system webview; ~5–10 MB runtime vs ~150 MB Electron)
+- FFmpeg video export — replace WebCodecs pipeline via Rust backend; order-of-magnitude faster, cross-platform
+- Scryfall bulk data — download full card database (~2.3 GB) on first run; SQLite + FTS5 via `rusqlite` for sub-millisecond lookups; eliminates API rate limit workarounds
 
 ## Scryfall API Rate Limits
 

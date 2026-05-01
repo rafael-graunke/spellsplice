@@ -37,7 +37,7 @@ export function renderHandStack(
     drawH: number,
     eyeIcon: HTMLImageElement | null
 ) {
-    const bottomY = offsetY + drawH - 8;
+    const bottomY = offsetY + drawH;
 
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
@@ -46,7 +46,7 @@ export function renderHandStack(
         if (!state || state.cards.length === 0) return;
 
         const isLeft = i === 0;
-        const x = isLeft ? offsetX + 8 : offsetX + drawW - STRIP_W - 8;
+        const x = isLeft ? offsetX : offsetX + drawW - STRIP_W;
 
         for (let j = 0; j < state.cards.length; j++) {
             const card = state.cards[j];

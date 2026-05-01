@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Trash2Icon } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { GripVertical, Trash2Icon } from 'lucide-react';
 import { useCardSearch } from '@/hooks/useCardSearch';
 import { useCardPrintings } from '@/hooks/useCardPrintings';
 import {
@@ -72,6 +72,8 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true 
     const { data: suggestions, isFetching } = useCardSearch(query, player);
 
     const selected: Card[] = event.meta?.cards ?? [];
+    const dragDisplayIdx = useRef<number | null>(null);
+    const [dropDisplayIdx, setDropDisplayIdx] = useState<number | null>(null);
 
     useEffect(() => {
         setQuery('');
@@ -97,6 +99,19 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true 
 
     const updateEdition = (index: number, edition: string) => {
         onUpdate({ cards: selected.map((c, i) => (i === index ? { ...c, edition } : c)) });
+    };
+
+    const reversedSelected = [...selected].reverse();
+
+    const handleDrop = (dropIdx: number) => {
+        const fromIdx = dragDisplayIdx.current;
+        if (fromIdx === null || fromIdx === dropIdx) return;
+        const reordered = [...reversedSelected];
+        const [moved] = reordered.splice(fromIdx, 1);
+        reordered.splice(dropIdx, 0, moved);
+        onUpdate({ cards: [...reordered].reverse() });
+        dragDisplayIdx.current = null;
+        setDropDisplayIdx(null);
     };
 
     return (
@@ -143,28 +158,43 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true 
 
             {selected.length > 0 && (
                 <div className="flex flex-col gap-1">
-                    {selected.map((card, i) => (
-                        <Item key={i} size="xs" variant="outline">
-                            <ItemContent>
-                                <ItemTitle className="text-xs">{card.name}</ItemTitle>
-                            </ItemContent>
-                            <ItemActions>
-                                {showEdition && (
-                                    <EditionPicker
-                                        card={card}
-                                        onSelect={(edition) => updateEdition(i, edition)}
-                                    />
-                                )}
-                                <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    onClick={() => removeCard(i)}
-                                >
-                                    <Trash2Icon />
-                                </Button>
-                            </ItemActions>
-                        </Item>
-                    ))}
+                    {reversedSelected.map((card, ri) => {
+                        const i = selected.length - 1 - ri;
+                        return (
+                            <Item
+                                key={i}
+                                size="xs"
+                                variant="outline"
+                                draggable={multi}
+                                onDragStart={multi ? () => { dragDisplayIdx.current = ri; } : undefined}
+                                onDragOver={multi ? (e) => { e.preventDefault(); setDropDisplayIdx(ri); } : undefined}
+                                onDragLeave={multi ? () => setDropDisplayIdx(null) : undefined}
+                                onDrop={multi ? () => handleDrop(ri) : undefined}
+                                onDragEnd={multi ? () => { dragDisplayIdx.current = null; setDropDisplayIdx(null); } : undefined}
+                                className={multi && dropDisplayIdx === ri ? 'ring-1 ring-primary' : ''}
+                            >
+                                {multi && <GripVertical className="size-3.5 shrink-0 text-muted-foreground cursor-grab" />}
+                                <ItemContent>
+                                    <ItemTitle className="text-xs">{card.name}</ItemTitle>
+                                </ItemContent>
+                                <ItemActions>
+                                    {showEdition && (
+                                        <EditionPicker
+                                            card={card}
+                                            onSelect={(edition) => updateEdition(i, edition)}
+                                        />
+                                    )}
+                                    <Button
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        onClick={() => removeCard(i)}
+                                    >
+                                        <Trash2Icon />
+                                    </Button>
+                                </ItemActions>
+                            </Item>
+                        );
+                    })}
                 </div>
             )}
         </div>

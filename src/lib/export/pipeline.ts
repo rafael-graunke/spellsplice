@@ -170,8 +170,7 @@ export async function exportVideo(
         }
 
         debug(`loop done — frameIdx=${frameIdx} totalFrames=${totalFrames}`);
-        await decoder.flush();
-        debug('decoder.flush done');
+        decoder.reset();
         if (decoderError) throw decoderError;
         await drainFrames();
         debug('drainFrames done');

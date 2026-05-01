@@ -44,7 +44,7 @@ Four-panel layout: top AppBar + three-panel (react-resizable-panels), vertical 7
 - `Decklist` — `{ maindeck: Array<{card: Card, quantity: number}>, sideboard?: Array<{card: Card, quantity: number}> }`
 - `Track` — `{ id, layers: number, events: TrackEvent[] }` — owned by a Player
 - `TrackEvent` — `{ id, time, layer: number, type: EventType, resizable, duration?, meta? }` — no `color` field; color derived from `EventColorMap`
-- `EventType` — 8 values: `ADD_TO_HAND`, `REMOVE_FROM_HAND`, `LOSE_LIFE`, `GAIN_LIFE`, `REVEAL_FROM_HAND`, `STACK_TOP`, `SHUFFLE`, `DISPLAY_CARD`
+- `EventType` — 8 values: `ADD_TO_HAND`, `REMOVE_FROM_HAND`, `LOSE_LIFE`, `GAIN_LIFE`, `REVEAL_FROM_HAND`, `STACK_DECK`, `UNSTACK_DECK`, `DISPLAY_CARD`
 
 ### Event categories
 
@@ -56,10 +56,10 @@ Four-panel layout: top AppBar + three-panel (react-resizable-panels), vertical 7
 ### meta field by event type
 
 - `GAIN_LIFE` / `LOSE_LIFE` — `{ amount: number }`
-- `ADD_TO_HAND` / `STACK_TOP` — `{ cards: Card[] }` — free-text card autocomplete
+- `ADD_TO_HAND` / `STACK_DECK` — `{ cards: Card[] }` — free-text card autocomplete
 - `REMOVE_FROM_HAND` / `REVEAL_FROM_HAND` — `{ cards: Card[] }` — picked from derived hand state at event time
 - `DISPLAY_CARD` — `{ cards: Card[] }` (single card, free-text autocomplete)
-- `SHUFFLE` — no meta
+- `UNSTACK_DECK` — no meta
 
 ## Player & Track Model
 
@@ -94,13 +94,13 @@ Each `Player` owns exactly one `Track`. A track has `layers: number` rows (defau
 - `getActiveWindowedEvents(events, time)` — events within their duration window (for canvas banners).
 - `getNextChangeTime(tracks, time)` — next timestamp where derived state changes; used by VideoPreview's cache.
 
-**stateHandlers.ts** — per-type mutations: `applyGainLife`, `applyLoseLife`, `applyAddToHand`, `applyRemoveFromHand`. `REVEAL_FROM_HAND`, `STACK_TOP`, `SHUFFLE` handlers are stubs.
+**stateHandlers.ts** — per-type mutations: `applyGainLife`, `applyLoseLife`, `applyAddToHand`, `applyRemoveFromHand`. `REVEAL_FROM_HAND`, `STACK_DECK`, `UNSTACK_DECK` handlers are stubs.
 
 ## Inspector (`src/components/Inspector/`)
 
 Per-type field components dispatched by `EventFields.tsx`:
 - `LifeFields` — plain number input for GAIN_LIFE / LOSE_LIFE.
-- `CardFields` — Scryfall autocomplete (`useCardSearch`) for ADD_TO_HAND, STACK_TOP, DISPLAY_CARD. Searches player deck/hand first, falls back to Scryfall API.
+- `CardFields` — Scryfall autocomplete (`useCardSearch`) for ADD_TO_HAND, STACK_DECK, DISPLAY_CARD. Searches player deck/hand first, falls back to Scryfall API.
 - `HandPickerFields` — for REMOVE_FROM_HAND and REVEAL_FROM_HAND. Derives the player's hand at `event.time` (excluding the event itself), presents checkboxes. Supports multi-copy cards with ±buttons.
 
 Changes call `handleUpdateMeta(playerId, eventId, meta)` from `usePlayerTracks`.
@@ -183,7 +183,7 @@ shadcn/ui + Radix UI + Tailwind CSS v4. Components live in `src/components/ui/`.
 - ✅ Project export/import — `.spellsplice` ZIP via JSZip
 - ✅ Video export — in-browser via WebCodecs + WebGL compositor (Chrome/Edge only)
 - ✅ Inspector: player name + deck name editing
-- ⬜ Complete state handlers for REVEAL_FROM_HAND, STACK_TOP, SHUFFLE (currently stubs)
+- ⬜ Complete state handlers for REVEAL_FROM_HAND, STACK_DECK, UNSTACK_DECK (currently stubs)
 
 **v2 targets**:
 - Add / remove players from within the app

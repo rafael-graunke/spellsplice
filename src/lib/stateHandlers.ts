@@ -67,10 +67,10 @@ export function applyRevealFromHand(
 }
 
 
-export function applyStackTop(state: Player, _trackEvent: TrackEvent): Player {
+export function applyStackDeck(state: Player, _trackEvent: TrackEvent): Player {
     return state;
 }
 
-export function applyShuffle(state: Player, _trackEvent: TrackEvent): Player {
+export function applyUnstackDeck(state: Player, _trackEvent: TrackEvent): Player {
     return state;
 }

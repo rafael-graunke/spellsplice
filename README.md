@@ -29,7 +29,7 @@ Load a video file, then use the timeline editor to mark in-game events — life 
 
 - **Video playback** with frame-accurate canvas rendering
 - **Interactive timeline** with zoom, scrubbing, and a draggable playhead
-- **Basic event types**: Lose Life, Gain Life, Add to Hand, Remove from Hand, Reveal from Hand, Stack Top, Shuffle, Display Card
+- **Basic event types**: Lose Life, Gain Life, Add to Hand, Remove from Hand, Reveal from Hand, Stack Deck, Unstack Deck, Display Card
 - **Drag-and-drop events** — reposition or move events between player tracks
 - **Resizable duration events** — some events (like Display Card) span a time range and show as an overlay banner while active
 - **Up to 4 players**, each with their own track
@@ -106,8 +106,8 @@ Everything needed to produce a complete, finished video.
   - [x] Lose Life
   - [x] Display Card
   - [x] Reveal from Hand
-  - [ ] Stack Top
-  - [ ] Shuffle
+  - [ ] Stack Deck
+  - [ ] Unstack Deck
 
 
 ### v2 - Streaming & Creator Tools `[future]`
@@ -117,7 +117,7 @@ Live streaming support and full creative control over the overlay.
 - [ ] **Non-linear video editing** - Sources panel holds imported video files; drag clips onto a dedicated video track on the timeline just like events; cuts and trims work without affecting overlay event timing since everything lives in output-timeline time
 - [ ] **Overlay UI editor** - drag, resize, and style every overlay element; choose fonts, colors, backgrounds, and which stats to show per player
 - [ ] **Layout export & sharing** - export your overlay layout to a file and share it with others
-- [ ] **Built-in macro library** - predefined event sequences for common spells (e.g. Brainstorm: +3 to hand, −2 from hand, stack top ×2)
+- [ ] **Built-in macro library** - predefined event sequences for common spells (e.g. Brainstorm: +3 to hand, −2 from hand, stack deck ×2)
 - [ ] **User-defined macros** - create, name, and reuse custom event sequences without waiting for app-side support
 - [ ] **Add / remove players** - manage the player roster from within the app
 - [ ] **Live overlay mode** - manage an event stack in the controller, overlay renders chroma-keyed and syncs via BroadcastChannel; opens as a popup window for clean OBS Window Capture

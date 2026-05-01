@@ -8,8 +8,8 @@ import {
     Eye,
     Heal,
     Reveal,
-    Shuffle,
-    StackTop,
+    UnstackDeck,
+    StackDeck,
 } from '@/assets/icons';
 import { EventColorMap } from '../types/event';
 import type { EventType } from '../types/event';
@@ -22,8 +22,8 @@ export const iconMap: Record<EventType, SvgIcon> = {
     LOSE_LIFE: Damage,
     GAIN_LIFE: Heal,
     REVEAL_FROM_HAND: Eye,
-    STACK_TOP: StackTop,
-    SHUFFLE: Shuffle,
+    STACK_DECK: StackDeck,
+    UNSTACK_DECK: UnstackDeck,
     DISPLAY_CARD: Reveal,
 };
 

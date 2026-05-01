@@ -17,7 +17,7 @@ export function EventFields({ event, onUpdate, player }: EventFieldsProps) {
             return <LifeFields event={event} onUpdate={onUpdate} />;
 
         case 'ADD_TO_HAND':
-        case 'STACK_TOP':
+        case 'STACK_DECK':
             return <CardFields event={event} multi={true} onUpdate={onUpdate} player={player} />;
             
         case 'REVEAL_FROM_HAND':
@@ -27,7 +27,7 @@ export function EventFields({ event, onUpdate, player }: EventFieldsProps) {
         case 'DISPLAY_CARD':
             return <CardFields event={event} multi={false} onUpdate={onUpdate} player={player} />;
 
-        case 'SHUFFLE':
+        case 'UNSTACK_DECK':
             return null;
     }
 }

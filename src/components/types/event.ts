@@ -11,8 +11,8 @@ export const EventType = {
     LoseLife: 'LOSE_LIFE',
     GainLife: 'GAIN_LIFE',
     RevealFromHand: 'REVEAL_FROM_HAND',
-    StackTop: 'STACK_TOP',
-    Shuffle: 'SHUFFLE',
+    StackDeck: 'STACK_DECK',
+    UnstackDeck: 'UNSTACK_DECK',
     DisplayCard: 'DISPLAY_CARD',
 } as const;
 
@@ -56,13 +56,13 @@ export const EventColorMap: Record<EventType, EventColor> = {
         fill: 'fill-slate-500',
         stroke: 'stroke-slate-500',
     },
-    STACK_TOP: {
+    STACK_DECK: {
         text: 'text-slate-500',
         bg: 'bg-slate-500',
         fill: 'fill-slate-500',
         stroke: 'stroke-slate-500',
     },
-    SHUFFLE: {
+    UNSTACK_DECK: {
         text: 'text-slate-500',
         bg: 'bg-slate-500',
         fill: 'fill-slate-500',

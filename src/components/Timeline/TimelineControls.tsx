@@ -142,22 +142,22 @@ function CreateControls({ setIsPlaying, onCreateEvent }: CreateControlsProps) {
                             <CommandItem
                                 onSelect={() =>
                                     handleSelect({
-                                        type: EventType.StackTop,
+                                        type: EventType.StackDeck,
                                         duration: 1,
                                     })
                                 }
                             >
-                                Stack Top
+                                Stack Deck
                             </CommandItem>
                             <CommandItem
                                 onSelect={() =>
                                     handleSelect({
-                                        type: EventType.Shuffle,
+                                        type: EventType.UnstackDeck,
                                         duration: 1,
                                     })
                                 }
                             >
-                                Shuffle
+                                Unstack Deck
                             </CommandItem>
                             <CommandItem
                                 onSelect={() =>

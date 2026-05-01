@@ -6,8 +6,8 @@ import {
     applyAddToHand,
     applyRemoveFromHand,
     applyRevealFromHand,
-    applyStackTop,
-    applyShuffle,
+    applyStackDeck,
+    applyUnstackDeck,
 } from './stateHandlers';
 
 export function derivePlayerState(
@@ -63,10 +63,10 @@ function applyEvent(state: Player, event: TrackEvent): Player {
             return applyRemoveFromHand(state, event);
         case 'REVEAL_FROM_HAND':
             return applyRevealFromHand(state, event);
-        case 'STACK_TOP':
-            return applyStackTop(state, event);
-        case 'SHUFFLE':
-            return applyShuffle(state, event);
+        case 'STACK_DECK':
+            return applyStackDeck(state, event);
+        case 'UNSTACK_DECK':
+            return applyUnstackDeck(state, event);
         default:
             return state;
     }

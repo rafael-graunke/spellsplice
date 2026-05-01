@@ -2,12 +2,12 @@ export type ContainerFormat = 'mp4' | 'webm';
 
 export async function pickCodec(fps: number): Promise<{ codec: string; format: ContainerFormat }> {
     for (const [codec, format] of [
-        ['avc1.42001f', 'mp4'],
+        ['avc1.64002a', 'mp4'],
         ['vp09.00.10.08', 'webm'],
     ] as const) {
         const { supported } = await VideoEncoder.isConfigSupported({
             codec, width: 1920, height: 1080, framerate: fps,
-            bitrateMode: 'variable', bitrate: 2_000_000,
+            bitrate: 20_000_000,
         });
         if (supported) return { codec, format };
     }

@@ -18,7 +18,7 @@ export class Encoder {
             bitrate: 20_000_000,
             latencyMode: 'realtime',
         };
-        if (codec.startsWith('avc')) config.avc = { format: 'annexb' };
+        if (codec.startsWith('avc')) config.avc = { format: 'avc' };
         this.enc.configure(config);
     }
 

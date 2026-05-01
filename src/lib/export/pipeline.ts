@@ -1,3 +1,7 @@
+const debug = (msg: string) => {
+    if ((window as unknown as Record<string, unknown>).__exportDebug) console.log('[export]', msg);
+};
+
 import type { VideoState } from '@/components/types/video';
 import type { Player } from '@/components/types/player';
 import { getNextChangeTime } from '@/lib/deriveState';
@@ -137,7 +141,7 @@ export async function exportVideo(
 
                     compositor.uploadVideoFrame(frame);
                     const composed = compositor.compose(timestampUs, Math.round(1e6 / fps));
-                    encoder.encode(composed, frameIdx % (Math.round(fps) * 2) === 0);
+                    encoder.encode(composed, frameIdx % (Math.round(fps) * 10) === 0);
                     composed.close();
 
                     muxer.feedAudioUpTo(audioChunks, timestampUs);
@@ -165,17 +169,23 @@ export async function exportVideo(
             await drainFrames();
         }
 
-        await decoder.flush();
+        debug(`loop done — frameIdx=${frameIdx} totalFrames=${totalFrames}`);
+        decoder.reset();
         if (decoderError) throw decoderError;
         await drainFrames();
+        debug('drainFrames done');
 
         muxer.feedAudioUpTo(audioChunks, Number.MAX_SAFE_INTEGER);
+        debug('calling encoder.flush');
         await encoder.flush();
+        debug('encoder.flush done');
         if (encoder.error) throw encoder.error;
         encoder.close();
         decoder.close();
         muxer.finalize();
+        debug('muxer finalized — closing stream');
         await writableStream.close();
+        debug('done');
     } finally {
         for (const f of pendingFrames) f.close();
         pendingFrames.length = 0;

@@ -1,3 +1,19 @@
+# [0.7.0-rc.2](https://github.com/rafael-graunke/spellsplice/compare/v0.7.0-rc.1...v0.7.0-rc.2) (2026-05-03)
+
+
+### Bug Fixes
+
+* **assets:** move static SVGs into public/assets/ ([3635d32](https://github.com/rafael-graunke/spellsplice/commit/3635d3231109c0430fac2736ee81d7eed1b21230))
+* **export:** replace decoder.flush() with reset() to fix Windows hang ([2b19e62](https://github.com/rafael-graunke/spellsplice/commit/2b19e62be0f3510c73d98aaf2191862c3b81e124))
+* **export:** use AVCC format for AVC encoder output ([f86a26f](https://github.com/rafael-graunke/spellsplice/commit/f86a26f373788ff0f146faae6c948cf2c40911fb))
+* **export:** use H.264 High L4.2 for codec detection ([c751ed4](https://github.com/rafael-graunke/spellsplice/commit/c751ed4ddc0c552595667083ec3eaa5cf18ec490))
+* **export:** use realtime latency mode to prevent encoder stall ([bb3d529](https://github.com/rafael-graunke/spellsplice/commit/bb3d52988da706ea0f5cee102a6a7cd8fc94f2fd))
+
+
+### Performance Improvements
+
+* **export:** raise bitrate to 20 Mbps, keyframe interval to 10s ([ddbd3e4](https://github.com/rafael-graunke/spellsplice/commit/ddbd3e43ba018471fe5de25ebd34dc0573ad4f13))
+
 # [0.7.0-rc.1](https://github.com/rafael-graunke/spellsplice/compare/v0.6.0...v0.7.0-rc.1) (2026-05-01)
 
 

@@ -13,6 +13,7 @@ export interface Player {
     lifeTotal: number;
     handSize: number;
     cards: Card[];
+    topStack: Card[];
     track: Track;
     deckName?: string;
     decklist?: Decklist;

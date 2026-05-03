@@ -25,11 +25,21 @@ export function applyRemoveFromHand(
     trackEvent: TrackEvent
 ): Player {
     if (!trackEvent.meta?.cards) return state;
-    const namesToRemove = new Set(trackEvent.meta.cards.map((c) => c.name));
+    const discardCounts = new Map<string, number>();
+    for (const c of trackEvent.meta.cards) {
+        discardCounts.set(c.name, (discardCounts.get(c.name) ?? 0) + 1);
+    }
     return {
         ...state,
         handSize: Math.max(0, state.handSize - trackEvent.meta.cards.length),
-        cards: state.cards.filter((card) => !namesToRemove.has(card.name)),
+        cards: state.cards.filter((card) => {
+            const remaining = discardCounts.get(card.name) ?? 0;
+            if (remaining > 0) {
+                discardCounts.set(card.name, remaining - 1);
+                return false;
+            }
+            return true;
+        }),
     };
 }
 
@@ -57,10 +67,10 @@ export function applyRevealFromHand(
 }
 
 
-export function applyStackTop(state: Player, _trackEvent: TrackEvent): Player {
+export function applyStackDeck(state: Player, _trackEvent: TrackEvent): Player {
     return state;
 }
 
-export function applyShuffle(state: Player, _trackEvent: TrackEvent): Player {
+export function applyUnstackDeck(state: Player, _trackEvent: TrackEvent): Player {
     return state;
 }

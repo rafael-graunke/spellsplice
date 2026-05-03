@@ -15,6 +15,7 @@ import type { VideoState } from './components/types/video';
 import { Inspector } from './components/Inspector';
 import { usePlayerTracks } from './components/Timeline/hooks/usePlayerTracks';
 import AppBar from './components/AppBar';
+import { ExportDialog } from './components/ExportDialog';
 
 type PlayerInit = Omit<Player, 'track'>;
 
@@ -48,8 +49,12 @@ function App() {
     );
     const [fileToLoad, setFileToLoad] = useState<File | null>(null);
     const [isDirty, setIsDirty] = useState(false);
+    const [exportDialogOpen, setExportDialogOpen] = useState(false);
     const isFirstPlayersRender = useRef(true);
     const skipDirtyRef = useRef(false);
+    const currentTimeRef = useRef(0);
+
+    useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
     const [savedPlayersInit] = useState(loadSavedPlayers);
 
     const {
@@ -60,6 +65,7 @@ function App() {
         handleMoveEvent,
         handleMoveMultipleEvents,
         handleUpdateMeta,
+        handleUpdatePlayer,
         resetPlayers,
     } = usePlayerTracks(initialPlayers, currentTime, setSelectedEvents, savedPlayersInit);
 
@@ -121,6 +127,13 @@ function App() {
                     onNew={handleNew}
                     onExport={handleExport}
                     onImport={handleImport}
+                    onExportVideo={() => setExportDialogOpen(true)}
+                />
+                <ExportDialog
+                    open={exportDialogOpen}
+                    onClose={() => setExportDialogOpen(false)}
+                    video={video}
+                    players={players}
                 />
                 <ResizablePanelGroup orientation="vertical" className="flex-1">
                     <ResizablePanel minSize={100} defaultSize="70%">
@@ -133,6 +146,7 @@ function App() {
                                 <VideoPreview
                                     isPlaying={isPlaying}
                                     currentTime={currentTime}
+                                    currentTimeRef={currentTimeRef}
                                     video={video}
                                     setVideo={setVideo}
                                     setCurrentTime={setCurrentTime}
@@ -143,7 +157,7 @@ function App() {
                             </ResizablePanel>
                             <ResizableHandle />
                             <ResizablePanel minSize={100} defaultSize="25%">
-                                <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} />
+                                <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} player={selectedPlayer} />
                             </ResizablePanel>
                         </ResizablePanelGroup>
                     </ResizablePanel>
@@ -165,6 +179,8 @@ function App() {
                             handleUpdateEvent={handleUpdateEvent}
                             handleMoveEvent={handleMoveEvent}
                             handleMoveMultipleEvents={handleMoveMultipleEvents}
+                            handleUpdatePlayer={handleUpdatePlayer}
+                            currentTimeRef={currentTimeRef}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>

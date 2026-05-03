@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { XIcon } from 'lucide-react';
+import { Trash2Icon } from 'lucide-react';
 import { useCardSearch } from '@/hooks/useCardSearch';
 import { useCardPrintings } from '@/hooks/useCardPrintings';
 import {
@@ -19,11 +19,14 @@ import { Button } from '@/components/ui/button';
 import { cardDataCache } from '@/lib/cardCache';
 import type { TrackEvent, EventMeta } from '../types/event';
 import type { Card } from '../types/card';
+import type { Player } from '../types/player';
 
 interface CardFieldsProps {
     event: TrackEvent;
     multi: boolean;
     onUpdate: (meta: EventMeta) => void;
+    player?: Player | null;
+    showEdition?: boolean;
 }
 
 function EditionPicker({ card, onSelect }: { card: Card; onSelect: (edition: string) => void }) {
@@ -63,10 +66,10 @@ function EditionPicker({ card, onSelect }: { card: Card; onSelect: (edition: str
     );
 }
 
-export function CardFields({ event, multi, onUpdate }: CardFieldsProps) {
+export function CardFields({ event, multi, onUpdate, player, showEdition = true }: CardFieldsProps) {
     const [query, setQuery] = useState('');
     const [comboKey, setComboKey] = useState(0);
-    const { data: suggestions, isFetching } = useCardSearch(query);
+    const { data: suggestions, isFetching } = useCardSearch(query, player);
 
     const selected: Card[] = event.meta?.cards ?? [];
 
@@ -82,18 +85,14 @@ export function CardFields({ event, multi, onUpdate }: CardFieldsProps) {
             ? Object.keys(cachedSets).find((k) => k !== '*')
             : undefined;
         const newCard: Card = cachedEdition ? { name, edition: cachedEdition } : { name };
-        const next = multi
-            ? selected.some((c) => c.name === name)
-                ? selected
-                : [...selected, newCard]
-            : [newCard];
+        const next = multi ? [...selected, newCard] : [newCard];
         onUpdate({ cards: next });
         setQuery('');
         setComboKey((k) => k + 1);
     };
 
-    const removeCard = (name: string) => {
-        onUpdate({ cards: selected.filter((c) => c.name !== name) });
+    const removeCard = (index: number) => {
+        onUpdate({ cards: selected.filter((_, i) => i !== index) });
     };
 
     const updateEdition = (index: number, edition: string) => {
@@ -145,21 +144,23 @@ export function CardFields({ event, multi, onUpdate }: CardFieldsProps) {
             {selected.length > 0 && (
                 <div className="flex flex-col gap-1">
                     {selected.map((card, i) => (
-                        <Item key={card.name} size="xs" variant="outline">
+                        <Item key={i} size="xs" variant="outline">
                             <ItemContent>
                                 <ItemTitle className="text-xs">{card.name}</ItemTitle>
                             </ItemContent>
                             <ItemActions>
-                                <EditionPicker
-                                    card={card}
-                                    onSelect={(edition) => updateEdition(i, edition)}
-                                />
+                                {showEdition && (
+                                    <EditionPicker
+                                        card={card}
+                                        onSelect={(edition) => updateEdition(i, edition)}
+                                    />
+                                )}
                                 <Button
                                     variant="ghost"
-                                    size="icon-xs"
-                                    onClick={() => removeCard(card.name)}
+                                    size="icon-sm"
+                                    onClick={() => removeCard(i)}
                                 >
-                                    <XIcon />
+                                    <Trash2Icon />
                                 </Button>
                             </ItemActions>
                         </Item>

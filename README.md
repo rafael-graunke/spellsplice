@@ -29,7 +29,7 @@ Load a video file, then use the timeline editor to mark in-game events — life 
 
 - **Video playback** with frame-accurate canvas rendering
 - **Interactive timeline** with zoom, scrubbing, and a draggable playhead
-- **Basic event types**: Lose Life, Gain Life, Add to Hand, Remove from Hand, Reveal from Hand, Stack Top, Shuffle, Display Card
+- **Basic event types**: Lose Life, Gain Life, Add to Hand, Remove from Hand, Reveal from Hand, Stack Deck, Unstack Deck, Display Card
 - **Drag-and-drop events** — reposition or move events between player tracks
 - **Resizable duration events** — some events (like Display Card) span a time range and show as an overlay banner while active
 - **Up to 4 players**, each with their own track
@@ -93,12 +93,12 @@ Everything needed to produce a complete, finished video.
 - [x] Two players, each with their own multi-layer track
 - [x] Live overlay: player name, life total, hand size
 - [x] Inspector panel: edit event properties (cards via Scryfall autocomplete, life amounts)
-- [ ] **Decklist import** - paste a decklist in MTGO format per player; card data and images are bulk-fetched from Scryfall once and cached locally for the session
-  - [ ] Autocomplete in event fields draws from the cached deck first, falling back to global Scryfall search for off-deck cards
+- [x] **Decklist import** - paste a decklist in MTGO format per player; card data and images are bulk-fetched from Scryfall once and cached locally for the session
+  - [x] Autocomplete in event fields draws from the cached deck first, falling back to global Scryfall search for off-deck cards
 - [x] **Cards-in-hand display** - always-visible stacked card title crops per player (Card Kingdom / Mengu's Workshop style), rendered from the local image cache
 - [x] **Project export/import** - save and load the full timeline (players, events, deck data) to a JSON file
-- [ ] **Video export** - render the overlay baked into the video, or export overlay-only, directly in the browser via WebAssembly FFmpeg
-- [ ] **Player name & deck name editing** in Inspector - changes reflect on the overlay in real time
+- [x] **Video export** - render the overlay baked into the video, or export overlay-only, directly in the browser
+- [x] **Player name & deck name editing** in Inspector - changes reflect on the overlay in real time
 - [ ] Complete all event types and state handlers:
   - [x] Add to Hand
   - [x] Remove from Hand
@@ -106,17 +106,27 @@ Everything needed to produce a complete, finished video.
   - [x] Lose Life
   - [x] Display Card
   - [x] Reveal from Hand
-  - [ ] Stack Top
-  - [ ] Shuffle
+  - [ ] Stack Deck
+  - [ ] Unstack Deck
 
 
 ### v2 - Streaming & Creator Tools `[future]`
 
 Live streaming support and full creative control over the overlay.
 
-- [ ] **Add / remove players** - manage the player roster from within the app
-- [ ] **Live overlay mode** - manage an event stack in the controller, overlay renders chroma-keyed and syncs via BroadcastChannel; opens as a popup window for clean OBS Window Capture
+- [ ] **Non-linear video editing** - Sources panel holds imported video files; drag clips onto a dedicated video track on the timeline just like events; cuts and trims work without affecting overlay event timing since everything lives in output-timeline time
 - [ ] **Overlay UI editor** - drag, resize, and style every overlay element; choose fonts, colors, backgrounds, and which stats to show per player
 - [ ] **Layout export & sharing** - export your overlay layout to a file and share it with others
-- [ ] **Built-in macro library** - predefined event sequences for common spells (e.g. Brainstorm: +3 to hand, −2 from hand, stack top ×2)
+- [ ] **Built-in macro library** - predefined event sequences for common spells (e.g. Brainstorm: +3 to hand, −2 from hand, stack deck ×2)
 - [ ] **User-defined macros** - create, name, and reuse custom event sequences without waiting for app-side support
+- [ ] **Add / remove players** - manage the player roster from within the app
+- [ ] **Live overlay mode** - manage an event stack in the controller, overlay renders chroma-keyed and syncs via BroadcastChannel; opens as a popup window for clean OBS Window Capture
+
+
+### v3 - Desktop App `[future]`
+
+Native desktop experience with offline-first card data and faster video export, built on [Tauri](https://tauri.app/) (Rust backend + system webview).
+
+- [ ] **Tauri wrapper** - same React UI, distributed as a native desktop app (~5–10 MB runtime vs ~150 MB for Electron)
+- [ ] **FFmpeg video export** - replace WebCodecs pipeline with FFmpeg via Rust backend; order-of-magnitude faster, works on all platforms
+- [ ] **Scryfall bulk data** - download the full card database (~2.3 GB) on first run; SQLite + FTS5 index (via `rusqlite`) for sub-millisecond lookups with no API rate limits

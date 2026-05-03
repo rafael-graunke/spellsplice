@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { Player } from '../../types/player';
+import type { Player, Decklist } from '../../types/player';
 import type { TrackEvent, EventMeta } from '../../types/event';
 
 type PlayerInit = Omit<Player, 'track'>;
@@ -164,6 +164,15 @@ export function usePlayerTracks(
         );
     };
 
+    const handleUpdatePlayer = (
+        playerId: string,
+        updates: { name?: string; deckName?: string; decklist?: Decklist }
+    ) => {
+        setPlayers((prev) =>
+            prev.map((p) => (p.id !== playerId ? p : { ...p, ...updates }))
+        );
+    };
+
     const resetPlayers = (incoming: Player[]) => {
         setPlayers(incoming);
         const maxId = Math.max(
@@ -181,6 +190,7 @@ export function usePlayerTracks(
         handleMoveEvent,
         handleMoveMultipleEvents,
         handleUpdateMeta,
+        handleUpdatePlayer,
         resetPlayers,
     };
 }

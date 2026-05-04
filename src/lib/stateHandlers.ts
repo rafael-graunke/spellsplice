@@ -16,7 +16,7 @@ export function applyAddToHand(state: Player, trackEvent: TrackEvent): Player {
     return {
         ...state,
         handSize: state.handSize + trackEvent.meta.cards.length,
-        cards: [...state.cards, ...trackEvent.meta.cards],
+        cards: [...state.cards, ...[...trackEvent.meta.cards].reverse()],
     };
 }
 

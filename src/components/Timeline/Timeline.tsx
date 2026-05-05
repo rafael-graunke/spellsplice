@@ -28,7 +28,7 @@ interface TimelineProps {
     selectedEvents: TrackEvent[];
     setSelectedEvents: React.Dispatch<React.SetStateAction<TrackEvent[]>>;
     players: Player[];
-    selectedPlayer: Player | null;
+    selectedPlayer: Player;
     setSelectedPlayerId: (id: string) => void;
     handleCreateEvent: (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>, playerId?: string) => void;
     handleDeleteEvent: (playerId: string, eventId: number) => void;
@@ -173,6 +173,7 @@ export function Timeline({
                 isPlaying={isPlaying}
                 setCurrentTime={setCurrentTime}
                 setIsPlaying={setIsPlaying}
+                selectedPlayer={selectedPlayer}
                 onCreateEvent={(partial) =>
                     handleCreateEvent(partial, effectivePlayer?.id)
                 }

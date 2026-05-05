@@ -38,7 +38,7 @@ export function drawFrame({ canvas, videoEl, players, time, d20Img, eyeImg }: Dr
     const activeEvents = players.map((p) => getActiveWindowedEvents(p.track.events, time));
 
     renderPlayerState(ctx, playerStates, offsetX, offsetY, drawW, drawH, d20Img);
-    renderHandStack(ctx, playerStates, offsetX, offsetY, drawW, drawH, eyeImg);
+    renderHandStack(ctx, players, time, offsetX, offsetY, drawW, drawH, eyeImg);
     renderDeckStack(ctx, playerStates, offsetX, offsetY, drawW, drawH);
 
     const cardH = drawH * 0.5;

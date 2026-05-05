@@ -141,7 +141,7 @@ export class Compositor {
 
         const ctx2d = overlayCtx as unknown as CanvasRenderingContext2D;
         renderPlayerState(ctx2d, playerStates, offsetX, offsetY, drawW, drawH, d20Img);
-        renderHandStack(ctx2d, playerStates, offsetX, offsetY, drawW, drawH, eyeImg);
+        renderHandStack(ctx2d, players, time, offsetX, offsetY, drawW, drawH, eyeImg);
         renderDeckStack(ctx2d, playerStates, offsetX, offsetY, drawW, drawH);
 
         const cardH = drawH * 0.5;

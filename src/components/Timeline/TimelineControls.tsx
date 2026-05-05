@@ -13,6 +13,7 @@ import {
     CommandList,
 } from '../ui/command';
 import { EventType, type TrackEvent } from '../types/event';
+import type { Player } from '../types/player';
 
 interface ZoomControlsProps {
     zoom: number;
@@ -51,9 +52,10 @@ function ZoomControls({ zoom, onZoomChange }: ZoomControlsProps) {
 interface CreateControlsProps {
     setIsPlaying: (playing: React.SetStateAction<boolean>) => void;
     onCreateEvent: (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => void;
+    selectedPlayer: Player;
 }
 
-function CreateControls({ setIsPlaying, onCreateEvent }: CreateControlsProps) {
+function CreateControls({ setIsPlaying, onCreateEvent, selectedPlayer}: CreateControlsProps) {
     const [open, setOpen] = useState(false);
 
     useEffect(() => {
@@ -144,6 +146,9 @@ function CreateControls({ setIsPlaying, onCreateEvent }: CreateControlsProps) {
                                     handleSelect({
                                         type: EventType.StackDeck,
                                         duration: 1,
+                                        meta: {
+                                            cards: selectedPlayer.topStack,
+                                        }
                                     })
                                 }
                             >
@@ -237,6 +242,7 @@ function PlaybackControls({
 interface TimelineControlsProps
     extends ZoomControlsProps, PlaybackControlsProps {
     onCreateEvent: (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => void;
+    selectedPlayer: Player;
 }
 
 export function TimelineControls({
@@ -246,12 +252,14 @@ export function TimelineControls({
     onZoomChange: handleZoomChange,
     isPlaying,
     onCreateEvent,
+    selectedPlayer,
 }: TimelineControlsProps) {
     return (
         <div className="border-b timeline w-full flex flex-row justify-between gap-4 p-2 px-4">
             <div className="w-250 flex flex-row justify-start">
                 <CreateControls
                     setIsPlaying={setIsPlaying}
+                    selectedPlayer={selectedPlayer}
                     onCreateEvent={onCreateEvent}
                 />
             </div>

@@ -10,6 +10,7 @@ import type { Player } from './components/types/player';
 import type { TrackEvent, EventMeta } from './components/types/event';
 import { useState, useEffect, useRef } from 'react';
 import { exportProject, importProject } from '@/lib/projectExport';
+import { derivePlayerState } from '@/lib/deriveState';
 import VideoPreview from './components/VideoPreview';
 import type { VideoState } from './components/types/video';
 import { Inspector } from './components/Inspector';
@@ -22,8 +23,8 @@ type PlayerInit = Omit<Player, 'track'>;
 const AUTOSAVE_KEY = 'spellsplice-autosave';
 
 const initialPlayers: PlayerInit[] = [
-    { id: 'player1', name: 'Player 1', handSize: 0, lifeTotal: 20, cards: [] },
-    { id: 'player2', name: 'Player 2', handSize: 0, lifeTotal: 20, cards: [] },
+    { id: 'player1', name: 'Player 1', handSize: 0, lifeTotal: 20, cards: [], topStack: []},
+    { id: 'player2', name: 'Player 2', handSize: 0, lifeTotal: 20, cards: [], topStack: []},
 ];
 
 const makeFreshPlayers = (): Player[] =>
@@ -109,11 +110,12 @@ function App() {
         setIsDirty(false);
     };
 
-    const selectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? players[0] ?? null;
+    const rawSelectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? players[0];
+    const selectedPlayer = derivePlayerState(rawSelectedPlayer, rawSelectedPlayer.track.events, currentTime);
 
     const handleInspectorUpdate = (eventId: number, meta: EventMeta) => {
-        if (!selectedPlayer) return;
-        handleUpdateMeta(selectedPlayer.id, eventId, meta);
+        if (!rawSelectedPlayer) return;
+        handleUpdateMeta(rawSelectedPlayer.id, eventId, meta);
         setSelectedEvents((prev) =>
             prev.map((e) => (e.id === eventId ? { ...e, meta } : e))
         );
@@ -157,7 +159,7 @@ function App() {
                             </ResizablePanel>
                             <ResizableHandle />
                             <ResizablePanel minSize={100} defaultSize="25%">
-                                <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} player={selectedPlayer} />
+                                <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} player={rawSelectedPlayer} />
                             </ResizablePanel>
                         </ResizablePanelGroup>
                     </ResizablePanel>
@@ -172,7 +174,7 @@ function App() {
                             selectedEvents={selectedEvents}
                             setSelectedEvents={setSelectedEvents}
                             players={players}
-                            selectedPlayer={selectedPlayer}
+                            selectedPlayer={selectedPlayer ?? selectedPlayer}
                             setSelectedPlayerId={setSelectedPlayerId}
                             handleCreateEvent={handleCreateEvent}
                             handleDeleteEvent={handleDeleteEvent}

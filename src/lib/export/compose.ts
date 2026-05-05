@@ -2,6 +2,7 @@ import type { Player } from '@/components/types/player';
 import { derivePlayerState, getActiveWindowedEvents } from '@/lib/deriveState';
 import { renderPlayerState } from '@/renders/renderPlayerState';
 import { renderHandStack } from '@/renders/renderHandStack';
+import { renderDeckStack } from '@/renders/renderDeckStack';
 import { ensureImage } from '@/lib/cardCache';
 
 const VERT_SRC = `
@@ -141,6 +142,7 @@ export class Compositor {
         const ctx2d = overlayCtx as unknown as CanvasRenderingContext2D;
         renderPlayerState(ctx2d, playerStates, offsetX, offsetY, drawW, drawH, d20Img);
         renderHandStack(ctx2d, playerStates, offsetX, offsetY, drawW, drawH, eyeImg);
+        renderDeckStack(ctx2d, playerStates, offsetX, offsetY, drawW, drawH);
 
         const cardH = drawH * 0.5;
         const cardW = cardH * (223 / 310);

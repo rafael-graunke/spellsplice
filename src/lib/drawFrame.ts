@@ -2,6 +2,7 @@ import type { Player } from '@/components/types/player';
 import { derivePlayerState, getActiveWindowedEvents } from './deriveState';
 import { renderPlayerState } from '@/renders/renderPlayerState';
 import { renderHandStack } from '@/renders/renderHandStack';
+import { renderDeckStack } from '@/renders/renderDeckStack';
 import { ensureImage } from './cardCache';
 
 export interface DrawFrameOptions {
@@ -38,6 +39,7 @@ export function drawFrame({ canvas, videoEl, players, time, d20Img, eyeImg }: Dr
 
     renderPlayerState(ctx, playerStates, offsetX, offsetY, drawW, drawH, d20Img);
     renderHandStack(ctx, playerStates, offsetX, offsetY, drawW, drawH, eyeImg);
+    renderDeckStack(ctx, playerStates, offsetX, offsetY, drawW, drawH);
 
     const cardH = drawH * 0.5;
     const cardW = cardH * (223 / 310);

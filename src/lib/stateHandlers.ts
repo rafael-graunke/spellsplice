@@ -16,7 +16,7 @@ export function applyAddToHand(state: Player, trackEvent: TrackEvent): Player {
     return {
         ...state,
         handSize: state.handSize + trackEvent.meta.cards.length,
-        cards: [...state.cards, ...trackEvent.meta.cards],
+        cards: [...state.cards, ...[...trackEvent.meta.cards].reverse()],
     };
 }
 
@@ -67,10 +67,17 @@ export function applyRevealFromHand(
 }
 
 
-export function applyStackDeck(state: Player, _trackEvent: TrackEvent): Player {
-    return state;
+export function applyStackDeck(state: Player, trackEvent: TrackEvent): Player {
+    if (!trackEvent.meta?.cards) return state;
+    return {
+        ...state,
+        topStack: [...trackEvent.meta.cards],
+    };
 }
 
 export function applyUnstackDeck(state: Player, _trackEvent: TrackEvent): Player {
-    return state;
+    return {
+        ...state,
+        topStack: [],
+    };
 }

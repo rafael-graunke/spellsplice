@@ -1,3 +1,12 @@
+# [0.8.0](https://github.com/rafael-graunke/spellsplice/compare/v0.7.0...v0.8.0) (2026-05-05)
+
+
+### Features
+
+* **inspector:** add dnd-kit drag-to-reorder for card lists ([461ff16](https://github.com/rafael-graunke/spellsplice/commit/461ff16c537e4d3b540157c9ca875dd06106326d))
+* **renders:** add deck stack overlay and fix paused-frame image refresh ([2dbd2c1](https://github.com/rafael-graunke/spellsplice/commit/2dbd2c1a1add8b9f69ec1e2a8eb7b259c0db74ed))
+* **state:** implement STACK_DECK replace semantics with pre-population ([f3f121d](https://github.com/rafael-graunke/spellsplice/commit/f3f121db86db178fe19ebbdbd2750b4067656b33))
+
 # [0.8.0-rc.1](https://github.com/rafael-graunke/spellsplice/compare/v0.7.0...v0.8.0-rc.1) (2026-05-05)
 
 

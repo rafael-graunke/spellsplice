@@ -12,6 +12,7 @@ import type { VideoState } from './types/video';
 import type { Player } from './types/player';
 import { getNextChangeTime } from '@/lib/deriveState';
 import { Compositor } from '@/lib/export/compose';
+import { subscribeImageLoad } from '@/lib/cardCache';
 
 interface VideoPreviewProps {
     isPlaying: boolean;
@@ -45,6 +46,8 @@ function VideoPreview({
     const eyeRef = useRef<HTMLImageElement | null>(null);
     const compositorRef = useRef<Compositor | null>(null);
     const derivedCacheRef = useRef<{ validUntil: number } | null>(null);
+    const isPlayingRef = useRef(isPlaying);
+    const renderFrameRef = useRef<() => void>(() => {});
 
     useEffect(() => {
         const img = new Image();
@@ -89,6 +92,8 @@ function VideoPreview({
         };
     };
 
+    isPlayingRef.current = isPlaying;
+
     const renderFrame = () => {
         const compositor = compositorRef.current;
         if (!compositor || !video) return;
@@ -111,6 +116,17 @@ function VideoPreview({
         prevTimeRef.current = time;
         compositor.draw();
     };
+
+    renderFrameRef.current = renderFrame;
+
+    useEffect(() => {
+        return subscribeImageLoad(() => {
+            if (!isPlayingRef.current) {
+                derivedCacheRef.current = null;
+                renderFrameRef.current();
+            }
+        });
+    }, []);
 
     useEffect(() => {
         if (!canvasRef.current || !video) return;

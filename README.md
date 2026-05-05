@@ -99,15 +99,15 @@ Everything needed to produce a complete, finished video.
 - [x] **Project export/import** - save and load the full timeline (players, events, deck data) to a JSON file
 - [x] **Video export** - render the overlay baked into the video, or export overlay-only, directly in the browser
 - [x] **Player name & deck name editing** in Inspector - changes reflect on the overlay in real time
-- [ ] Complete all event types and state handlers:
+- [x] Complete all event types and state handlers:
   - [x] Add to Hand
   - [x] Remove from Hand
   - [x] Gain Life
   - [x] Lose Life
   - [x] Display Card
   - [x] Reveal from Hand
-  - [ ] Stack Deck
-  - [ ] Unstack Deck
+  - [x] Stack Deck
+  - [x] Unstack Deck
 
 
 ### v2 - Streaming & Creator Tools `[future]`
@@ -115,10 +115,11 @@ Everything needed to produce a complete, finished video.
 Live streaming support and full creative control over the overlay.
 
 - [ ] **Non-linear video editing** - Sources panel holds imported video files; drag clips onto a dedicated video track on the timeline just like events; cuts and trims work without affecting overlay event timing since everything lives in output-timeline time
+- [ ] **Annotation system** - generic titled card-list overlays replacing the hardcoded deck-stack; multiple simultaneous annotations per player (e.g. "Top of deck" + "Pithing Needle naming"); project-level slot registry with system slots and user-defined slots; slot titles are editable and resolve at render time so macros can target slots by ID regardless of what the user named them
+- [ ] **Built-in macro library** - predefined event sequences for common spells (e.g. Brainstorm: +3 to hand, −2 from hand, annotate top-of-deck slot ×2)
+- [ ] **User-defined macros** - create, name, and reuse custom event sequences without waiting for app-side support
 - [ ] **Overlay UI editor** - drag, resize, and style every overlay element; choose fonts, colors, backgrounds, and which stats to show per player
 - [ ] **Layout export & sharing** - export your overlay layout to a file and share it with others
-- [ ] **Built-in macro library** - predefined event sequences for common spells (e.g. Brainstorm: +3 to hand, −2 from hand, stack deck ×2)
-- [ ] **User-defined macros** - create, name, and reuse custom event sequences without waiting for app-side support
 - [ ] **Add / remove players** - manage the player roster from within the app
 - [ ] **Live overlay mode** - manage an event stack in the controller, overlay renders chroma-keyed and syncs via BroadcastChannel; opens as a popup window for clean OBS Window Capture
 

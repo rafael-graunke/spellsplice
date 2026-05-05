@@ -11,6 +11,12 @@ const cardImageCache: Record<
 > = {};
 const inFlight = new Set<string>();
 
+const imageLoadListeners = new Set<() => void>();
+export function subscribeImageLoad(cb: () => void): () => void {
+    imageLoadListeners.add(cb);
+    return () => imageLoadListeners.delete(cb);
+}
+
 function loadImagesForSet(name: string, setCode: string, uris: Record<string, string>): void {
     if (!cardImageCache[name]) cardImageCache[name] = {};
     if (!cardImageCache[name][setCode]) cardImageCache[name][setCode] = {};
@@ -21,6 +27,7 @@ function loadImagesForSet(name: string, setCode: string, uris: Record<string, st
         img.crossOrigin = 'anonymous';
         img.onload = () => {
             cardImageCache[name][setCode][key] = img;
+            imageLoadListeners.forEach((cb) => cb());
         };
         img.onerror = () => {
             cardImageCache[name][setCode][key] = 'error';

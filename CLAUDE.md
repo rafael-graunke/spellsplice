@@ -190,6 +190,7 @@ shadcn/ui + Radix UI + Tailwind CSS v4. Components live in `src/components/ui/`.
 - Live overlay mode — `/control` + `/overlay` routes; controller manages an event stack, overlay renders chroma-keyed canvas synced via BroadcastChannel; popup window for clean OBS Window Capture
 - Full overlay UI editor (drag/resize/style any element) + layout export & sharing
 - Built-in macro library (common spell sequences like Brainstorm) + user-defined macros
+- **Annotation system** — replaces `STACK_DECK`/`UNSTACK_DECK` with generic `ANNOTATE`/`CLEAR_ANNOTATION` events; multiple simultaneous annotations per player keyed by slot ID; project-level slot registry with system slots (top-of-deck, pithing-needle, disruptor-flute, meddling-mage) + user-defined slots; slot titles are user-editable and resolve at render time; macros target slot IDs directly; see `docs/annotation-system.md`
 - **Non-linear video editing** — Sources panel holds imported video files; clips are dragged onto a dedicated video track on the timeline (same drag mechanics as events); playback engine seeks the hidden `<video>` to `clip.sourceOffset + (currentTime - clip.startTime)` per frame; overlay events stay in output-timeline time so no time remapping needed; seeking latency mitigated with a small pool of preloading video elements
 
 **v3 targets**:

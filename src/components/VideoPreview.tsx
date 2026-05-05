@@ -124,7 +124,7 @@ function VideoPreview({
                         return (
                             e.time <= time &&
                             time < end &&
-                            (time - e.time < ANIM_DURATION || end - time < ANIM_DURATION)
+                            (time - e.time < ANIM_DURATION || end - time <= ANIM_DURATION)
                         );
                     }
                     return false;

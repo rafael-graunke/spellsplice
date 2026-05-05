@@ -165,7 +165,7 @@ export class Compositor {
                 if (enterAge < CARD_ANIM_DURATION) {
                     const t = cardEaseOut(enterAge / CARD_ANIM_DURATION);
                     cardY = offscreenY + (finalCardY - offscreenY) * t;
-                } else if (exitAge < CARD_ANIM_DURATION) {
+                } else if (exitAge <= CARD_ANIM_DURATION) {
                     const t = cardEaseOut((CARD_ANIM_DURATION - exitAge) / CARD_ANIM_DURATION);
                     cardY = finalCardY + (offscreenY - finalCardY) * t;
                 }

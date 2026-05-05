@@ -110,18 +110,45 @@ function VideoPreview({
             compositor.updateOverlay(playersRef.current, time, d20Ref.current, eyeRef.current);
             const ANIM_DURATION = 0.35;
             const anyAnimating = playersRef.current.some((p) =>
-                p.track.events.some(
-                    (e) =>
-                        (e.type === 'ADD_TO_HAND' || e.type === 'REMOVE_FROM_HAND') &&
-                        e.time <= time &&
-                        e.time > time - ANIM_DURATION,
-                ),
+                p.track.events.some((e) => {
+                    if (
+                        e.type === 'ADD_TO_HAND' ||
+                        e.type === 'REMOVE_FROM_HAND' ||
+                        e.type === 'STACK_DECK' ||
+                        e.type === 'UNSTACK_DECK'
+                    ) {
+                        return e.time <= time && e.time > time - ANIM_DURATION;
+                    }
+                    if (e.type === 'DISPLAY_CARD' && e.duration != null) {
+                        const end = e.time + e.duration;
+                        return (
+                            e.time <= time &&
+                            time < end &&
+                            (time - e.time < ANIM_DURATION || end - time < ANIM_DURATION)
+                        );
+                    }
+                    return false;
+                }),
             );
-            derivedCacheRef.current = {
-                validUntil: anyAnimating
-                    ? time + 0.001
-                    : getNextChangeTime(playersRef.current.map((p) => p.track), time),
-            };
+            let validUntil = anyAnimating
+                ? time + 0.001
+                : getNextChangeTime(playersRef.current.map((p) => p.track), time);
+            // Expire cache before DISPLAY_CARD exit windows so the exit animation triggers.
+            // getNextChangeTime returns event end time, but we need overlay updates
+            // starting ANIM_DURATION before the end.
+            if (!anyAnimating) {
+                for (const p of playersRef.current) {
+                    for (const e of p.track.events) {
+                        if (e.type === 'DISPLAY_CARD' && e.duration != null) {
+                            const exitStart = e.time + e.duration - ANIM_DURATION;
+                            if (exitStart > time && exitStart < validUntil) {
+                                validUntil = exitStart;
+                            }
+                        }
+                    }
+                }
+            }
+            derivedCacheRef.current = { validUntil };
             // rVFC fires at video fps (24-30). On the rVFC path, supplement with rAF
             // so animations render at display rate (60fps).
             if (anyAnimating && isPlayingRef.current && 'requestVideoFrameCallback' in v) {

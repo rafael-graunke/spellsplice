@@ -142,10 +142,13 @@ export class Compositor {
         const ctx2d = overlayCtx as unknown as CanvasRenderingContext2D;
         renderPlayerState(ctx2d, playerStates, offsetX, offsetY, drawW, drawH, d20Img);
         renderHandStack(ctx2d, players, time, offsetX, offsetY, drawW, drawH, eyeImg);
-        renderDeckStack(ctx2d, playerStates, offsetX, offsetY, drawW, drawH);
+        renderDeckStack(ctx2d, players, time, offsetX, offsetY, drawW, drawH);
 
+        const CARD_ANIM_DURATION = 0.35;
+        const cardEaseOut = (t: number) => 1 - Math.pow(1 - t, 3);
         const cardH = drawH * 0.5;
         const cardW = cardH * (223 / 310);
+        const offscreenY = offsetY + drawH;
         let cardOffset = 0;
         activeEvents.forEach((events) => {
             events.forEach((event) => {
@@ -154,7 +157,19 @@ export class Compositor {
                 const cached = ensureImage(card.name, card.edition);
                 if (cached === 'loading' || cached === 'error') return;
                 const cardX = offsetX + drawW / 2 - cardW / 2 + cardOffset * (cardW + 8);
-                const cardY = offsetY + drawH / 2 - cardH / 2;
+                const finalCardY = offsetY + drawH / 2 - cardH / 2;
+
+                const enterAge = time - event.time;
+                const exitAge = event.duration != null ? event.time + event.duration - time : Infinity;
+                let cardY = finalCardY;
+                if (enterAge < CARD_ANIM_DURATION) {
+                    const t = cardEaseOut(enterAge / CARD_ANIM_DURATION);
+                    cardY = offscreenY + (finalCardY - offscreenY) * t;
+                } else if (exitAge < CARD_ANIM_DURATION) {
+                    const t = cardEaseOut((CARD_ANIM_DURATION - exitAge) / CARD_ANIM_DURATION);
+                    cardY = finalCardY + (offscreenY - finalCardY) * t;
+                }
+
                 overlayCtx.save();
                 overlayCtx.beginPath();
                 overlayCtx.roundRect(cardX, cardY, cardW, cardH, 20);

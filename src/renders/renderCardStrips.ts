@@ -14,25 +14,25 @@ export const EDITION_CROPS: Record<
     string,
     CropConfig
 > = {
-    lea: { sx: 15, sy: 19, sw: 450, sh: 35 },
-    leb: { sx: 15, sy: 19, sw: 450, sh: 35 },
-    '2ed': { sx: 15, sy: 19, sw: 450, sh: 35 },
-    '3ed': { sx: 15, sy: 19, sw: 450, sh: 35 },
+    lea: { sx: 15, sy: 19, sw: 450, sh: 35, scaleHeight: true },
+    leb: { sx: 15, sy: 19, sw: 450, sh: 35, scaleHeight: true },
+    '2ed': { sx: 15, sy: 19, sw: 450, sh: 35, scaleHeight: true },
+    '3ed': { sx: 15, sy: 19, sw: 450, sh: 35, scaleHeight: true },
 };
 
 export const FRAME_CROPS: Record<
     string,
     CropConfig
 > = {
-    '1993': { sx: 12, sy: 12, sw: 460, sh: 38, scaleHeight: true },
-    '1997': { sx: 12, sy: 12, sw: 460, sh: 38, scaleHeight: true },
+    '1993': { sx: 12, sy: 12, sw: 458, sh: 38, scaleHeight: true },
+    '1997': { sx: 12, sy: 12, sw: 458, sh: 38, scaleHeight: true },
     '2003': { sx: 14, sy: 19, sw: 450, sh: 49, curveClip: true },
     '2015': { sx: 14, sy: 19, sw: 450, sh: 49, curveClip: true },
 };
 
 export const DEFAULT_CROP: CropConfig = { sx: 14, sy: 19, sw: 450, sh: 49, curveClip: false };
 export const STRIP_W = 430;
-export const STRIP_H_SCALE = 1.2;
+export const STRIP_H_SCALE = 1.15;
 export const STRIP_CURVE_W = 13;
 
 export const ICON_GAP = 6;

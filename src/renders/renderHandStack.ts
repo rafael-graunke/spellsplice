@@ -15,7 +15,7 @@ export function renderHandStack(
     drawH: number,
     eyeIcon: HTMLImageElement | null,
 ) {
-    const bottomY = offsetY + drawH - 8;
+    const bottomY = offsetY + drawH - 20;
 
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';

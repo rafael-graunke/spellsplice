@@ -1,6 +1,6 @@
 import type { Player } from '@/components/types/player';
 import { deriveHandWithTimestamps } from '@/lib/deriveState';
-import { STRIP_W, STRIP_H, drawCardStrip } from './renderCardStrips';
+import { STRIP_W, getStripH, drawCardStrip } from './renderCardStrips';
 
 const ANIM_DURATION = 0.35;
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -15,7 +15,7 @@ export function renderHandStack(
     drawH: number,
     eyeIcon: HTMLImageElement | null,
 ) {
-    const bottomY = offsetY + drawH - 8;
+    const bottomY = offsetY + drawH - 20;
 
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
@@ -58,17 +58,22 @@ export function renderHandStack(
             }
 
             // Cards at j_new >= j_removed started one slot higher; ease down.
+            const removedH =
+                j_removed < preHand.length ? getStripH(preHand[j_removed].card) : 0;
             for (let j = 0; j < handTS.length; j++) {
                 if (j >= j_removed) {
-                    reflowDelta[j] = Math.max(reflowDelta[j], STRIP_H * (1 - t_r));
+                    reflowDelta[j] = Math.max(reflowDelta[j], removedH * (1 - t_r));
                 }
             }
         }
 
+        const handStackH = (upTo: number) =>
+            handTS.slice(0, upTo).reduce((s, h) => s + getStripH(h.card), 0);
+
         // Render current hand cards (entering or static).
         for (let j = 0; j < handTS.length; j++) {
             const { card, enteredAt } = handTS[j];
-            const finalY = bottomY - (j + 1) * STRIP_H - reflowDelta[j];
+            const finalY = bottomY - handStackH(j + 1) - reflowDelta[j];
             const age = time - enteredAt;
 
             let x = finalX;
@@ -91,12 +96,14 @@ export function renderHandStack(
             const counts = new Map<string, number>();
             for (const c of removedCards) counts.set(c.name, (counts.get(c.name) ?? 0) + 1);
 
+            const preStackH = (upTo: number) =>
+                preHand.slice(0, upTo).reduce((s, h) => s + getStripH(h.card), 0);
             for (let k = 0; k < preHand.length; k++) {
                 const name = preHand[k].card.name;
                 const rem = counts.get(name) ?? 0;
                 if (rem > 0) {
                     counts.set(name, rem - 1);
-                    const oldY = bottomY - (k + 1) * STRIP_H;
+                    const oldY = bottomY - preStackH(k + 1);
                     const x = finalX + (offscreenX - finalX) * t_r;
                     const alpha = 1 - t_r;
                     drawCardStrip(ctx, preHand[k].card, x, oldY, isLeft, eyeIcon, alpha);

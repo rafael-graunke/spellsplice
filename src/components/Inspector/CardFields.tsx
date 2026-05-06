@@ -126,7 +126,7 @@ function SortableCardItem({
                             onSelect={(edition) => onUpdateEdition(index, edition)}
                         />
                     )}
-                    <Button variant="ghost" size="icon-sm" onClick={() => onRemove(index)}>
+                    <Button className="cursor-pointer" variant="ghost" size="icon-sm" onClick={() => onRemove(index)}>
                         <Trash2Icon />
                     </Button>
                 </ItemActions>

@@ -137,6 +137,44 @@ export async function exportVideo(
                     if (targetSec >= overlayValidUntil) {
                         compositor.updateOverlay(players, targetSec, d20Img, eyeImg);
                         overlayValidUntil = getNextChangeTime(tracks, targetSec);
+
+                        const ANIM_DURATION = 0.35;
+                        const anyAnimating = players.some((p) =>
+                            p.track.events.some((e) => {
+                                if (
+                                    e.type === 'ADD_TO_HAND' ||
+                                    e.type === 'REMOVE_FROM_HAND' ||
+                                    e.type === 'STACK_DECK' ||
+                                    e.type === 'UNSTACK_DECK'
+                                ) {
+                                    return e.time <= targetSec && e.time > targetSec - ANIM_DURATION;
+                                }
+                                if (e.type === 'DISPLAY_CARD' && e.duration != null) {
+                                    const end = e.time + e.duration;
+                                    return (
+                                        e.time <= targetSec &&
+                                        targetSec < end &&
+                                        (targetSec - e.time < ANIM_DURATION ||
+                                            end - targetSec <= ANIM_DURATION)
+                                    );
+                                }
+                                return false;
+                            }),
+                        );
+                        if (anyAnimating) {
+                            overlayValidUntil = targetSec + 0.001;
+                        } else {
+                            for (const p of players) {
+                                for (const e of p.track.events) {
+                                    if (e.type === 'DISPLAY_CARD' && e.duration != null) {
+                                        const exitStart = e.time + e.duration - ANIM_DURATION;
+                                        if (exitStart > targetSec && exitStart < overlayValidUntil) {
+                                            overlayValidUntil = exitStart;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     compositor.uploadVideoFrame(frame);

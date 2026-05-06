@@ -123,8 +123,6 @@ function TimelineEvent({
                         }}
                         {...sharedMouseProps}
                     >
-                        {/* <Reveal className="absolute size-7 left-3 top-1/2 -translate-y-1/2 fill-white" /> */}
-
                         <Book className="absolute fill-white size-7 left-3 top-1/2 -translate-y-1/2" />
                         <div
                             className="absolute cursor-col-resize h-full w-2 bg-white/30 left-0"
@@ -150,6 +148,9 @@ function TimelineEvent({
                 )}
             </ContextMenuTrigger>
             <ContextMenuContent>
+                <ContextMenuItem onClick={() => {}}>
+                    Duplicate
+                </ContextMenuItem>
                 <ContextMenuItem variant="destructive" onClick={onDelete}>
                     Delete
                 </ContextMenuItem>

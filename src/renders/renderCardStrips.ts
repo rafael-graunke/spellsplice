@@ -35,11 +35,13 @@ export function drawCardStrip(
     x: number,
     y: number,
     isLeft: boolean,
-    eyeIcon: HTMLImageElement | null = null
+    eyeIcon: HTMLImageElement | null = null,
+    alpha = 1,
 ) {
     const { img, frame } = ensureBorderCrop(card.name, card.edition);
 
     ctx.save();
+    ctx.globalAlpha = alpha;
     ctx.beginPath();
     ctx.rect(x, y, STRIP_W, STRIP_H);
     ctx.clip();
@@ -66,7 +68,7 @@ export function drawCardStrip(
         const iconX = isLeft ? x + STRIP_W + ICON_GAP : x - ICON_GAP - ICON_SIZE;
         const iconY = y + Math.round((STRIP_H - ICON_SIZE) / 2);
         ctx.save();
-        ctx.globalAlpha = 0.6;
+        ctx.globalAlpha = 0.6 * alpha;
         ctx.drawImage(eyeIcon, iconX, iconY, ICON_SIZE, ICON_SIZE);
         ctx.restore();
     }

@@ -111,8 +111,6 @@ Changes call `handleUpdateMeta(playerId, eventId, meta)` from `usePlayerTracks`.
 
 **renderHandStack.ts** — canvas 2D rendering of hand-stack overlays. Renders a title-bar crop strip per card in hand, stacked vertically. Frame-aware cropping: `EDITION_CROPS` for specific set codes (alpha/beta/etc.), `FRAME_CROPS` for frame year. Eye icon (semi-transparent) marks revealed cards. Left player: left edge; right player: right edge.
 
-**drawFrame.ts** (`src/lib/drawFrame.ts`) — shared `drawFrame()` helper used by VideoPreview. Clears canvas, draws letterboxed video, calls `renderPlayerState` + `renderHandStack`, draws active DISPLAY_CARD banners centered on the frame.
-
 ## Card Cache (`src/lib/cardCache.ts`)
 
 Module-level in-memory cache for Scryfall card data and decoded `HTMLImageElement`s. Persists to `localStorage` under `spellsplice-card-cache`.

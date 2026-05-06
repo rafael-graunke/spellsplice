@@ -47,20 +47,48 @@ export function usePlayerTracks(
         setSelectedEvents([newEvent]);
     };
 
-    const handleDeleteEvent = (playerId: string, eventId: number) => {
+    const handleDeleteEvents = (playerId: string, eventIds: number[]) => {
+        const idSet = new Set(eventIds);
         setPlayers((prev) =>
             prev.map((p) =>
                 p.id === playerId
-                    ? {
-                          ...p,
-                          track: {
-                              ...p.track,
-                              events: p.track.events.filter((e) => e.id !== eventId),
-                          },
-                      }
+                    ? { ...p, track: { ...p.track, events: p.track.events.filter((e) => !idSet.has(e.id)) } }
                     : p
             )
         );
+    };
+
+    const handleDuplicateEvents = (playerId: string, events: TrackEvent[]) => {
+        const newEvents = events.map((e) => ({
+            ...e,
+            id: nextEventId.current++,
+            time: e.time + 0.5,
+        }));
+        setPlayers((prev) =>
+            prev.map((p) =>
+                p.id === playerId
+                    ? { ...p, track: { ...p.track, events: [...p.track.events, ...newEvents] } }
+                    : p
+            )
+        );
+        setSelectedEvents(newEvents);
+    };
+
+    const handlePasteEvents = (playerId: string, events: TrackEvent[], pasteTime: number) => {
+        const minTime = Math.min(...events.map((e) => e.time));
+        const newEvents = events.map((e) => ({
+            ...e,
+            id: nextEventId.current++,
+            time: pasteTime + (e.time - minTime),
+        }));
+        setPlayers((prev) =>
+            prev.map((p) =>
+                p.id === playerId
+                    ? { ...p, track: { ...p.track, events: [...p.track.events, ...newEvents] } }
+                    : p
+            )
+        );
+        setSelectedEvents(newEvents);
     };
 
     const handleUpdateEvent = (
@@ -86,38 +114,8 @@ export function usePlayerTracks(
         );
     };
 
-    const handleMoveEvent = (
-        playerId: string,
-        eventId: number,
-        newTime: number,
-        newLayer: number
-    ) => {
-        setPlayers((prev) =>
-            prev.map((p) => {
-                if (p.id !== playerId) return p;
-                const clampedLayer = Math.max(0, Math.min(p.track.layers - 1, newLayer));
-                return {
-                    ...p,
-                    track: {
-                        ...p.track,
-                        events: p.track.events.map((e) =>
-                            e.id === eventId
-                                ? { ...e, time: newTime, layer: clampedLayer }
-                                : e
-                        ),
-                    },
-                };
-            })
-        );
-    };
-
-    const handleMoveMultipleEvents = (
-        moves: Array<{
-            playerId: string;
-            eventId: number;
-            newTime: number;
-            newLayer: number;
-        }>
+    const handleMoveEvents = (
+        moves: Array<{ playerId: string; eventId: number; newTime: number; newLayer: number }>
     ) => {
         setPlayers((prev) => {
             let next = prev;
@@ -130,9 +128,7 @@ export function usePlayerTracks(
                         track: {
                             ...p.track,
                             events: p.track.events.map((e) =>
-                                e.id === eventId
-                                    ? { ...e, time: newTime, layer: clampedLayer }
-                                    : e
+                                e.id === eventId ? { ...e, time: newTime, layer: clampedLayer } : e
                             ),
                         },
                     };
@@ -185,10 +181,11 @@ export function usePlayerTracks(
     return {
         players,
         handleCreateEvent,
-        handleDeleteEvent,
+        handleDeleteEvents,
+        handleDuplicateEvents,
+        handlePasteEvents,
         handleUpdateEvent,
-        handleMoveEvent,
-        handleMoveMultipleEvents,
+        handleMoveEvents,
         handleUpdateMeta,
         handleUpdatePlayer,
         resetPlayers,

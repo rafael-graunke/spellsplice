@@ -35,6 +35,9 @@ export function useMarqueeDrag(
 
         const inner = innerRef.current;
         if (!inner) return;
+        // Portal clicks (e.g. context menu items) bubble through the React tree
+        // but their DOM nodes live in document.body, outside innerRef.
+        if (!inner.contains(e.target as Node)) return;
 
         const innerRect = inner.getBoundingClientRect();
         const x0 = e.clientX - innerRect.left;

@@ -4,6 +4,7 @@ import {
     ContextMenu,
     ContextMenuContent,
     ContextMenuItem,
+    ContextMenuShortcut,
     ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import TimelineEventIcon from './TimelineEventIcon';
@@ -19,9 +20,13 @@ interface TimelineEventProps {
     resizable?: boolean;
     isSelected?: boolean;
     onSelect?: (additive: boolean) => void;
+    onContextMenuOpen?: () => void;
     onUpdate: (time: number, duration: number) => void;
     onMoveStart?: (e: React.MouseEvent, time: number, duration: number) => void;
     onDelete?: () => void;
+    onDeleteSelected?: () => void;
+    onCopy?: () => void;
+    onDuplicate?: () => void;
     isBeingDragged?: boolean;
 }
 
@@ -36,9 +41,13 @@ function TimelineEvent({
     resizable = false,
     isSelected,
     onSelect,
+    onContextMenuOpen,
     onUpdate,
     onMoveStart,
     onDelete,
+    onDeleteSelected,
+    onCopy,
+    onDuplicate,
     isBeingDragged,
 }: TimelineEventProps) {
     const dragRef = useRef<{
@@ -107,7 +116,7 @@ function TimelineEvent({
     };
 
     return (
-        <ContextMenu>
+        <ContextMenu onOpenChange={(open) => { if (open) onContextMenuOpen?.(); }}>
             <ContextMenuTrigger asChild>
                 {resizable ? (
                     <div
@@ -148,10 +157,14 @@ function TimelineEvent({
                 )}
             </ContextMenuTrigger>
             <ContextMenuContent>
-                <ContextMenuItem onClick={() => {}}>
+                <ContextMenuItem onClick={onCopy}>
+                    Copy
+                    <ContextMenuShortcut>⌘C</ContextMenuShortcut>
+                </ContextMenuItem>
+                <ContextMenuItem onClick={onDuplicate}>
                     Duplicate
                 </ContextMenuItem>
-                <ContextMenuItem variant="destructive" onClick={onDelete}>
+                <ContextMenuItem variant="destructive" onClick={onDeleteSelected ?? onDelete}>
                     Delete
                 </ContextMenuItem>
             </ContextMenuContent>

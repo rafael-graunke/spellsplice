@@ -9,6 +9,9 @@ interface TimelineTrackProps {
     onSelectEvent?: (event: TrackEvent, additive: boolean) => void;
     onUpdateEvent: (id: number, time: number, duration: number) => void;
     onDeleteEvent?: (id: number) => void;
+    onDeleteSelected?: () => void;
+    onCopy?: () => void;
+    onDuplicate?: () => void;
     onMoveStart?: (
         eventId: number,
         e: React.MouseEvent,
@@ -27,6 +30,9 @@ function TimelineTrack({
     onSelectEvent,
     onUpdateEvent,
     onDeleteEvent,
+    onDeleteSelected,
+    onCopy,
+    onDuplicate,
     onMoveStart,
     draggingEventIds,
     onBackgroundMouseDown,
@@ -56,10 +62,18 @@ function TimelineTrack({
                         isSelected={selectedEventIds?.has(event.id) ?? false}
                         resizable={event.resizable}
                         onSelect={(additive) => onSelectEvent?.(event, additive)}
+                        onContextMenuOpen={() => {
+                            if (!selectedEventIds?.has(event.id)) {
+                                onSelectEvent?.(event, false);
+                            }
+                        }}
                         onUpdate={(time, duration) =>
                             onUpdateEvent(event.id, time, duration)
                         }
                         onDelete={() => onDeleteEvent?.(event.id)}
+                        onDeleteSelected={onDeleteSelected}
+                        onCopy={onCopy}
+                        onDuplicate={onDuplicate}
                         onMoveStart={(e, time, duration) =>
                             onMoveStart?.(event.id, e, time, duration)
                         }

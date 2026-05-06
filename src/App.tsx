@@ -61,10 +61,11 @@ function App() {
     const {
         players,
         handleCreateEvent,
-        handleDeleteEvent,
+        handleDeleteEvents,
+        handleDuplicateEvents,
+        handlePasteEvents,
         handleUpdateEvent,
-        handleMoveEvent,
-        handleMoveMultipleEvents,
+        handleMoveEvents,
         handleUpdateMeta,
         handleUpdatePlayer,
         resetPlayers,
@@ -177,10 +178,11 @@ function App() {
                             selectedPlayer={selectedPlayer ?? selectedPlayer}
                             setSelectedPlayerId={setSelectedPlayerId}
                             handleCreateEvent={handleCreateEvent}
-                            handleDeleteEvent={handleDeleteEvent}
+                            handleDeleteEvents={handleDeleteEvents}
+                            handleDuplicateEvents={handleDuplicateEvents}
+                            handlePasteEvents={handlePasteEvents}
                             handleUpdateEvent={handleUpdateEvent}
-                            handleMoveEvent={handleMoveEvent}
-                            handleMoveMultipleEvents={handleMoveMultipleEvents}
+                            handleMoveEvents={handleMoveEvents}
                             handleUpdatePlayer={handleUpdatePlayer}
                             currentTimeRef={currentTimeRef}
                         />

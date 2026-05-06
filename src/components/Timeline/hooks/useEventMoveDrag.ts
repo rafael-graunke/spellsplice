@@ -53,8 +53,7 @@ export function useEventMoveDrag(
     zoomRef: RefObject<number>,
     selectedPlayer: Player | null,
     selectedEvents: TrackEvent[],
-    onMoveEvent: (playerId: string, eventId: number, newTime: number, newLayer: number) => void,
-    onMoveMultipleEvents: (moves: MoveResult[]) => void,
+    onMoveEvents: (moves: MoveResult[]) => void,
 ) {
     const [ghostPositions, setGhostPositions] = useState<GhostPos[]>([]);
     const moveDragRef = useRef<MoveDragState | null>(null);
@@ -176,30 +175,20 @@ export function useEventMoveDrag(
             const primaryLayer = Math.max(0, Math.min(totalLayers - 1, rawIndex));
             const layerDelta = primaryLayer - drag.startLayer;
 
-            if (drag.companions.length === 0) {
-                onMoveEvent(
-                    drag.primary.sourcePlayerId,
-                    drag.primary.eventId,
-                    Math.max(0, drag.primary.startTime + deltaTime),
-                    primaryLayer
-                );
-            } else {
-                const moves: MoveResult[] = [
-                    {
-                        playerId: drag.primary.sourcePlayerId,
-                        eventId: drag.primary.eventId,
-                        newTime: Math.max(0, drag.primary.startTime + deltaTime),
-                        newLayer: primaryLayer,
-                    },
-                    ...drag.companions.map((c) => ({
-                        playerId: c.sourcePlayerId,
-                        eventId: c.eventId,
-                        newTime: Math.max(0, c.startTime + deltaTime),
-                        newLayer: Math.max(0, Math.min(totalLayers - 1, c.sourceLayer + layerDelta)),
-                    })),
-                ];
-                onMoveMultipleEvents(moves);
-            }
+            onMoveEvents([
+                {
+                    playerId: drag.primary.sourcePlayerId,
+                    eventId: drag.primary.eventId,
+                    newTime: Math.max(0, drag.primary.startTime + deltaTime),
+                    newLayer: primaryLayer,
+                },
+                ...drag.companions.map((c) => ({
+                    playerId: c.sourcePlayerId,
+                    eventId: c.eventId,
+                    newTime: Math.max(0, c.startTime + deltaTime),
+                    newLayer: Math.max(0, Math.min(totalLayers - 1, c.sourceLayer + layerDelta)),
+                })),
+            ]);
 
             moveDragRef.current = null;
             setGhostPositions([]);

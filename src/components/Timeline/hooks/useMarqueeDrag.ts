@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import type { RefObject } from 'react';
 import type { Player } from '../../types/player';
 import type { TrackEvent } from '../../types/event';
@@ -24,13 +24,19 @@ export function useMarqueeDrag(
     const [marqueeRect, setMarqueeRect] = useState<MarqueeRect | null>(null);
     const marqueeRectRef = useRef<MarqueeRect | null>(null);
     const startPosRef = useRef<{ x: number; y: number } | null>(null);
+    const onSelectRef = useRef(onSelect);
+    onSelectRef.current = onSelect;
+    const onDeselectRef = useRef(onDeselect);
+    onDeselectRef.current = onDeselect;
+    const selectedPlayerRef = useRef(selectedPlayer);
+    selectedPlayerRef.current = selectedPlayer;
 
     const updateRect = (rect: MarqueeRect | null) => {
         marqueeRectRef.current = rect;
         setMarqueeRect(rect);
     };
 
-    const handleTrackMouseDown = (e: React.MouseEvent) => {
+    const handleTrackMouseDown = useCallback((e: React.MouseEvent) => {
         if (e.button !== 0) return;
 
         const inner = innerRef.current;
@@ -71,15 +77,16 @@ export function useMarqueeDrag(
             updateRect(null);
 
             if (!rect) {
-                onDeselect();
+                onDeselectRef.current();
                 return;
             }
 
             const zoom = zoomRef.current!;
             const matched: TrackEvent[] = [];
+            const sp = selectedPlayerRef.current;
 
-            const totalLayers = selectedPlayer?.track.layers ?? 0;
-            const events = selectedPlayer?.track.events ?? [];
+            const totalLayers = sp?.track.layers ?? 0;
+            const events = sp?.track.events ?? [];
 
             for (let layerIndex = 0; layerIndex < totalLayers; layerIndex++) {
                 const trackTop = layerIndex * TRACK_HEIGHT;
@@ -101,12 +108,13 @@ export function useMarqueeDrag(
                     });
             }
 
-            onSelect(matched);
+            onSelectRef.current(matched);
         };
 
         window.addEventListener('mousemove', onMouseMove);
         window.addEventListener('mouseup', onMouseUp);
-    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     return { marqueeRect, handleTrackMouseDown };
 }

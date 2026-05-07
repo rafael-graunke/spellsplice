@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import {
     ContextMenu,
@@ -21,7 +21,6 @@ interface TimelineEventProps {
     resizable?: boolean;
     isSelected?: boolean;
     onSelect?: (additive: boolean) => void;
-    onContextMenuOpen?: () => void;
     onUpdate: (time: number, duration: number) => void;
     onMoveStart?: (e: React.MouseEvent, time: number, duration: number) => void;
     onDelete?: () => void;
@@ -42,7 +41,6 @@ function TimelineEvent({
     resizable = false,
     isSelected,
     onSelect,
-    onContextMenuOpen,
     onUpdate,
     onMoveStart,
     onDelete,
@@ -117,7 +115,7 @@ function TimelineEvent({
     };
 
     return (
-        <ContextMenu onOpenChange={(open) => { if (open) onContextMenuOpen?.(); }}>
+        <ContextMenu onOpenChange={(open) => { if (open && !isSelected) onSelect?.(false); }}>
             <ContextMenuTrigger asChild>
                 {resizable ? (
                     <div
@@ -173,4 +171,13 @@ function TimelineEvent({
     );
 }
 
-export default TimelineEvent;
+export default React.memo(TimelineEvent, (prev, next) =>
+    prev.color === next.color &&
+    prev.time === next.time &&
+    prev.duration === next.duration &&
+    prev.zoom === next.zoom &&
+    prev.type === next.type &&
+    prev.isSelected === next.isSelected &&
+    prev.resizable === next.resizable &&
+    prev.isBeingDragged === next.isBeingDragged
+);

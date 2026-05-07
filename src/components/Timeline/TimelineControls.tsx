@@ -239,7 +239,7 @@ interface TimelineControlsProps
     selectedPlayer: Player;
 }
 
-export function TimelineControls({
+function TimelineControls({
     setIsPlaying,
     setCurrentTime,
     zoom,
@@ -274,3 +274,6 @@ export function TimelineControls({
         </div>
     );
 }
+
+const MemoTimelineControls = React.memo(TimelineControls);
+export { MemoTimelineControls as TimelineControls };

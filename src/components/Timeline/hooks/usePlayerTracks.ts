@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { Player, Decklist } from '../../types/player';
 import type { TrackEvent, EventMeta } from '../../types/event';
 
@@ -6,7 +6,7 @@ type PlayerInit = Omit<Player, 'track'>;
 
 export function usePlayerTracks(
     initialPlayers: PlayerInit[],
-    currentTime: number,
+    currentTimeRef: React.RefObject<number>,
     setSelectedEvents: React.Dispatch<React.SetStateAction<TrackEvent[]>>,
     savedPlayers?: Player[]
 ) {
@@ -22,16 +22,18 @@ export function usePlayerTracks(
             ? Math.max(0, ...savedPlayers.flatMap((p) => p.track.events.map((e) => e.id))) + 1
             : 1
     );
+    const playersRef = useRef(players);
+    playersRef.current = players;
 
-    const handleCreateEvent = (
+    const handleCreateEvent = useCallback((
         partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>,
         playerId?: string
     ) => {
-        const targetId = playerId ?? players[0]?.id;
+        const targetId = playerId ?? playersRef.current[0]?.id;
         if (!targetId) return;
         const newEvent: TrackEvent = {
             id: nextEventId.current++,
-            time: currentTime,
+            time: currentTimeRef.current,
             layer: 0,
             duration: 1,
             resizable: false,
@@ -45,9 +47,9 @@ export function usePlayerTracks(
             )
         );
         setSelectedEvents([newEvent]);
-    };
+    }, [setSelectedEvents]);
 
-    const handleDeleteEvents = (playerId: string, eventIds: number[]) => {
+    const handleDeleteEvents = useCallback((playerId: string, eventIds: number[]) => {
         const idSet = new Set(eventIds);
         setPlayers((prev) =>
             prev.map((p) =>
@@ -56,9 +58,9 @@ export function usePlayerTracks(
                     : p
             )
         );
-    };
+    }, []);
 
-    const handleDuplicateEvents = (playerId: string, events: TrackEvent[]) => {
+    const handleDuplicateEvents = useCallback((playerId: string, events: TrackEvent[]) => {
         const newEvents = events.map((e) => ({
             ...e,
             id: nextEventId.current++,
@@ -72,9 +74,9 @@ export function usePlayerTracks(
             )
         );
         setSelectedEvents(newEvents);
-    };
+    }, [setSelectedEvents]);
 
-    const handlePasteEvents = (playerId: string, events: TrackEvent[], pasteTime: number) => {
+    const handlePasteEvents = useCallback((playerId: string, events: TrackEvent[], pasteTime: number) => {
         const minTime = Math.min(...events.map((e) => e.time));
         const newEvents = events.map((e) => ({
             ...e,
@@ -89,9 +91,9 @@ export function usePlayerTracks(
             )
         );
         setSelectedEvents(newEvents);
-    };
+    }, [setSelectedEvents]);
 
-    const handleUpdateEvent = (
+    const handleUpdateEvent = useCallback((
         playerId: string,
         eventId: number,
         time: number,
@@ -112,9 +114,9 @@ export function usePlayerTracks(
                     : p
             )
         );
-    };
+    }, []);
 
-    const handleMoveEvents = (
+    const handleMoveEvents = useCallback((
         moves: Array<{ playerId: string; eventId: number; newTime: number; newLayer: number }>
     ) => {
         setPlayers((prev) => {
@@ -136,9 +138,9 @@ export function usePlayerTracks(
             }
             return next;
         });
-    };
+    }, []);
 
-    const handleUpdateMeta = (
+    const handleUpdateMeta = useCallback((
         playerId: string,
         eventId: number,
         meta: EventMeta
@@ -158,25 +160,25 @@ export function usePlayerTracks(
                       }
             )
         );
-    };
+    }, []);
 
-    const handleUpdatePlayer = (
+    const handleUpdatePlayer = useCallback((
         playerId: string,
         updates: { name?: string; deckName?: string; decklist?: Decklist }
     ) => {
         setPlayers((prev) =>
             prev.map((p) => (p.id !== playerId ? p : { ...p, ...updates }))
         );
-    };
+    }, []);
 
-    const resetPlayers = (incoming: Player[]) => {
+    const resetPlayers = useCallback((incoming: Player[]) => {
         setPlayers(incoming);
         const maxId = Math.max(
             0,
             ...incoming.flatMap((p) => p.track.events.map((e) => e.id))
         );
         nextEventId.current = maxId + 1;
-    };
+    }, []);
 
     return {
         players,

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { zoomToPercent } from './hooks/useZoom';
 
 interface TimelineRulerProps {
@@ -90,4 +90,4 @@ function TimelineRuler({
     );
 }
 
-export default TimelineRuler;
+export default React.memo(TimelineRuler);

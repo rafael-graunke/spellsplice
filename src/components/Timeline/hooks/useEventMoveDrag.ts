@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject, MouseEvent as ReactMouseEvent } from 'react';
 import type { Player, } from '../../types/player';
 import type { TrackEvent, EventType } from '../../types/event';
@@ -58,7 +58,7 @@ export function useEventMoveDrag(
     const [ghostPositions, setGhostPositions] = useState<GhostPos[]>([]);
     const moveDragRef = useRef<MoveDragState | null>(null);
 
-    const handleMoveStart = (
+    const handleMoveStart = useCallback((
         playerId: string,
         sourceLayer: number,
         eventId: number,
@@ -120,7 +120,8 @@ export function useEventMoveDrag(
             makeGhost(primary, time, sourceLayer, zoom),
             ...companions.map((c) => makeGhost(c, c.startTime, c.sourceLayer, zoom)),
         ]);
-    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedPlayer, selectedEvents]);
 
     useEffect(() => {
         if (ghostPositions.length === 0) return;

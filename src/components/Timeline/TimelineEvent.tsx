@@ -10,6 +10,7 @@ import {
 import TimelineEventIcon from './TimelineEventIcon';
 import type { EventType } from '../types/event';
 import { Book } from '@/assets/icons';
+import { modKey } from '@/lib/platform';
 
 interface TimelineEventProps {
     color: string;
@@ -159,7 +160,7 @@ function TimelineEvent({
             <ContextMenuContent>
                 <ContextMenuItem onClick={onCopy}>
                     Copy
-                    <ContextMenuShortcut>⌘C</ContextMenuShortcut>
+                    <ContextMenuShortcut>{modKey}+C</ContextMenuShortcut>
                 </ContextMenuItem>
                 <ContextMenuItem onClick={onDuplicate}>
                     Duplicate

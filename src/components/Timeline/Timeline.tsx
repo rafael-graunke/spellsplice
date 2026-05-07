@@ -18,6 +18,7 @@ import { useSeekDrag } from './hooks/useSeekDrag';
 import { useEventMoveDrag } from './hooks/useEventMoveDrag';
 import { useMarqueeDrag } from './hooks/useMarqueeDrag';
 import { TRACK_HEIGHT } from './constants';
+import { modKey } from '@/lib/platform';
 import {
     ContextMenu,
     ContextMenuContent,
@@ -160,6 +161,7 @@ export function Timeline({
     );
 
     const [copiedEvents, setCopiedEvents] = useState<TrackEvent[]>([]);
+    const [createOpen, setCreateOpen] = useState(false);
     const pasteTimeRef = useRef(0);
 
     const handleDeleteSelected = () => {
@@ -223,6 +225,8 @@ export function Timeline({
                 setCurrentTime={setCurrentTime}
                 setIsPlaying={setIsPlaying}
                 selectedPlayer={selectedPlayer}
+                createOpen={createOpen}
+                onCreateOpenChange={setCreateOpen}
                 onCreateEvent={(partial) =>
                     handleCreateEvent(partial, effectivePlayer?.id)
                 }
@@ -350,12 +354,16 @@ export function Timeline({
                         </div>
                         </ContextMenuTrigger>
                         <ContextMenuContent>
+                            <ContextMenuItem onClick={() => setCreateOpen(true)}>
+                                Create event
+                                <ContextMenuShortcut>{modKey}+K</ContextMenuShortcut>
+                            </ContextMenuItem>
                             <ContextMenuItem
                                 disabled={copiedEvents.length === 0}
                                 onClick={() => handlePaste(pasteTimeRef.current)}
                             >
                                 Paste
-                                <ContextMenuShortcut>⌘V</ContextMenuShortcut>
+                                <ContextMenuShortcut>{modKey}+V</ContextMenuShortcut>
                             </ContextMenuItem>
                         </ContextMenuContent>
                         </ContextMenu>

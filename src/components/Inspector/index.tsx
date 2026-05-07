@@ -1,3 +1,4 @@
+import React from 'react';
 import type { TrackEvent, EventMeta } from '../types/event';
 import type { Player } from '../types/player';
 import { EventFields } from './EventFields';
@@ -8,7 +9,7 @@ interface InspectorProps {
     player?: Player | null;
 }
 
-export function Inspector({ editObject, onUpdate, player }: InspectorProps) {
+function Inspector({ editObject, onUpdate, player }: InspectorProps) {
     const event = editObject?.[0] ?? null;
     const count = editObject?.length ?? 0;
 
@@ -38,3 +39,6 @@ export function Inspector({ editObject, onUpdate, player }: InspectorProps) {
         </div>
     );
 }
+
+const MemoInspector = React.memo(Inspector);
+export { MemoInspector as Inspector };

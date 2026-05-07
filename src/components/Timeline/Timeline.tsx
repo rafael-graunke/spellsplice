@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import {
     ResizableHandle,
     ResizablePanel,
@@ -18,11 +18,19 @@ import { useSeekDrag } from './hooks/useSeekDrag';
 import { useEventMoveDrag } from './hooks/useEventMoveDrag';
 import { useMarqueeDrag } from './hooks/useMarqueeDrag';
 import { TRACK_HEIGHT } from './constants';
+import { modKey } from '@/lib/platform';
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuSeparator,
+    ContextMenuShortcut,
+    ContextMenuTrigger,
+} from '../ui/context-menu';
 
 interface TimelineProps {
     duration: number;
     isPlaying: boolean;
-    currentTime: number;
     setCurrentTime: (state: React.SetStateAction<number>) => void;
     setIsPlaying: React.Dispatch<React.SetStateAction<boolean>>;
     selectedEvents: TrackEvent[];
@@ -31,20 +39,26 @@ interface TimelineProps {
     selectedPlayer: Player;
     setSelectedPlayerId: (id: string) => void;
     handleCreateEvent: (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>, playerId?: string) => void;
-    handleDeleteEvent: (playerId: string, eventId: number) => void;
+    handleDeleteEvents: (playerId: string, eventIds: number[]) => void;
+    handleDuplicateEvents: (playerId: string, events: TrackEvent[]) => void;
+    handlePasteEvents: (playerId: string, events: TrackEvent[], pasteTime: number) => void;
     handleUpdateEvent: (playerId: string, eventId: number, time: number, duration: number) => void;
-    handleMoveEvent: (playerId: string, eventId: number, newTime: number, newLayer: number) => void;
-    handleMoveMultipleEvents: (
+    handleMoveEvents: (
         moves: Array<{ playerId: string; eventId: number; newTime: number; newLayer: number }>
     ) => void;
     handleUpdatePlayer: (playerId: string, updates: { name?: string; deckName?: string; decklist?: import('../types/player').Decklist }) => void;
+    handleBeginResize: () => void;
+    handleCommitResize: () => void;
+    undo: () => void;
+    redo: () => void;
+    canUndo: boolean;
+    canRedo: boolean;
     currentTimeRef: React.MutableRefObject<number>;
 }
 
-export function Timeline({
+function Timeline({
     duration,
     isPlaying,
-    currentTime,
     setCurrentTime,
     setIsPlaying,
     selectedEvents,
@@ -53,11 +67,18 @@ export function Timeline({
     selectedPlayer,
     setSelectedPlayerId,
     handleCreateEvent,
-    handleDeleteEvent,
+    handleDeleteEvents,
+    handleDuplicateEvents,
+    handlePasteEvents,
     handleUpdateEvent,
-    handleMoveEvent,
-    handleMoveMultipleEvents,
+    handleMoveEvents,
     handleUpdatePlayer,
+    handleBeginResize,
+    handleCommitResize,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
     currentTimeRef,
 }: TimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -77,6 +98,12 @@ export function Timeline({
         cursorRef.current?.setPosition(time * zoomRef.current - scrollLeft + 16);
     };
 
+    const seekTo = useCallback((time: number) => {
+        setCurrentTime(time);
+        updateCursorPosition(time, trackScrollLeftRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [setCurrentTime]);
+
     // 60fps cursor during playback via direct DOM mutation
     useEffect(() => {
         let raf: number;
@@ -91,13 +118,11 @@ export function Timeline({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isPlaying]);
 
-    // Snap cursor on seek or zoom change while paused
+    // Snap cursor on zoom change while paused (seek updates cursor inline via seekTo)
     useEffect(() => {
-        if (!isPlaying) {
-            updateCursorPosition(currentTime, trackScrollLeftRef.current);
-        }
+        updateCursorPosition(currentTimeRef.current, trackScrollLeftRef.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentTime, zoom]);
+    }, [zoom]);
 
     useEffect(() => {
         const el = trackRef.current;
@@ -116,7 +141,7 @@ export function Timeline({
         innerRef,
         zoom,
         duration,
-        setCurrentTime
+        seekTo
     );
 
     const effectivePlayer = selectedPlayer ?? players[0] ?? null;
@@ -126,22 +151,25 @@ export function Timeline({
         zoomRef,
         effectivePlayer,
         selectedEvents,
-        handleMoveEvent,
-        handleMoveMultipleEvents
+        handleMoveEvents
     );
 
-    const selectedEventIds = new Set(selectedEvents.map((e) => e.id));
+    const selectedEventIds = useMemo(
+        () => new Set(selectedEvents.map((e) => e.id)),
+        [selectedEvents]
+    );
 
-    const draggingEventIds =
-        ghostPositions.length > 0
+    const draggingEventIds = useMemo(
+        () => ghostPositions.length > 0
             ? new Set<number>(
                   [
                       moveDragRef.current?.primary.eventId,
-                      ...(moveDragRef.current?.companions.map((c) => c.eventId) ??
-                          []),
+                      ...(moveDragRef.current?.companions.map((c) => c.eventId) ?? []),
                   ].filter((id): id is number => id !== undefined)
               )
-            : new Set<number>();
+            : new Set<number>(),
+        [ghostPositions]
+    );
 
     const { marqueeRect, handleTrackMouseDown } = useMarqueeDrag(
         innerRef,
@@ -151,7 +179,79 @@ export function Timeline({
         () => setSelectedEvents([])
     );
 
-    const handleSelectEvent = (event: TrackEvent, additive: boolean) => {
+    const [copiedEvents, setCopiedEvents] = useState<TrackEvent[]>([]);
+    const [createOpen, setCreateOpen] = useState(false);
+    const pasteTimeRef = useRef(0);
+
+    const layerCount = effectivePlayer?.track.layers ?? 0;
+
+    const eventsByLayer = useMemo(
+        () => Array.from({ length: layerCount }, (_, i) =>
+            (effectivePlayer?.track.events ?? []).filter((e) => e.layer === i)
+        ),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [effectivePlayer?.track.events, layerCount]
+    );
+
+    const handleDeleteSelected = useCallback(() => {
+        if (!effectivePlayer || selectedEvents.length === 0) return;
+        handleDeleteEvents(effectivePlayer.id, selectedEvents.map((e) => e.id));
+        setSelectedEvents([]);
+    }, [effectivePlayer, selectedEvents, handleDeleteEvents, setSelectedEvents]);
+
+    const handleDuplicateSelected = useCallback(() => {
+        if (!effectivePlayer || selectedEvents.length === 0) return;
+        handleDuplicateEvents(effectivePlayer.id, selectedEvents);
+    }, [effectivePlayer, selectedEvents, handleDuplicateEvents]);
+
+    const handleCopy = useCallback(() => {
+        if (selectedEvents.length === 0) return;
+        setCopiedEvents(selectedEvents);
+    }, [selectedEvents]);
+
+    const handlePaste = (pasteTime: number) => {
+        if (!effectivePlayer || copiedEvents.length === 0) return;
+        handlePasteEvents(effectivePlayer.id, copiedEvents, pasteTime);
+    };
+
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            const tag = (e.target as HTMLElement).tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                undo();
+            } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+                e.preventDefault();
+                redo();
+            } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                handleDeleteSelected();
+            } else if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+                handleCopy();
+            } else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+                handlePaste(currentTimeRef.current);
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [selectedEvents, effectivePlayer, copiedEvents, undo, redo]);
+
+    const handleCreateEventWrapped = useCallback(
+        (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) =>
+            handleCreateEvent(partial, effectivePlayer?.id),
+        [handleCreateEvent, effectivePlayer?.id]
+    );
+
+    const handleSelectPlayer = useCallback((p: Player) => {
+        setSelectedPlayerId(p.id);
+        setSelectedEvents([]);
+    }, [setSelectedPlayerId, setSelectedEvents]);
+
+    const handleScrollDelta = useCallback((delta: number) => {
+        if (trackRef.current) trackRef.current.scrollLeft -= delta;
+    }, []);
+
+    const handleSelectEvent = useCallback((event: TrackEvent, additive: boolean) => {
         if (additive) {
             setSelectedEvents((prev) =>
                 prev.some((e) => e.id === event.id)
@@ -161,9 +261,7 @@ export function Timeline({
         } else {
             setSelectedEvents([event]);
         }
-    };
-
-    const layerCount = effectivePlayer?.track.layers ?? 0;
+    }, [setSelectedEvents]);
 
     return (
         <div className="timeline flex flex-col h-full" ref={containerRef}>
@@ -171,22 +269,19 @@ export function Timeline({
                 zoom={Math.round(zoomPercent)}
                 onZoomChange={handleZoomChange}
                 isPlaying={isPlaying}
-                setCurrentTime={setCurrentTime}
+                setCurrentTime={seekTo}
                 setIsPlaying={setIsPlaying}
                 selectedPlayer={selectedPlayer}
-                onCreateEvent={(partial) =>
-                    handleCreateEvent(partial, effectivePlayer?.id)
-                }
+                createOpen={createOpen}
+                onCreateOpenChange={setCreateOpen}
+                onCreateEvent={handleCreateEventWrapped}
             />
             <ResizablePanelGroup orientation="horizontal">
                 <ResizablePanel minSize={100} defaultSize="20%">
                     <TimelineTrackControl
                         players={players}
                         selectedPlayer={effectivePlayer}
-                        onSelectPlayer={(p) => {
-                            setSelectedPlayerId(p.id);
-                            setSelectedEvents([]);
-                        }}
+                        onSelectPlayer={handleSelectPlayer}
                         onEditPlayer={handleUpdatePlayer}
                     />
                 </ResizablePanel>
@@ -203,49 +298,42 @@ export function Timeline({
                                 <TimelineRuler
                                     duration={duration}
                                     zoom={zoom}
-                                    onSeek={setCurrentTime}
-                                    onScrollDelta={(delta) => {
-                                        if (trackRef.current)
-                                            trackRef.current.scrollLeft -= delta;
-                                    }}
+                                    onSeek={seekTo}
+                                    onScrollDelta={handleScrollDelta}
                                 />
                             </div>
                         </div>
                     <div ref={trackRef} className="pl-4 overflow-auto flex-1 scrollbar-thin">
-                        <div ref={innerRef} className="relative">
+                        <ContextMenu>
+                        <ContextMenuTrigger asChild>
+                        <div
+                            ref={innerRef}
+                            className="relative"
+                            onContextMenu={(e) => {
+                                const rect = innerRef.current!.getBoundingClientRect();
+                                pasteTimeRef.current = Math.max(0, (e.clientX - rect.left) / zoomRef.current);
+                            }}
+                        >
                             {Array.from({ length: layerCount }, (_, layerIndex) => (
                                 <TimelineTrack
                                     key={layerIndex}
+                                    playerId={effectivePlayer!.id}
+                                    layerIndex={layerIndex}
                                     width={duration * zoom}
                                     zoom={zoom}
-                                    events={(effectivePlayer?.track.events ?? []).filter(
-                                        (e) => e.layer === layerIndex
-                                    )}
+                                    events={eventsByLayer[layerIndex] ?? []}
                                     selectedEventIds={selectedEventIds}
                                     onSelectEvent={handleSelectEvent}
                                     draggingEventIds={draggingEventIds}
-                                    onUpdateEvent={(eventId, time, dur) =>
-                                        handleUpdateEvent(
-                                            effectivePlayer!.id,
-                                            eventId,
-                                            time,
-                                            dur
-                                        )
-                                    }
-                                    onDeleteEvent={(eventId) =>
-                                        handleDeleteEvent(effectivePlayer!.id, eventId)
-                                    }
-                                    onMoveStart={(eventId, e, time, dur) =>
-                                        handleMoveStart(
-                                            effectivePlayer!.id,
-                                            layerIndex,
-                                            eventId,
-                                            e,
-                                            time,
-                                            dur
-                                        )
-                                    }
+                                    onUpdateEvent={handleUpdateEvent}
+                                    onDeleteEvent={handleDeleteEvents}
+                                    onDeleteSelected={handleDeleteSelected}
+                                    onCopy={handleCopy}
+                                    onDuplicate={handleDuplicateSelected}
+                                    onMoveStart={handleMoveStart}
                                     onBackgroundMouseDown={handleTrackMouseDown}
+                                    onResizeStart={handleBeginResize}
+                                    onResizeEnd={handleCommitResize}
                                 />
                             ))}
                             {marqueeRect && (
@@ -287,6 +375,30 @@ export function Timeline({
                                 )
                             )}
                         </div>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                            <ContextMenuItem onClick={() => setCreateOpen(true)}>
+                                Create event
+                                <ContextMenuShortcut>{modKey}+K</ContextMenuShortcut>
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                                disabled={copiedEvents.length === 0}
+                                onClick={() => handlePaste(pasteTimeRef.current)}
+                            >
+                                Paste
+                                <ContextMenuShortcut>{modKey}+V</ContextMenuShortcut>
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem disabled={!canUndo} onClick={undo}>
+                                Undo
+                                <ContextMenuShortcut>{modKey}+Z</ContextMenuShortcut>
+                            </ContextMenuItem>
+                            <ContextMenuItem disabled={!canRedo} onClick={redo}>
+                                Redo
+                                <ContextMenuShortcut>{modKey}+Shift+Z</ContextMenuShortcut>
+                            </ContextMenuItem>
+                        </ContextMenuContent>
+                        </ContextMenu>
                     </div>
                     </div>
                 </ResizablePanel>
@@ -294,3 +406,6 @@ export function Timeline({
         </div>
     );
 }
+
+const MemoTimeline = React.memo(Timeline);
+export { MemoTimeline as Timeline };

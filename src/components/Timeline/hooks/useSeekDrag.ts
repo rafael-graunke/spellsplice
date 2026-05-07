@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import type { RefObject, SetStateAction } from 'react';
+import type { RefObject } from 'react';
 
 export function useSeekDrag(
     innerRef: RefObject<HTMLDivElement | null>,
     zoom: number,
     duration: number,
-    setCurrentTime: (t: SetStateAction<number>) => void
+    onSeek: (t: number) => void
 ) {
     const [isDragging, setIsDragging] = useState(false);
 
@@ -16,7 +16,7 @@ export function useSeekDrag(
             const inner = innerRef.current;
             if (!inner) return;
             const x = e.clientX - inner.getBoundingClientRect().left;
-            setCurrentTime(Math.max(0, Math.min(duration, x / zoom)));
+            onSeek(Math.max(0, Math.min(duration, x / zoom)));
         };
 
         const handleMouseUp = () => {
@@ -32,7 +32,7 @@ export function useSeekDrag(
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
         };
-    }, [isDragging, zoom, duration]);
+    }, [isDragging, zoom, duration, onSeek]);
 
     return { isDragging, setIsDragging };
 }

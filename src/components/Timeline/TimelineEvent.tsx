@@ -1,14 +1,16 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import {
     ContextMenu,
     ContextMenuContent,
     ContextMenuItem,
+    ContextMenuShortcut,
     ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import TimelineEventIcon from './TimelineEventIcon';
 import type { EventType } from '../types/event';
 import { Book } from '@/assets/icons';
+import { modKey } from '@/lib/platform';
 
 interface TimelineEventProps {
     color: string;
@@ -22,7 +24,12 @@ interface TimelineEventProps {
     onUpdate: (time: number, duration: number) => void;
     onMoveStart?: (e: React.MouseEvent, time: number, duration: number) => void;
     onDelete?: () => void;
+    onDeleteSelected?: () => void;
+    onCopy?: () => void;
+    onDuplicate?: () => void;
     isBeingDragged?: boolean;
+    onResizeStart?: () => void;
+    onResizeEnd?: () => void;
 }
 
 type DragMode = 'resize-left' | 'resize-right';
@@ -39,7 +46,12 @@ function TimelineEvent({
     onUpdate,
     onMoveStart,
     onDelete,
+    onDeleteSelected,
+    onCopy,
+    onDuplicate,
     isBeingDragged,
+    onResizeStart,
+    onResizeEnd,
 }: TimelineEventProps) {
     const dragRef = useRef<{
         mode: DragMode;
@@ -60,6 +72,7 @@ function TimelineEvent({
         }
 
         if (!resizable) return;
+        onResizeStart?.();
         dragRef.current = {
             mode,
             startX: e.clientX,
@@ -88,6 +101,7 @@ function TimelineEvent({
         };
 
         const onMouseUp = () => {
+            if (dragRef.current && hasDragged.current) onResizeEnd?.();
             dragRef.current = null;
         };
 
@@ -107,7 +121,7 @@ function TimelineEvent({
     };
 
     return (
-        <ContextMenu>
+        <ContextMenu onOpenChange={(open) => { if (open && !isSelected) onSelect?.(false); }}>
             <ContextMenuTrigger asChild>
                 {resizable ? (
                     <div
@@ -148,10 +162,14 @@ function TimelineEvent({
                 )}
             </ContextMenuTrigger>
             <ContextMenuContent>
-                <ContextMenuItem onClick={() => {}}>
+                <ContextMenuItem onClick={onCopy}>
+                    Copy
+                    <ContextMenuShortcut>{modKey}+C</ContextMenuShortcut>
+                </ContextMenuItem>
+                <ContextMenuItem onClick={onDuplicate}>
                     Duplicate
                 </ContextMenuItem>
-                <ContextMenuItem variant="destructive" onClick={onDelete}>
+                <ContextMenuItem variant="destructive" onClick={onDeleteSelected ?? onDelete}>
                     Delete
                 </ContextMenuItem>
             </ContextMenuContent>
@@ -159,4 +177,13 @@ function TimelineEvent({
     );
 }
 
-export default TimelineEvent;
+export default React.memo(TimelineEvent, (prev, next) =>
+    prev.color === next.color &&
+    prev.time === next.time &&
+    prev.duration === next.duration &&
+    prev.zoom === next.zoom &&
+    prev.type === next.type &&
+    prev.isSelected === next.isSelected &&
+    prev.resizable === next.resizable &&
+    prev.isBeingDragged === next.isBeingDragged
+);

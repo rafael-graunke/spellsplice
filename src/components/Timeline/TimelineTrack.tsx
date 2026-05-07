@@ -1,15 +1,23 @@
+import React, { useCallback } from 'react';
 import { EventColorMap, type TrackEvent } from '../types/event';
 import TimelineEvent from './TimelineEvent';
 
 interface TimelineTrackProps {
+    playerId: string;
+    layerIndex: number;
     width?: number;
     zoom: number;
     events: TrackEvent[];
     selectedEventIds?: Set<number>;
     onSelectEvent?: (event: TrackEvent, additive: boolean) => void;
-    onUpdateEvent: (id: number, time: number, duration: number) => void;
-    onDeleteEvent?: (id: number) => void;
+    onUpdateEvent: (playerId: string, eventId: number, time: number, duration: number) => void;
+    onDeleteEvent?: (playerId: string, eventIds: number[]) => void;
+    onDeleteSelected?: () => void;
+    onCopy?: () => void;
+    onDuplicate?: () => void;
     onMoveStart?: (
+        playerId: string,
+        layerIndex: number,
         eventId: number,
         e: React.MouseEvent,
         time: number,
@@ -17,9 +25,13 @@ interface TimelineTrackProps {
     ) => void;
     draggingEventIds?: Set<number>;
     onBackgroundMouseDown?: (e: React.MouseEvent) => void;
+    onResizeStart?: () => void;
+    onResizeEnd?: () => void;
 }
 
 function TimelineTrack({
+    playerId,
+    layerIndex,
     width,
     zoom,
     events,
@@ -27,10 +39,29 @@ function TimelineTrack({
     onSelectEvent,
     onUpdateEvent,
     onDeleteEvent,
+    onDeleteSelected,
+    onCopy,
+    onDuplicate,
     onMoveStart,
     draggingEventIds,
     onBackgroundMouseDown,
+    onResizeStart,
+    onResizeEnd,
 }: TimelineTrackProps) {
+    const boundUpdate = useCallback(
+        (id: number, time: number, dur: number) => onUpdateEvent(playerId, id, time, dur),
+        [onUpdateEvent, playerId]
+    );
+    const boundDelete = useCallback(
+        (id: number) => onDeleteEvent?.(playerId, [id]),
+        [onDeleteEvent, playerId]
+    );
+    const boundMoveStart = useCallback(
+        (eventId: number, e: React.MouseEvent, time: number, dur: number) =>
+            onMoveStart?.(playerId, layerIndex, eventId, e, time, dur),
+        [onMoveStart, playerId, layerIndex]
+    );
+
     return (
         <div
             className="h-12 py-1"
@@ -56,14 +87,15 @@ function TimelineTrack({
                         isSelected={selectedEventIds?.has(event.id) ?? false}
                         resizable={event.resizable}
                         onSelect={(additive) => onSelectEvent?.(event, additive)}
-                        onUpdate={(time, duration) =>
-                            onUpdateEvent(event.id, time, duration)
-                        }
-                        onDelete={() => onDeleteEvent?.(event.id)}
-                        onMoveStart={(e, time, duration) =>
-                            onMoveStart?.(event.id, e, time, duration)
-                        }
+                        onUpdate={(time, duration) => boundUpdate(event.id, time, duration)}
+                        onDelete={() => boundDelete(event.id)}
+                        onDeleteSelected={onDeleteSelected}
+                        onCopy={onCopy}
+                        onDuplicate={onDuplicate}
+                        onMoveStart={(e, time, duration) => boundMoveStart(event.id, e, time, duration)}
                         isBeingDragged={draggingEventIds?.has(event.id) ?? false}
+                        onResizeStart={onResizeStart}
+                        onResizeEnd={onResizeEnd}
                     />
                 ))}
             </div>
@@ -71,4 +103,4 @@ function TimelineTrack({
     );
 }
 
-export default TimelineTrack;
+export default React.memo(TimelineTrack);

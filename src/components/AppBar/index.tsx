@@ -1,3 +1,4 @@
+import React from 'react';
 import FileDropdown from "./FileDropdown";
 
 interface AppBarProps {
@@ -16,4 +17,4 @@ function AppBar({ isDirty, onNew, onExport, onImport, onExportVideo }: AppBarPro
     );
 }
 
-export default AppBar;
+export default React.memo(AppBar);

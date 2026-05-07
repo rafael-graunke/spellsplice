@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { modKey } from '@/lib/platform';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -98,13 +99,13 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: Fil
                 <DropdownMenuContent className="w-48">
                     <DropdownMenuGroup>
                         <DropdownMenuItem onClick={handleNew}>
-                            New...<DropdownMenuShortcut>Ctrl+Alt+N</DropdownMenuShortcut>
+                            New...<DropdownMenuShortcut>{modKey}+Alt+N</DropdownMenuShortcut>
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => importRef.current?.click()}>
-                            Open...<DropdownMenuShortcut>Ctrl+O</DropdownMenuShortcut>
+                            Open...<DropdownMenuShortcut>{modKey}+O</DropdownMenuShortcut>
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={onExport}>
-                            Save<DropdownMenuShortcut>Ctrl+S</DropdownMenuShortcut>
+                            Save<DropdownMenuShortcut>{modKey}+S</DropdownMenuShortcut>
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={onExportVideo}>Export...</DropdownMenuItem>
                     </DropdownMenuGroup>

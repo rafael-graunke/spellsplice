@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Minus, Pause, Play, Plus, SkipBack, SkipForward } from 'lucide-react';
 import { Slider } from '../ui/slider';
 import { Input } from '../ui/input';
-import { Button } from '../ui/button';
 import {
     Command,
     CommandDialog,
@@ -50,42 +49,35 @@ function ZoomControls({ zoom, onZoomChange }: ZoomControlsProps) {
 }
 
 interface CreateControlsProps {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
     setIsPlaying: (playing: React.SetStateAction<boolean>) => void;
     onCreateEvent: (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => void;
     selectedPlayer: Player;
 }
 
-function CreateControls({ setIsPlaying, onCreateEvent, selectedPlayer}: CreateControlsProps) {
-    const [open, setOpen] = useState(false);
-
+function CreateControls({ open, onOpenChange, setIsPlaying, onCreateEvent, selectedPlayer}: CreateControlsProps) {
     useEffect(() => {
         const downHandler = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
                 e.preventDefault();
                 setIsPlaying(false);
-                setOpen((prev) => !prev);
+                onOpenChange(!open);
             }
         };
 
         window.addEventListener('keydown', downHandler);
         return () => window.removeEventListener('keydown', downHandler);
-    }, []);
+    }, [open]);
 
     const handleSelect = (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => {
         onCreateEvent(partial);
-        setOpen(false);
+        onOpenChange(false);
     };
 
     return (
         <div className="flex flex-col gap-4">
-            <Button
-                onClick={() => setOpen(true)}
-                variant="outline"
-                className="w-fit"
-            >
-                Open Menu
-            </Button>
-            <CommandDialog open={open} onOpenChange={setOpen}>
+            <CommandDialog open={open} onOpenChange={onOpenChange}>
                 <Command>
                     <CommandInput placeholder="Type a command or search..." />
                     <CommandList>
@@ -241,16 +233,20 @@ function PlaybackControls({
 
 interface TimelineControlsProps
     extends ZoomControlsProps, PlaybackControlsProps {
+    createOpen: boolean;
+    onCreateOpenChange: (open: boolean) => void;
     onCreateEvent: (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => void;
     selectedPlayer: Player;
 }
 
-export function TimelineControls({
+function TimelineControls({
     setIsPlaying,
     setCurrentTime,
     zoom,
     onZoomChange: handleZoomChange,
     isPlaying,
+    createOpen,
+    onCreateOpenChange,
     onCreateEvent,
     selectedPlayer,
 }: TimelineControlsProps) {
@@ -258,6 +254,8 @@ export function TimelineControls({
         <div className="border-b timeline w-full flex flex-row justify-between gap-4 p-2 px-4">
             <div className="w-250 flex flex-row justify-start">
                 <CreateControls
+                    open={createOpen}
+                    onOpenChange={onCreateOpenChange}
                     setIsPlaying={setIsPlaying}
                     selectedPlayer={selectedPlayer}
                     onCreateEvent={onCreateEvent}
@@ -276,3 +274,6 @@ export function TimelineControls({
         </div>
     );
 }
+
+const MemoTimelineControls = React.memo(TimelineControls);
+export { MemoTimelineControls as TimelineControls };

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { PencilIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Player, Decklist } from '../types/player';
@@ -222,4 +222,4 @@ function TimelineTrackControl({
     );
 }
 
-export default TimelineTrackControl;
+export default React.memo(TimelineTrackControl);

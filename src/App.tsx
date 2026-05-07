@@ -8,9 +8,8 @@ import {
 import { Timeline } from './components/Timeline';
 import type { Player } from './components/types/player';
 import type { TrackEvent, EventMeta } from './components/types/event';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { exportProject, importProject } from '@/lib/projectExport';
-import { derivePlayerState } from '@/lib/deriveState';
 import VideoPreview from './components/VideoPreview';
 import type { VideoState } from './components/types/video';
 import { Inspector } from './components/Inspector';
@@ -61,14 +60,21 @@ function App() {
     const {
         players,
         handleCreateEvent,
-        handleDeleteEvent,
+        handleDeleteEvents,
+        handleDuplicateEvents,
+        handlePasteEvents,
         handleUpdateEvent,
-        handleMoveEvent,
-        handleMoveMultipleEvents,
+        handleBeginResize,
+        handleCommitResize,
+        handleMoveEvents,
         handleUpdateMeta,
         handleUpdatePlayer,
         resetPlayers,
-    } = usePlayerTracks(initialPlayers, currentTime, setSelectedEvents, savedPlayersInit);
+        undo,
+        redo,
+        canUndo,
+        canRedo,
+    } = usePlayerTracks(initialPlayers, currentTimeRef, setSelectedEvents, savedPlayersInit);
 
     useEffect(() => {
         if (isFirstPlayersRender.current) {
@@ -81,12 +87,24 @@ function App() {
         setIsDirty(true);
     }, [players]);
 
-    const handleExport = async () => {
-        await exportProject(players, video);
-        setIsDirty(false);
-    };
+    // Keep selectedEvents in sync with players state (handles undo/redo restoring event data).
+    useEffect(() => {
+        setSelectedEvents((prev) => {
+            if (prev.length === 0) return prev;
+            const allEvents = players.flatMap((p) => p.track.events);
+            const next = prev
+                .map((e) => allEvents.find((ev) => ev.id === e.id))
+                .filter((e): e is TrackEvent => e !== undefined);
+            return next.length === prev.length && next.every((e, i) => e === prev[i]) ? prev : next;
+        });
+    }, [players]);
 
-    const handleImport = async (file: File) => {
+    const handleExport = useCallback(async () => {
+        await exportProject(playersRef.current, videoRef.current);
+        setIsDirty(false);
+    }, []);
+
+    const handleImport = useCallback(async (file: File) => {
         const { manifest, videoFile } = await importProject(file);
         skipDirtyRef.current = true;
         resetPlayers(manifest.players);
@@ -96,9 +114,9 @@ function App() {
         setIsPlaying(false);
         setIsDirty(false);
         if (videoFile) setFileToLoad(videoFile);
-    };
+    }, [resetPlayers]);
 
-    const handleNew = () => {
+    const handleNew = useCallback(() => {
         skipDirtyRef.current = true;
         resetPlayers(makeFreshPlayers());
         localStorage.removeItem(AUTOSAVE_KEY);
@@ -108,18 +126,30 @@ function App() {
         setIsPlaying(false);
         setFileToLoad(null);
         setIsDirty(false);
-    };
+    }, [resetPlayers]);
+
+    const handleOpenExportDialog = useCallback(() => setExportDialogOpen(true), []);
+    const handleCloseExportDialog = useCallback(() => setExportDialogOpen(false), []);
 
     const rawSelectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? players[0];
-    const selectedPlayer = derivePlayerState(rawSelectedPlayer, rawSelectedPlayer.track.events, currentTime);
 
-    const handleInspectorUpdate = (eventId: number, meta: EventMeta) => {
-        if (!rawSelectedPlayer) return;
-        handleUpdateMeta(rawSelectedPlayer.id, eventId, meta);
+    const rawSelectedPlayerRef = useRef(rawSelectedPlayer);
+    rawSelectedPlayerRef.current = rawSelectedPlayer;
+
+    const playersRef = useRef(players);
+    playersRef.current = players;
+
+    const videoRef = useRef(video);
+    videoRef.current = video;
+
+    const handleInspectorUpdate = useCallback((eventId: number, meta: EventMeta) => {
+        const player = rawSelectedPlayerRef.current;
+        if (!player) return;
+        handleUpdateMeta(player.id, eventId, meta);
         setSelectedEvents((prev) =>
             prev.map((e) => (e.id === eventId ? { ...e, meta } : e))
         );
-    };
+    }, [handleUpdateMeta, setSelectedEvents]);
 
     return (
         <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
@@ -129,11 +159,11 @@ function App() {
                     onNew={handleNew}
                     onExport={handleExport}
                     onImport={handleImport}
-                    onExportVideo={() => setExportDialogOpen(true)}
+                    onExportVideo={handleOpenExportDialog}
                 />
                 <ExportDialog
                     open={exportDialogOpen}
-                    onClose={() => setExportDialogOpen(false)}
+                    onClose={handleCloseExportDialog}
                     video={video}
                     players={players}
                 />
@@ -167,21 +197,27 @@ function App() {
                     <ResizablePanel minSize={100} defaultSize="30%">
                         <Timeline
                             setCurrentTime={setCurrentTime}
-                            currentTime={currentTime}
                             duration={video ? video.duration || 120 : 120}
                             isPlaying={isPlaying}
                             setIsPlaying={setIsPlaying}
                             selectedEvents={selectedEvents}
                             setSelectedEvents={setSelectedEvents}
                             players={players}
-                            selectedPlayer={selectedPlayer ?? selectedPlayer}
+                            selectedPlayer={rawSelectedPlayer}
                             setSelectedPlayerId={setSelectedPlayerId}
                             handleCreateEvent={handleCreateEvent}
-                            handleDeleteEvent={handleDeleteEvent}
+                            handleDeleteEvents={handleDeleteEvents}
+                            handleDuplicateEvents={handleDuplicateEvents}
+                            handlePasteEvents={handlePasteEvents}
                             handleUpdateEvent={handleUpdateEvent}
-                            handleMoveEvent={handleMoveEvent}
-                            handleMoveMultipleEvents={handleMoveMultipleEvents}
+                            handleBeginResize={handleBeginResize}
+                            handleCommitResize={handleCommitResize}
+                            handleMoveEvents={handleMoveEvents}
                             handleUpdatePlayer={handleUpdatePlayer}
+                            undo={undo}
+                            redo={redo}
+                            canUndo={canUndo}
+                            canRedo={canRedo}
                             currentTimeRef={currentTimeRef}
                         />
                     </ResizablePanel>

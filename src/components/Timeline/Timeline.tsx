@@ -23,6 +23,7 @@ import {
     ContextMenu,
     ContextMenuContent,
     ContextMenuItem,
+    ContextMenuSeparator,
     ContextMenuShortcut,
     ContextMenuTrigger,
 } from '../ui/context-menu';
@@ -46,6 +47,12 @@ interface TimelineProps {
         moves: Array<{ playerId: string; eventId: number; newTime: number; newLayer: number }>
     ) => void;
     handleUpdatePlayer: (playerId: string, updates: { name?: string; deckName?: string; decklist?: import('../types/player').Decklist }) => void;
+    handleBeginResize: () => void;
+    handleCommitResize: () => void;
+    undo: () => void;
+    redo: () => void;
+    canUndo: boolean;
+    canRedo: boolean;
     currentTimeRef: React.MutableRefObject<number>;
 }
 
@@ -66,6 +73,12 @@ function Timeline({
     handleUpdateEvent,
     handleMoveEvents,
     handleUpdatePlayer,
+    handleBeginResize,
+    handleCommitResize,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
     currentTimeRef,
 }: TimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -205,7 +218,13 @@ function Timeline({
         const onKeyDown = (e: KeyboardEvent) => {
             const tag = (e.target as HTMLElement).tagName;
             if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-            if (e.key === 'Delete' || e.key === 'Backspace') {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                undo();
+            } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+                e.preventDefault();
+                redo();
+            } else if (e.key === 'Delete' || e.key === 'Backspace') {
                 handleDeleteSelected();
             } else if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
                 handleCopy();
@@ -215,7 +234,7 @@ function Timeline({
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [selectedEvents, effectivePlayer, copiedEvents]);
+    }, [selectedEvents, effectivePlayer, copiedEvents, undo, redo]);
 
     const handleCreateEventWrapped = useCallback(
         (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) =>
@@ -313,6 +332,8 @@ function Timeline({
                                     onDuplicate={handleDuplicateSelected}
                                     onMoveStart={handleMoveStart}
                                     onBackgroundMouseDown={handleTrackMouseDown}
+                                    onResizeStart={handleBeginResize}
+                                    onResizeEnd={handleCommitResize}
                                 />
                             ))}
                             {marqueeRect && (
@@ -366,6 +387,15 @@ function Timeline({
                             >
                                 Paste
                                 <ContextMenuShortcut>{modKey}+V</ContextMenuShortcut>
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem disabled={!canUndo} onClick={undo}>
+                                Undo
+                                <ContextMenuShortcut>{modKey}+Z</ContextMenuShortcut>
+                            </ContextMenuItem>
+                            <ContextMenuItem disabled={!canRedo} onClick={redo}>
+                                Redo
+                                <ContextMenuShortcut>{modKey}+Shift+Z</ContextMenuShortcut>
                             </ContextMenuItem>
                         </ContextMenuContent>
                         </ContextMenu>

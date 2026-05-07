@@ -25,6 +25,8 @@ interface TimelineTrackProps {
     ) => void;
     draggingEventIds?: Set<number>;
     onBackgroundMouseDown?: (e: React.MouseEvent) => void;
+    onResizeStart?: () => void;
+    onResizeEnd?: () => void;
 }
 
 function TimelineTrack({
@@ -43,6 +45,8 @@ function TimelineTrack({
     onMoveStart,
     draggingEventIds,
     onBackgroundMouseDown,
+    onResizeStart,
+    onResizeEnd,
 }: TimelineTrackProps) {
     const boundUpdate = useCallback(
         (id: number, time: number, dur: number) => onUpdateEvent(playerId, id, time, dur),
@@ -90,6 +94,8 @@ function TimelineTrack({
                         onDuplicate={onDuplicate}
                         onMoveStart={(e, time, duration) => boundMoveStart(event.id, e, time, duration)}
                         isBeingDragged={draggingEventIds?.has(event.id) ?? false}
+                        onResizeStart={onResizeStart}
+                        onResizeEnd={onResizeEnd}
                     />
                 ))}
             </div>

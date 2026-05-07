@@ -10,7 +10,6 @@ import type { Player } from './components/types/player';
 import type { TrackEvent, EventMeta } from './components/types/event';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { exportProject, importProject } from '@/lib/projectExport';
-import { derivePlayerState } from '@/lib/deriveState';
 import VideoPreview from './components/VideoPreview';
 import type { VideoState } from './components/types/video';
 import { Inspector } from './components/Inspector';
@@ -65,10 +64,16 @@ function App() {
         handleDuplicateEvents,
         handlePasteEvents,
         handleUpdateEvent,
+        handleBeginResize,
+        handleCommitResize,
         handleMoveEvents,
         handleUpdateMeta,
         handleUpdatePlayer,
         resetPlayers,
+        undo,
+        redo,
+        canUndo,
+        canRedo,
     } = usePlayerTracks(initialPlayers, currentTimeRef, setSelectedEvents, savedPlayersInit);
 
     useEffect(() => {
@@ -80,6 +85,18 @@ function App() {
         if (isDirty) return;
         if (skipDirtyRef.current) { skipDirtyRef.current = false; return; }
         setIsDirty(true);
+    }, [players]);
+
+    // Keep selectedEvents in sync with players state (handles undo/redo restoring event data).
+    useEffect(() => {
+        setSelectedEvents((prev) => {
+            if (prev.length === 0) return prev;
+            const allEvents = players.flatMap((p) => p.track.events);
+            const next = prev
+                .map((e) => allEvents.find((ev) => ev.id === e.id))
+                .filter((e): e is TrackEvent => e !== undefined);
+            return next.length === prev.length && next.every((e, i) => e === prev[i]) ? prev : next;
+        });
     }, [players]);
 
     const handleExport = useCallback(async () => {
@@ -115,7 +132,6 @@ function App() {
     const handleCloseExportDialog = useCallback(() => setExportDialogOpen(false), []);
 
     const rawSelectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? players[0];
-    const selectedPlayer = derivePlayerState(rawSelectedPlayer, rawSelectedPlayer.track.events, currentTime);
 
     const rawSelectedPlayerRef = useRef(rawSelectedPlayer);
     rawSelectedPlayerRef.current = rawSelectedPlayer;
@@ -194,8 +210,14 @@ function App() {
                             handleDuplicateEvents={handleDuplicateEvents}
                             handlePasteEvents={handlePasteEvents}
                             handleUpdateEvent={handleUpdateEvent}
+                            handleBeginResize={handleBeginResize}
+                            handleCommitResize={handleCommitResize}
                             handleMoveEvents={handleMoveEvents}
                             handleUpdatePlayer={handleUpdatePlayer}
+                            undo={undo}
+                            redo={redo}
+                            canUndo={canUndo}
+                            canRedo={canRedo}
                             currentTimeRef={currentTimeRef}
                         />
                     </ResizablePanel>

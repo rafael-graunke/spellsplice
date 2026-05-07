@@ -28,6 +28,8 @@ interface TimelineEventProps {
     onCopy?: () => void;
     onDuplicate?: () => void;
     isBeingDragged?: boolean;
+    onResizeStart?: () => void;
+    onResizeEnd?: () => void;
 }
 
 type DragMode = 'resize-left' | 'resize-right';
@@ -48,6 +50,8 @@ function TimelineEvent({
     onCopy,
     onDuplicate,
     isBeingDragged,
+    onResizeStart,
+    onResizeEnd,
 }: TimelineEventProps) {
     const dragRef = useRef<{
         mode: DragMode;
@@ -68,6 +72,7 @@ function TimelineEvent({
         }
 
         if (!resizable) return;
+        onResizeStart?.();
         dragRef.current = {
             mode,
             startX: e.clientX,
@@ -96,6 +101,7 @@ function TimelineEvent({
         };
 
         const onMouseUp = () => {
+            if (dragRef.current && hasDragged.current) onResizeEnd?.();
             dragRef.current = null;
         };
 

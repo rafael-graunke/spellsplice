@@ -1,6 +1,7 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef } from 'react';
 import type { Player, Decklist } from '../../types/player';
 import type { TrackEvent, EventMeta } from '../../types/event';
+import { useHistory } from '@/hooks/useHistory';
 
 type PlayerInit = Omit<Player, 'track'>;
 
@@ -10,13 +11,25 @@ export function usePlayerTracks(
     setSelectedEvents: React.Dispatch<React.SetStateAction<TrackEvent[]>>,
     savedPlayers?: Player[]
 ) {
-    const [players, setPlayers] = useState<Player[]>(() =>
-        savedPlayers ??
+    const initialState: Player[] = savedPlayers ??
         initialPlayers.map((p) => ({
             ...p,
             track: { id: p.id, layers: 4, events: [] },
-        }))
-    );
+        }));
+
+    const {
+        state: players,
+        setState,
+        record,
+        mutate,
+        recordFromBaseline,
+        undo,
+        redo,
+        canUndo,
+        canRedo,
+        clearHistory,
+    } = useHistory<Player[]>(initialState);
+
     const nextEventId = useRef(
         savedPlayers
             ? Math.max(0, ...savedPlayers.flatMap((p) => p.track.events.map((e) => e.id))) + 1
@@ -24,6 +37,9 @@ export function usePlayerTracks(
     );
     const playersRef = useRef(players);
     playersRef.current = players;
+
+    const resizeBaselineRef = useRef<Player[] | null>(null);
+    const lastMetaRef = useRef<{ key: string; timestamp: number } | null>(null);
 
     const handleCreateEvent = useCallback((
         partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>,
@@ -39,26 +55,20 @@ export function usePlayerTracks(
             resizable: false,
             ...partial,
         };
-        setPlayers((prev) =>
-            prev.map((p) =>
-                p.id === targetId
-                    ? { ...p, track: { ...p.track, events: [...p.track.events, newEvent] } }
-                    : p
-            )
-        );
+        record((draft) => {
+            const player = draft.find((p) => p.id === targetId);
+            if (player) player.track.events.push(newEvent as any);
+        });
         setSelectedEvents([newEvent]);
-    }, [setSelectedEvents]);
+    }, [record, setSelectedEvents]);
 
     const handleDeleteEvents = useCallback((playerId: string, eventIds: number[]) => {
         const idSet = new Set(eventIds);
-        setPlayers((prev) =>
-            prev.map((p) =>
-                p.id === playerId
-                    ? { ...p, track: { ...p.track, events: p.track.events.filter((e) => !idSet.has(e.id)) } }
-                    : p
-            )
-        );
-    }, []);
+        record((draft) => {
+            const player = draft.find((p) => p.id === playerId);
+            if (player) player.track.events = player.track.events.filter((e) => !idSet.has(e.id));
+        });
+    }, [record]);
 
     const handleDuplicateEvents = useCallback((playerId: string, events: TrackEvent[]) => {
         const newEvents = events.map((e) => ({
@@ -66,15 +76,12 @@ export function usePlayerTracks(
             id: nextEventId.current++,
             time: e.time + 0.5,
         }));
-        setPlayers((prev) =>
-            prev.map((p) =>
-                p.id === playerId
-                    ? { ...p, track: { ...p.track, events: [...p.track.events, ...newEvents] } }
-                    : p
-            )
-        );
+        record((draft) => {
+            const player = draft.find((p) => p.id === playerId);
+            if (player) player.track.events.push(...(newEvents as any[]));
+        });
         setSelectedEvents(newEvents);
-    }, [setSelectedEvents]);
+    }, [record, setSelectedEvents]);
 
     const handlePasteEvents = useCallback((playerId: string, events: TrackEvent[], pasteTime: number) => {
         const minTime = Math.min(...events.map((e) => e.time));
@@ -83,102 +90,96 @@ export function usePlayerTracks(
             id: nextEventId.current++,
             time: pasteTime + (e.time - minTime),
         }));
-        setPlayers((prev) =>
-            prev.map((p) =>
-                p.id === playerId
-                    ? { ...p, track: { ...p.track, events: [...p.track.events, ...newEvents] } }
-                    : p
-            )
-        );
+        record((draft) => {
+            const player = draft.find((p) => p.id === playerId);
+            if (player) player.track.events.push(...(newEvents as any[]));
+        });
         setSelectedEvents(newEvents);
-    }, [setSelectedEvents]);
+    }, [record, setSelectedEvents]);
 
+    // Called on every mousemove during resize — no history entry, committed by handleCommitResize.
     const handleUpdateEvent = useCallback((
         playerId: string,
         eventId: number,
         time: number,
         duration: number
     ) => {
-        setPlayers((prev) =>
-            prev.map((p) =>
-                p.id === playerId
-                    ? {
-                          ...p,
-                          track: {
-                              ...p.track,
-                              events: p.track.events.map((e) =>
-                                  e.id === eventId ? { ...e, time, duration } : e
-                              ),
-                          },
-                      }
-                    : p
-            )
-        );
+        mutate((draft) => {
+            const player = draft.find((p) => p.id === playerId);
+            const event = player?.track.events.find((e) => e.id === eventId);
+            if (event) { event.time = time; event.duration = duration; }
+        });
+    }, [mutate]);
+
+    const handleBeginResize = useCallback(() => {
+        resizeBaselineRef.current = playersRef.current;
     }, []);
+
+    const handleCommitResize = useCallback(() => {
+        const baseline = resizeBaselineRef.current;
+        resizeBaselineRef.current = null;
+        if (baseline) recordFromBaseline(baseline);
+    }, [recordFromBaseline]);
 
     const handleMoveEvents = useCallback((
         moves: Array<{ playerId: string; eventId: number; newTime: number; newLayer: number }>
     ) => {
-        setPlayers((prev) => {
-            let next = prev;
+        record((draft) => {
             for (const { playerId, eventId, newTime, newLayer } of moves) {
-                next = next.map((p) => {
-                    if (p.id !== playerId) return p;
-                    const clampedLayer = Math.max(0, Math.min(p.track.layers - 1, newLayer));
-                    return {
-                        ...p,
-                        track: {
-                            ...p.track,
-                            events: p.track.events.map((e) =>
-                                e.id === eventId ? { ...e, time: newTime, layer: clampedLayer } : e
-                            ),
-                        },
-                    };
-                });
+                const player = draft.find((p) => p.id === playerId);
+                if (!player) continue;
+                const event = player.track.events.find((e) => e.id === eventId);
+                if (!event) continue;
+                event.time = newTime;
+                event.layer = Math.max(0, Math.min(player.track.layers - 1, newLayer));
             }
-            return next;
         });
-    }, []);
+    }, [record]);
 
     const handleUpdateMeta = useCallback((
         playerId: string,
         eventId: number,
         meta: EventMeta
     ) => {
-        setPlayers((prev) =>
-            prev.map((p) =>
-                p.id !== playerId
-                    ? p
-                    : {
-                          ...p,
-                          track: {
-                              ...p.track,
-                              events: p.track.events.map((e) =>
-                                  e.id !== eventId ? e : { ...e, meta }
-                              ),
-                          },
-                      }
-            )
-        );
-    }, []);
+        const coalesceKey = `${playerId}-${eventId}`;
+        const now = Date.now();
+        const shouldCoalesce =
+            lastMetaRef.current?.key === coalesceKey &&
+            now - lastMetaRef.current.timestamp < 1000;
+
+        const recipe = (draft: any[]) => {
+            const player = draft.find((p: Player) => p.id === playerId);
+            const event = player?.track.events.find((e: TrackEvent) => e.id === eventId);
+            if (event) event.meta = meta;
+        };
+
+        if (shouldCoalesce) {
+            mutate(recipe);
+        } else {
+            record(recipe);
+            lastMetaRef.current = { key: coalesceKey, timestamp: now };
+        }
+    }, [record, mutate]);
 
     const handleUpdatePlayer = useCallback((
         playerId: string,
         updates: { name?: string; deckName?: string; decklist?: Decklist }
     ) => {
-        setPlayers((prev) =>
-            prev.map((p) => (p.id !== playerId ? p : { ...p, ...updates }))
-        );
-    }, []);
+        record((draft) => {
+            const player = draft.find((p) => p.id === playerId);
+            if (player) Object.assign(player, updates);
+        });
+    }, [record]);
 
     const resetPlayers = useCallback((incoming: Player[]) => {
-        setPlayers(incoming);
+        setState(incoming);
+        clearHistory();
         const maxId = Math.max(
             0,
             ...incoming.flatMap((p) => p.track.events.map((e) => e.id))
         );
         nextEventId.current = maxId + 1;
-    }, []);
+    }, [setState, clearHistory]);
 
     return {
         players,
@@ -187,9 +188,15 @@ export function usePlayerTracks(
         handleDuplicateEvents,
         handlePasteEvents,
         handleUpdateEvent,
+        handleBeginResize,
+        handleCommitResize,
         handleMoveEvents,
         handleUpdateMeta,
         handleUpdatePlayer,
         resetPlayers,
+        undo,
+        redo,
+        canUndo,
+        canRedo,
     };
 }

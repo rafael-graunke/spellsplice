@@ -143,7 +143,6 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true 
     const [query, setQuery] = useState('');
     const [comboKey, setComboKey] = useState(0);
     const { data: suggestions, isFetching } = useCardSearch(query, player);
-
     const selected: Card[] = event.meta?.cards ?? [];
 
     // Stable IDs keyed to card instances, not positions.
@@ -213,8 +212,9 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true 
 
             <Combobox<string, false>
                 key={comboKey}
-                filter={null}
-                autoHighlight
+                items={suggestions ?? []}
+                filter={() => true}
+                autoHighlight="always"
                 onInputValueChange={(val, details) => {
                     if (details.reason === 'input-change') setQuery(val);
                 }}
@@ -222,7 +222,12 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true 
                     if (name) addCard(name);
                 }}
             >
-                <ComboboxInput placeholder="Search cards…" className="h-8" />
+                <ComboboxInput
+                    placeholder="Search cards…"
+                    className="h-8"
+                    autoFocus
+                    onKeyDown={(e) => { if (e.key === 'Escape') (e.target as HTMLInputElement).blur(); }}
+                />
                 <ComboboxContent>
                     <ComboboxList>
                         {isFetching && (

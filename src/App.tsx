@@ -188,7 +188,7 @@ function App() {
                                 />
                             </ResizablePanel>
                             <ResizableHandle />
-                            <ResizablePanel minSize={100} defaultSize="25%">
+                            <ResizablePanel minSize="400px" defaultSize="25%">
                                 <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} player={rawSelectedPlayer} />
                             </ResizablePanel>
                         </ResizablePanelGroup>

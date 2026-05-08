@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useDebounce } from '@uidotdev/usehooks';
 import type { Player } from '@/components/types/player';
 
@@ -33,6 +33,7 @@ export function useCardSearch(query: string, player?: Player | null) {
         },
         enabled: localResults === null && query.length > 1 && debouncedQuery.length > 1,
         staleTime: Infinity,
+        placeholderData: keepPreviousData,
     });
 
     if (localResults !== null) return { data: localResults, isFetching: false };

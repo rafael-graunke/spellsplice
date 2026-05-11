@@ -29,10 +29,16 @@ interface FileDropdownProps {
 function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: FileDropdownProps) {
     const importRef = useRef<HTMLInputElement>(null);
     const [showNewModal, setShowNewModal] = useState(false);
+    const [showOpenModal, setShowOpenModal] = useState(false);
 
     const handleNew = () => {
         if (isDirty) setShowNewModal(true);
         else onNew();
+    };
+
+    const handleOpen = () => {
+        if (isDirty) setShowOpenModal(true);
+        else importRef.current?.click();
     };
 
     useEffect(() => {
@@ -42,7 +48,7 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: Fil
                 onExport();
             } else if (e.ctrlKey && !e.altKey && e.code === 'KeyO') {
                 e.preventDefault();
-                importRef.current?.click();
+                handleOpen();
             } else if (e.ctrlKey && e.altKey && e.code === 'KeyN') {
                 e.preventDefault();
                 if (isDirty) setShowNewModal(true);
@@ -92,6 +98,31 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: Fil
                 </DialogContent>
             </Dialog>
 
+            <Dialog open={showOpenModal} onOpenChange={setShowOpenModal}>
+                <DialogContent showCloseButton={false}>
+                    <DialogHeader>
+                        <DialogTitle>Unsaved changes</DialogTitle>
+                        <DialogDescription>
+                            This project has unsaved changes. Save before opening another project?
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setShowOpenModal(false); importRef.current?.click(); }}>
+                            Discard
+                        </Button>
+                        <Button
+                            onClick={async () => {
+                                await onExport();
+                                setShowOpenModal(false);
+                                importRef.current?.click();
+                            }}
+                        >
+                            Save
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost">File</Button>
@@ -101,7 +132,7 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: Fil
                         <DropdownMenuItem onClick={handleNew}>
                             New...<DropdownMenuShortcut>{modKey}+Alt+N</DropdownMenuShortcut>
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => importRef.current?.click()}>
+                        <DropdownMenuItem onClick={handleOpen}>
                             Open...<DropdownMenuShortcut>{modKey}+O</DropdownMenuShortcut>
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={onExport}>

@@ -77,6 +77,16 @@ function App() {
     } = usePlayerTracks(initialPlayers, currentTimeRef, setSelectedEvents, savedPlayersInit);
 
     useEffect(() => {
+        const handler = (e: BeforeUnloadEvent) => {
+            if (!isDirty) return;
+            e.preventDefault();
+            localStorage.removeItem(AUTOSAVE_KEY);
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [isDirty]);
+
+    useEffect(() => {
         if (isFirstPlayersRender.current) {
             isFirstPlayersRender.current = false;
             return;

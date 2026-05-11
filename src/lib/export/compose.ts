@@ -155,7 +155,6 @@ export class Compositor {
                 const card = event.meta?.cards?.[0];
                 if (!card?.name) return;
                 const cached = ensureImage(card.name, card.edition);
-                if (cached === 'loading' || cached === 'error') return;
                 const cardX = offsetX + drawW / 2 - cardW / 2 + cardOffset * (cardW + 8);
                 const finalCardY = offsetY + drawH / 2 - cardH / 2;
 
@@ -172,9 +171,20 @@ export class Compositor {
 
                 overlayCtx.save();
                 overlayCtx.beginPath();
-                overlayCtx.roundRect(cardX, cardY, cardW, cardH, 20);
+                const corner_scale = card.edition?.startsWith("lea") ? 0.07 : 0.045;
+                overlayCtx.roundRect(cardX, cardY, cardW, cardH, cardW * corner_scale);
                 overlayCtx.clip();
-                overlayCtx.drawImage(cached, cardX, cardY, cardW, cardH);
+                if (cached instanceof HTMLImageElement) {
+                    overlayCtx.drawImage(cached, cardX, cardY, cardW, cardH);
+                } else {
+                    overlayCtx.fillStyle = '#3a0257';
+                    overlayCtx.fill();
+                    overlayCtx.fillStyle = '#ffffff';
+                    overlayCtx.font = `bold ${Math.round(cardH * 0.05)}px sans-serif`;
+                    overlayCtx.textBaseline = 'top';
+                    overlayCtx.textAlign = 'left';
+                    overlayCtx.fillText(card.name, cardX + 25, cardY + 25);
+                }
                 overlayCtx.restore();
                 cardOffset++;
             });
@@ -199,7 +209,6 @@ export class Compositor {
         gl.deleteTexture(this.videoTex);
         gl.deleteTexture(this.overlayTex);
         gl.deleteProgram(this.program);
-        gl.getExtension('WEBGL_lose_context')?.loseContext();
     }
 
     private compileShader(type: number, src: string): WebGLShader {

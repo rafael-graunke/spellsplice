@@ -82,6 +82,60 @@ function CreateControls({ open, onOpenChange, setIsPlaying, onCreateEvent, selec
                     <CommandInput placeholder="Type a command or search..." />
                     <CommandList>
                         <CommandEmpty>No actions found.</CommandEmpty>
+                        <CommandGroup heading="Player Actions">
+                            <CommandItem
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.AddToHand,
+                                        duration: 1,
+                                    })
+                                }
+                            >
+                                Draw
+                            </CommandItem>
+                            <CommandItem
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.RemoveFromHand,
+                                    })
+                                }
+                            >
+                                Discard
+                            </CommandItem>
+                            <CommandItem
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.LoseLife,
+                                        meta: {
+                                            amount: 1,
+                                        }
+                                    })
+                                }
+                            >
+                                Damage
+                            </CommandItem>
+                            <CommandItem
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.GainLife,
+                                        meta: {
+                                            amount: 1,
+                                        }
+                                    })
+                                }
+                            >
+                                Heal
+                            </CommandItem>
+                            <CommandItem
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.RevealFromHand,
+                                    })
+                                }
+                            >
+                                Reveal
+                            </CommandItem>
+                        </CommandGroup>
                         <CommandGroup heading="Basic Actions">
                             <CommandItem
                                 onSelect={() =>
@@ -167,6 +221,15 @@ function CreateControls({ open, onOpenChange, setIsPlaying, onCreateEvent, selec
                             >
                                 Display Card
                             </CommandItem>
+                            <CommandItem
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.Win,
+                                    })
+                                }
+                            >
+                                Win
+                            </CommandItem>
                         </CommandGroup>
                     </CommandList>
                 </Command>
@@ -179,33 +242,43 @@ interface PlaybackControlsProps {
     setCurrentTime: (time: number) => void;
     setIsPlaying: (playing: React.SetStateAction<boolean>) => void;
     isPlaying: boolean;
+    currentTimeRef: React.MutableRefObject<number>;
+    duration: number;
 }
 
 function PlaybackControls({
     isPlaying,
     setCurrentTime,
     setIsPlaying,
+    currentTimeRef,
+    duration,
 }: PlaybackControlsProps) {
     useEffect(() => {
         const downHandler = (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement;
+            const inInput =
+                target.tagName === 'INPUT' ||
+                target.tagName === 'TEXTAREA' ||
+                target.isContentEditable;
+
             if (e.code === 'Space') {
                 if (e.repeat) return;
-                const target = e.target as HTMLElement;
-                if (
-                    target.tagName === 'INPUT' ||
-                    target.tagName === 'TEXTAREA' ||
-                    target.isContentEditable
-                )
-                    return;
-
+                if (inInput) return;
                 e.preventDefault();
                 setIsPlaying((prev) => !prev);
+            } else if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+                if (inInput) return;
+                e.preventDefault();
+                const step = e.ctrlKey || e.metaKey ? 1 / 30 : 1;
+                const delta = e.code === 'ArrowLeft' ? -step : step;
+                const next = Math.max(0, Math.min(duration, currentTimeRef.current + delta));
+                setCurrentTime(next);
             }
         };
 
         window.addEventListener('keydown', downHandler);
         return () => window.removeEventListener('keydown', downHandler);
-    }, []);
+    }, [duration]);
 
     return (
         <div className="flex flex-row gap-6 items-center">
@@ -245,6 +318,8 @@ function TimelineControls({
     zoom,
     onZoomChange: handleZoomChange,
     isPlaying,
+    currentTimeRef,
+    duration,
     createOpen,
     onCreateOpenChange,
     onCreateEvent,
@@ -266,6 +341,8 @@ function TimelineControls({
                     setCurrentTime={setCurrentTime}
                     setIsPlaying={setIsPlaying}
                     isPlaying={isPlaying}
+                    currentTimeRef={currentTimeRef}
+                    duration={duration}
                 />
             </div>
             <div className="w-250 flex flex-row justify-end">

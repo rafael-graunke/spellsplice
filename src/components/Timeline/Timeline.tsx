@@ -108,6 +108,15 @@ function Timeline({
     useEffect(() => {
         let raf: number;
         const tick = () => {
+            const cursorPx = currentTimeRef.current * zoomRef.current;
+            const containerWidth = trackRef.current?.clientWidth ?? 0;
+            if (cursorPx - trackScrollLeftRef.current + 16 > containerWidth) {
+                const newScrollLeft = cursorPx;
+                trackScrollLeftRef.current = newScrollLeft;
+                if (trackRef.current) trackRef.current.scrollLeft = newScrollLeft;
+                if (rulerScrollRef.current)
+                    rulerScrollRef.current.style.transform = `translateX(-${newScrollLeft}px)`;
+            }
             updateCursorPosition(currentTimeRef.current, trackScrollLeftRef.current);
             raf = requestAnimationFrame(tick);
         };
@@ -247,6 +256,22 @@ function Timeline({
         setSelectedEvents([]);
     }, [setSelectedPlayerId, setSelectedEvents]);
 
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement;
+            const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+            if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey) {
+                if (inInput) return;
+                e.preventDefault();
+                const idx = players.findIndex((p) => p.id === selectedPlayer.id);
+                const next = players[(idx + 1) % players.length];
+                if (next) handleSelectPlayer(next);
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [players, selectedPlayer, handleSelectPlayer]);
+
     const handleScrollDelta = useCallback((delta: number) => {
         if (trackRef.current) trackRef.current.scrollLeft -= delta;
     }, []);
@@ -271,6 +296,8 @@ function Timeline({
                 isPlaying={isPlaying}
                 setCurrentTime={seekTo}
                 setIsPlaying={setIsPlaying}
+                currentTimeRef={currentTimeRef}
+                duration={duration}
                 selectedPlayer={selectedPlayer}
                 createOpen={createOpen}
                 onCreateOpenChange={setCreateOpen}
@@ -338,7 +365,7 @@ function Timeline({
                             ))}
                             {marqueeRect && (
                                 <div
-                                    className="absolute pointer-events-none border border-blue-400 bg-blue-400/10 z-40"
+                                    className="absolute pointer-events-none border rounded-sm border-violet-500 bg-violet-500/20 z-40"
                                     style={{
                                         left: marqueeRect.x,
                                         top: marqueeRect.y,

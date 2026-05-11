@@ -12,6 +12,7 @@ import _StackDeck from './stack_deck.svg';
 import _EventBackground from './event_bg.svg';
 import _Eye from './eye.svg';
 import _Book from './book.svg';
+import _Win from './win.svg';
 
 export const EventBackground = _EventBackground as unknown as SvgIcon;
 export const Draw = _Draw as unknown as SvgIcon;
@@ -23,3 +24,4 @@ export const UnstackDeck = _UnstackDeck as unknown as SvgIcon;
 export const StackDeck = _StackDeck as unknown as SvgIcon;
 export const Eye = _Eye as unknown as SvgIcon;
 export const Book = _Book as unknown as SvgIcon;
+export const Win = _Win as unknown as SvgIcon;

@@ -81,3 +81,7 @@ export function applyUnstackDeck(state: Player, _trackEvent: TrackEvent): Player
         topStack: [],
     };
 }
+
+export function applyWin(state: Player): Player {
+    return { ...state, wins: state.wins + 1 };
+}

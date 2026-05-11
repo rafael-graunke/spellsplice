@@ -5,17 +5,20 @@ import type { TrackEvent, EventMeta } from '../types/event';
 interface LifeFieldsProps {
     event: TrackEvent;
     onUpdate: (meta: EventMeta) => void;
+    autoFocus?: boolean;
 }
 
-export function LifeFields({ event, onUpdate }: LifeFieldsProps) {
+export function LifeFields({ event, onUpdate, autoFocus }: LifeFieldsProps) {
     const committed = (event.meta?.amount as number) ?? 1;
     const [raw, setRaw] = useState(String(committed));
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         setRaw(String(committed));
-        inputRef.current?.focus();
-        inputRef.current?.select();
+        if (autoFocus) {
+            inputRef.current?.focus();
+            inputRef.current?.select();
+        }
     }, [event.id]);
 
     return (

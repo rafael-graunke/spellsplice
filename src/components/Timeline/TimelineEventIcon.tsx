@@ -10,6 +10,7 @@ import {
     Reveal,
     UnstackDeck,
     StackDeck,
+    Win,
 } from '@/assets/icons';
 import { EventColorMap } from '../types/event';
 import type { EventType } from '../types/event';
@@ -25,6 +26,7 @@ export const iconMap: Record<EventType, SvgIcon> = {
     STACK_DECK: StackDeck,
     UNSTACK_DECK: UnstackDeck,
     DISPLAY_CARD: Reveal,
+    WIN: Win,
 };
 
 interface TimelineEventIconProps extends ComponentProps<'div'> {

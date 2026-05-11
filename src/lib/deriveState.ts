@@ -9,6 +9,7 @@ import {
     applyRevealFromHand,
     applyStackDeck,
     applyUnstackDeck,
+    applyWin,
 } from './stateHandlers';
 
 export interface CardWithTimestamp {
@@ -109,6 +110,8 @@ function applyEvent(state: Player, event: TrackEvent): Player {
             return applyStackDeck(state, event);
         case 'UNSTACK_DECK':
             return applyUnstackDeck(state, event);
+        case 'WIN':
+            return applyWin(state);
         default:
             return state;
     }

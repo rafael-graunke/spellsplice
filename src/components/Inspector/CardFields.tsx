@@ -46,6 +46,7 @@ interface CardFieldsProps {
     onUpdate: (meta: EventMeta) => void;
     player?: Player | null;
     showEdition?: boolean;
+    autoFocus?: boolean;
 }
 
 interface PrintingsListProps {
@@ -280,7 +281,7 @@ function makeId() {
     return Math.random().toString(36).slice(2);
 }
 
-export function CardFields({ event, multi, onUpdate, player, showEdition = true }: CardFieldsProps) {
+export function CardFields({ event, multi, onUpdate, player, showEdition = true, autoFocus }: CardFieldsProps) {
     const [query, setQuery] = useState('');
     const [comboKey, setComboKey] = useState(0);
     const { data: suggestions, isFetching } = useCardSearch(query, player);
@@ -314,8 +315,16 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true 
         onUpdate({ cards: arrayMove(selected, from, to) });
     };
 
+    const focusNextMountRef = useRef(!!autoFocus);
+    const hasInitedRef = useRef(false);
+
     useEffect(() => {
         setQuery('');
+        if (!hasInitedRef.current) {
+            hasInitedRef.current = true;
+            return;
+        }
+        focusNextMountRef.current = false;
         setComboKey((k) => k + 1);
     }, [event.id]);
 
@@ -335,6 +344,7 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true 
         const next = multi ? [...selected, newCard] : [newCard];
         onUpdate({ cards: next });
         setQuery('');
+        focusNextMountRef.current = true;
         setComboKey((k) => k + 1);
     };
 
@@ -366,7 +376,7 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true 
                 <ComboboxInput
                     placeholder="Search cards…"
                     className="h-8"
-                    autoFocus
+                    autoFocus={focusNextMountRef.current}
                     onKeyDown={(e) => { if (e.key === 'Escape') (e.target as HTMLInputElement).blur(); }}
                 />
                 <ComboboxContent>

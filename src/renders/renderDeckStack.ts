@@ -56,6 +56,7 @@ export function renderDeckStack(
     offsetY: number,
     drawW: number,
     drawH: number,
+    uiVisibility = 1,
 ) {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
@@ -109,6 +110,10 @@ export function renderDeckStack(
             contX = offscreenContX(contW) + (finalContX(contW) - offscreenContX(contW)) * t;
         }
 
+        const slideX = (isLeft ? -1 : 1) * 500 * (1 - uiVisibility);
+        ctx.save();
+        ctx.translate(slideX, 0);
+
         drawBackground(ctx, contX, contY, contW, contH);
 
         const stripX = contX + CONT_PAD_X;
@@ -119,6 +124,7 @@ export function renderDeckStack(
             for (let j = 0; j < preStackCards.length; j++) {
                 drawCardStrip(ctx, preStackCards[j], stripX, firstStripY + stackH(preStackCards, j), isLeft);
             }
+            ctx.restore();
             return;
         }
 
@@ -127,6 +133,7 @@ export function renderDeckStack(
             for (let j = 0; j < currentCards.length; j++) {
                 drawCardStrip(ctx, currentCards[j], stripX, firstStripY + stackH(currentCards, j), isLeft);
             }
+            ctx.restore();
             return;
         }
 
@@ -167,6 +174,7 @@ export function renderDeckStack(
                     drawCardStrip(ctx, card, x, y, isLeft, null, 1 - t);
                 }
             }
+            ctx.restore();
             return;
         }
 
@@ -174,5 +182,6 @@ export function renderDeckStack(
         for (let j = 0; j < currentCards.length; j++) {
             drawCardStrip(ctx, currentCards[j], stripX, firstStripY + stackH(currentCards, j), isLeft);
         }
+        ctx.restore();
     });
 }

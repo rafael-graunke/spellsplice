@@ -30,6 +30,9 @@ export function EventFields({ event, onUpdate, player, autoFocus }: EventFieldsP
 
         case 'UNSTACK_DECK':
         case 'WIN':
+        case 'HIDE_UI':
+        case 'SHOW_UI':
+        case 'RESET':
             return null;
     }
 }

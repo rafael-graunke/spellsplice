@@ -230,6 +230,33 @@ function CreateControls({ open, onOpenChange, setIsPlaying, onCreateEvent, selec
                             >
                                 Win
                             </CommandItem>
+                            <CommandItem
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.Reset,
+                                    })
+                                }
+                            >
+                                Reset
+                            </CommandItem>
+                            <CommandItem
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.HideUi,
+                                    })
+                                }
+                            >
+                                Hide UI
+                            </CommandItem>
+                            <CommandItem
+                                onSelect={() =>
+                                    handleSelect({
+                                        type: EventType.ShowUi,
+                                    })
+                                }
+                            >
+                                Show UI
+                            </CommandItem>
                         </CommandGroup>
                     </CommandList>
                 </Command>

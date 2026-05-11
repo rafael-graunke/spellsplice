@@ -97,7 +97,6 @@ function CreateControls({ open, onOpenChange, setIsPlaying, onCreateEvent, selec
                                 onSelect={() =>
                                     handleSelect({
                                         type: EventType.RemoveFromHand,
-                                        duration: 1,
                                     })
                                 }
                             >
@@ -107,7 +106,9 @@ function CreateControls({ open, onOpenChange, setIsPlaying, onCreateEvent, selec
                                 onSelect={() =>
                                     handleSelect({
                                         type: EventType.LoseLife,
-                                        duration: 1,
+                                        meta: {
+                                            amount: 1,
+                                        }
                                     })
                                 }
                             >
@@ -117,7 +118,9 @@ function CreateControls({ open, onOpenChange, setIsPlaying, onCreateEvent, selec
                                 onSelect={() =>
                                     handleSelect({
                                         type: EventType.GainLife,
-                                        duration: 1,
+                                        meta: {
+                                            amount: 1,
+                                        }
                                     })
                                 }
                             >
@@ -127,7 +130,6 @@ function CreateControls({ open, onOpenChange, setIsPlaying, onCreateEvent, selec
                                 onSelect={() =>
                                     handleSelect({
                                         type: EventType.RevealFromHand,
-                                        duration: 1,
                                     })
                                 }
                             >
@@ -137,7 +139,6 @@ function CreateControls({ open, onOpenChange, setIsPlaying, onCreateEvent, selec
                                 onSelect={() =>
                                     handleSelect({
                                         type: EventType.StackDeck,
-                                        duration: 1,
                                         meta: {
                                             cards: selectedPlayer.topStack,
                                         }
@@ -150,7 +151,6 @@ function CreateControls({ open, onOpenChange, setIsPlaying, onCreateEvent, selec
                                 onSelect={() =>
                                     handleSelect({
                                         type: EventType.UnstackDeck,
-                                        duration: 1,
                                     })
                                 }
                             >

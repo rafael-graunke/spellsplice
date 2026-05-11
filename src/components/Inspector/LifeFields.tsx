@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import type { TrackEvent, EventMeta } from '../types/event';
 
@@ -10,18 +10,23 @@ interface LifeFieldsProps {
 export function LifeFields({ event, onUpdate }: LifeFieldsProps) {
     const committed = (event.meta?.amount as number) ?? 1;
     const [raw, setRaw] = useState(String(committed));
+    const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         setRaw(String(committed));
+        inputRef.current?.focus();
+        inputRef.current?.select();
     }, [event.id]);
 
     return (
         <div className="flex flex-col gap-1.5">
             <label className="text-xs text-muted-foreground">Amount</label>
             <Input
+                ref={inputRef}
                 type="number"
                 min={1}
                 value={raw}
+                onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.blur(); }}
                 onChange={(e) => {
                     const s = e.target.value;
                     setRaw(s);

@@ -77,6 +77,16 @@ function App() {
     } = usePlayerTracks(initialPlayers, currentTimeRef, setSelectedEvents, savedPlayersInit);
 
     useEffect(() => {
+        const handler = (e: BeforeUnloadEvent) => {
+            if (!isDirty) return;
+            e.preventDefault();
+            localStorage.removeItem(AUTOSAVE_KEY);
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [isDirty]);
+
+    useEffect(() => {
         if (isFirstPlayersRender.current) {
             isFirstPlayersRender.current = false;
             return;
@@ -188,7 +198,7 @@ function App() {
                                 />
                             </ResizablePanel>
                             <ResizableHandle />
-                            <ResizablePanel minSize={100} defaultSize="25%">
+                            <ResizablePanel minSize="400px" defaultSize="25%">
                                 <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} player={rawSelectedPlayer} />
                             </ResizablePanel>
                         </ResizablePanelGroup>

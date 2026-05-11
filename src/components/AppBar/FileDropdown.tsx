@@ -28,12 +28,15 @@ interface FileDropdownProps {
 
 function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: FileDropdownProps) {
     const importRef = useRef<HTMLInputElement>(null);
-    const [showNewModal, setShowNewModal] = useState(false);
+    const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
-    const handleNew = () => {
-        if (isDirty) setShowNewModal(true);
-        else onNew();
+    const guardDirty = (action: () => void) => {
+        if (isDirty) setPendingAction(() => action);
+        else action();
     };
+
+    const handleNew = () => guardDirty(onNew);
+    const handleOpen = () => guardDirty(() => importRef.current?.click());
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -42,10 +45,11 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: Fil
                 onExport();
             } else if (e.ctrlKey && !e.altKey && e.code === 'KeyO') {
                 e.preventDefault();
-                importRef.current?.click();
+                if (isDirty) setPendingAction(() => () => importRef.current?.click());
+                else importRef.current?.click();
             } else if (e.ctrlKey && e.altKey && e.code === 'KeyN') {
                 e.preventDefault();
-                if (isDirty) setShowNewModal(true);
+                if (isDirty) setPendingAction(() => onNew);
                 else onNew();
             }
         };
@@ -67,26 +71,23 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: Fil
                 }}
             />
 
-            <Dialog open={showNewModal} onOpenChange={setShowNewModal}>
+            <Dialog open={pendingAction !== null} onOpenChange={(open) => { if (!open) setPendingAction(null); }}>
                 <DialogContent showCloseButton={false}>
                     <DialogHeader>
                         <DialogTitle>Unsaved changes</DialogTitle>
                         <DialogDescription>
-                            This project has unsaved changes. Save before creating a new project?
+                            This project has unsaved changes. Discard and continue?
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => { setShowNewModal(false); onNew(); }}>
-                            Discard
+                        <Button variant="outline" onClick={() => setPendingAction(null)}>
+                            Cancel
                         </Button>
                         <Button
-                            onClick={async () => {
-                                await onExport();
-                                setShowNewModal(false);
-                                onNew();
-                            }}
+                            variant="destructive"
+                            onClick={() => { pendingAction?.(); setPendingAction(null); }}
                         >
-                            Save
+                            Discard
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -101,7 +102,7 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: Fil
                         <DropdownMenuItem onClick={handleNew}>
                             New...<DropdownMenuShortcut>{modKey}+Alt+N</DropdownMenuShortcut>
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => importRef.current?.click()}>
+                        <DropdownMenuItem onClick={handleOpen}>
                             Open...<DropdownMenuShortcut>{modKey}+O</DropdownMenuShortcut>
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={onExport}>

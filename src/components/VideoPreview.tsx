@@ -164,8 +164,8 @@ function VideoPreview({
 
     useEffect(() => {
         return subscribeImageLoad(() => {
+            derivedCacheRef.current = null;
             if (!isPlayingRef.current) {
-                derivedCacheRef.current = null;
                 renderFrameRef.current();
             }
         });

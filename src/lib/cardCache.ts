@@ -17,23 +17,56 @@ export function subscribeImageLoad(cb: () => void): () => void {
     return () => imageLoadListeners.delete(cb);
 }
 
+function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
+    return fetch(url, { mode: 'cors', cache: 'reload' })
+        .then((r) => r.blob())
+        .then(
+            (blob) =>
+                new Promise<HTMLImageElement>((resolve, reject) => {
+                    const blobUrl = URL.createObjectURL(blob);
+                    const img = new Image();
+                    img.onload = () => {
+                        URL.revokeObjectURL(blobUrl);
+                        resolve(img);
+                    };
+                    img.onerror = () => {
+                        URL.revokeObjectURL(blobUrl);
+                        reject(new Error('image load failed'));
+                    };
+                    img.src = blobUrl;
+                }),
+        );
+}
+
 function loadImagesForSet(name: string, setCode: string, uris: Record<string, string>): void {
     if (!cardImageCache[name]) cardImageCache[name] = {};
     if (!cardImageCache[name][setCode]) cardImageCache[name][setCode] = {};
     for (const [key, url] of Object.entries(uris)) {
         if (cardImageCache[name][setCode][key] !== undefined) continue;
         cardImageCache[name][setCode][key] = 'loading';
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-            cardImageCache[name][setCode][key] = img;
-            imageLoadListeners.forEach((cb) => cb());
-        };
-        img.onerror = () => {
-            cardImageCache[name][setCode][key] = 'error';
-        };
-        img.src = url;
+        loadImageFromUrl(url)
+            .then((img) => {
+                cardImageCache[name][setCode][key] = img;
+                imageLoadListeners.forEach((cb) => cb());
+            })
+            .catch(() => {
+                delete cardImageCache[name][setCode][key];
+            });
     }
+}
+
+// Parse "set#collectorNumber" editions into fetch URL.
+function editionEndpoint(cardName: string, edition?: string): string {
+    const hashIdx = edition?.indexOf('#') ?? -1;
+    if (hashIdx > -1) {
+        const set = edition!.slice(0, hashIdx);
+        const num = edition!.slice(hashIdx + 1);
+        return `https://api.scryfall.com/cards/${encodeURIComponent(set)}/${encodeURIComponent(num)}`;
+    }
+    if (edition) {
+        return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}&set=${encodeURIComponent(edition)}`;
+    }
+    return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`;
 }
 
 function ensureCardData(cardName: string, edition?: string): void {
@@ -41,14 +74,9 @@ function ensureCardData(cardName: string, edition?: string): void {
     if (inFlight.has(inFlightKey)) return;
     inFlight.add(inFlightKey);
 
-    const endpoint = edition
-        ? `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}&set=${encodeURIComponent(edition)}`
-        : `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`;
-
-    slowFetch(endpoint)
+    slowFetch(editionEndpoint(cardName, edition))
         .then((r) => r.json())
         .then((data) => {
-            const setCode: string = data.set;
             const face = data.card_faces?.[0] ?? data;
             const allUris: Record<string, string> = face.image_uris ?? {};
             const uris: Record<string, string> = {};
@@ -59,18 +87,34 @@ function ensureCardData(cardName: string, edition?: string): void {
                 ...(data.frame && { frame: data.frame }),
             };
 
+            const storeKey = edition ?? (data.set as string);
             if (!cardDataCache[cardName]) cardDataCache[cardName] = {};
-            cardDataCache[cardName][setCode] = setData;
+            cardDataCache[cardName][storeKey] = setData;
             if (!edition) cardDataCache[cardName]['*'] = setData;
 
-            loadImagesForSet(cardName, setCode, uris);
+            loadImagesForSet(cardName, storeKey, uris);
             if (!edition) loadImagesForSet(cardName, '*', uris);
 
             try { localStorage.setItem(CARD_CACHE_KEY, JSON.stringify(cardDataCache)); } catch {}
         })
-        .catch(() => {
-            // inFlight key stays — prevents retry storms on repeated errors
-        });
+        .catch(() => { inFlight.delete(inFlightKey); });
+}
+
+export function storePrinting(
+    cardName: string,
+    editionKey: string,
+    imageUris: { normal?: string; border_crop?: string },
+    frame?: string,
+): void {
+    const uris: Record<string, string> = {};
+    if (imageUris.normal) uris.normal = imageUris.normal;
+    if (imageUris.border_crop) uris.border_crop = imageUris.border_crop;
+    if (!Object.keys(uris).length) return;
+
+    if (!cardDataCache[cardName]) cardDataCache[cardName] = {};
+    cardDataCache[cardName][editionKey] = { image_uris: uris, ...(frame && { frame }) };
+    loadImagesForSet(cardName, editionKey, uris);
+    try { localStorage.setItem(CARD_CACHE_KEY, JSON.stringify(cardDataCache)); } catch {}
 }
 
 export function ensureImage(
@@ -100,16 +144,11 @@ export async function verifyCard(cardName: string, edition?: string): Promise<bo
     const key = edition ?? '*';
     if (cardDataCache[cardName]?.[key]) return true;
 
-    const endpoint = edition
-        ? `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}&set=${encodeURIComponent(edition)}`
-        : `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`;
-
-    const response = await slowFetch(endpoint);
+    const response = await slowFetch(editionEndpoint(cardName, edition));
     if (response.status === 404) return false;
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const data = await response.json();
-    const setCode: string = data.set;
     const face = data.card_faces?.[0] ?? data;
     const allUris: Record<string, string> = face.image_uris ?? {};
     const uris: Record<string, string> = {};
@@ -118,7 +157,7 @@ export async function verifyCard(cardName: string, edition?: string): Promise<bo
     const setData: SetData = { image_uris: uris, ...(data.frame && { frame: data.frame }) };
 
     if (!cardDataCache[cardName]) cardDataCache[cardName] = {};
-    cardDataCache[cardName][setCode] = setData;
+    cardDataCache[cardName][key] = setData;
     if (!edition) cardDataCache[cardName]['*'] = setData;
 
     try { localStorage.setItem(CARD_CACHE_KEY, JSON.stringify(cardDataCache)); } catch {}

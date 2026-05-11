@@ -17,7 +17,7 @@ import { useZoom } from './hooks/useZoom';
 import { useSeekDrag } from './hooks/useSeekDrag';
 import { useEventMoveDrag } from './hooks/useEventMoveDrag';
 import { useMarqueeDrag } from './hooks/useMarqueeDrag';
-import { TRACK_HEIGHT } from './constants';
+import { TRACK_HEIGHT, MIN_LANES } from './constants';
 import { modKey } from '@/lib/platform';
 import {
     ContextMenu,
@@ -87,6 +87,7 @@ function Timeline({
     const cursorRef = useRef<TimelineCursorHandle>(null);
     const rulerScrollRef = useRef<HTMLDivElement>(null);
     const trackScrollLeftRef = useRef(0);
+    const peakDragLayerRef = useRef(-1);
 
     const { zoom, zoomPercent, zoomRef, handleZoomChange } = useZoom(
         containerRef,
@@ -158,6 +159,7 @@ function Timeline({
     const { ghostPositions, moveDragRef, handleMoveStart } = useEventMoveDrag(
         innerRef,
         zoomRef,
+        trackRef,
         effectivePlayer,
         selectedEvents,
         handleMoveEvents
@@ -192,7 +194,18 @@ function Timeline({
     const [createOpen, setCreateOpen] = useState(false);
     const pasteTimeRef = useRef(0);
 
-    const layerCount = effectivePlayer?.track.layers ?? 0;
+    const maxLayer = (effectivePlayer?.track.events ?? []).reduce((m, e) => Math.max(m, e.layer), -1);
+    const layerCount = Math.max(MIN_LANES, maxLayer + 1);
+
+    const ghostMaxLayer = ghostPositions.length > 0
+        ? Math.max(...ghostPositions.map((g) => Math.floor(g.top / TRACK_HEIGHT)))
+        : -1;
+    if (ghostPositions.length === 0) {
+        peakDragLayerRef.current = -1;
+    } else if (ghostMaxLayer > peakDragLayerRef.current) {
+        peakDragLayerRef.current = ghostMaxLayer;
+    }
+    const innerMinHeight = Math.max(layerCount, peakDragLayerRef.current + 2) * TRACK_HEIGHT;
 
     const eventsByLayer = useMemo(
         () => Array.from({ length: layerCount }, (_, i) =>
@@ -330,12 +343,22 @@ function Timeline({
                                 />
                             </div>
                         </div>
-                    <div ref={trackRef} className="pl-4 overflow-auto flex-1 scrollbar-thin">
+                    <div
+                        ref={trackRef}
+                        className="pl-4 overflow-auto flex-1 scrollbar-thin"
+                        style={{
+                            backgroundImage: `repeating-linear-gradient(to bottom, rgba(255,255,255,0.07) 0px, rgba(0,0,0,0.2) 1px, rgba(0,0,0,0.2) ${TRACK_HEIGHT - 1}px, rgba(255,255,255,0.07) ${TRACK_HEIGHT - 1}px)`,
+                            backgroundSize: `100% ${TRACK_HEIGHT}px`,
+                            backgroundAttachment: 'local',
+                        }}
+                    >
                         <ContextMenu>
                         <ContextMenuTrigger asChild>
                         <div
                             ref={innerRef}
                             className="relative"
+                            style={{ minHeight: `max(100%, ${innerMinHeight}px)` }}
+                            onMouseDown={handleTrackMouseDown}
                             onContextMenu={(e) => {
                                 const rect = innerRef.current!.getBoundingClientRect();
                                 pasteTimeRef.current = Math.max(0, (e.clientX - rect.left) / zoomRef.current);
@@ -358,7 +381,6 @@ function Timeline({
                                     onCopy={handleCopy}
                                     onDuplicate={handleDuplicateSelected}
                                     onMoveStart={handleMoveStart}
-                                    onBackgroundMouseDown={handleTrackMouseDown}
                                     onResizeStart={handleBeginResize}
                                     onResizeEnd={handleCommitResize}
                                 />
@@ -379,7 +401,7 @@ function Timeline({
                                     <TimelineEventIcon
                                         key={i}
                                         type={ghost.type}
-                                        className="size-11 absolute pointer-events-none opacity-75 z-50"
+                                        className="size-12 absolute pointer-events-none opacity-75 z-50"
                                         style={{
                                             left: ghost.left,
                                             top: ghost.top,

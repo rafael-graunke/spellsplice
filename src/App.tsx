@@ -193,11 +193,11 @@ function App() {
                     players={players}
                 />
                 <ResizablePanelGroup orientation="vertical" className="flex-1">
-                    <ResizablePanel minSize={100} defaultSize="70%">
+                    <ResizablePanel minSize={100} defaultSize="60%">
                         <ResizablePanelGroup orientation="horizontal">
                             <ResizablePanel
                                 minSize={100}
-                                defaultSize="75%"
+                                defaultSize="85%"
                                 className="bg-muted/20"
                             >
                                 <VideoPreview
@@ -213,13 +213,13 @@ function App() {
                                 />
                             </ResizablePanel>
                             <ResizableHandle />
-                            <ResizablePanel minSize="400px" defaultSize="25%">
+                            <ResizablePanel minSize="400px" defaultSize="15%">
                                 <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} player={rawSelectedPlayer} autoFocus={selectedEvents[0]?.id === newEventId} />
                             </ResizablePanel>
                         </ResizablePanelGroup>
                     </ResizablePanel>
                     <ResizableHandle />
-                    <ResizablePanel minSize={100} defaultSize="30%">
+                    <ResizablePanel minSize={100} defaultSize="40%">
                         <Timeline
                             setCurrentTime={setCurrentTime}
                             duration={video ? video.duration || 120 : 120}

@@ -12,9 +12,8 @@ function findAvailableLayer(
     time: number,
     duration: number,
     resizable: boolean,
-    totalLayers: number,
 ): number {
-    for (let layer = 0; layer < totalLayers; layer++) {
+    for (let layer = 0; ; layer++) {
         const collides = events.some((e) => {
             if (e.layer !== layer) return false;
             if (resizable || e.resizable) {
@@ -26,7 +25,6 @@ function findAvailableLayer(
         });
         if (!collides) return layer;
     }
-    return 0;
 }
 
 export function usePlayerTracks(
@@ -76,7 +74,7 @@ export function usePlayerTracks(
         const resizable = partial.resizable ?? false;
         const duration = partial.duration ?? 1;
         const layer = player
-            ? findAvailableLayer(player.track.events, time, duration, resizable, player.track.layers)
+            ? findAvailableLayer(player.track.events, time, duration, resizable)
             : 0;
         const newEvent: TrackEvent = {
             id: nextEventId.current++,
@@ -163,7 +161,7 @@ export function usePlayerTracks(
                 const event = player.track.events.find((e) => e.id === eventId);
                 if (!event) continue;
                 event.time = newTime;
-                event.layer = Math.max(0, Math.min(player.track.layers - 1, newLayer));
+                event.layer = Math.max(0, newLayer);
             }
         });
     }, [record]);

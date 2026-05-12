@@ -141,6 +141,7 @@ function Timeline({
             trackScrollLeftRef.current = el.scrollLeft;
             if (rulerScrollRef.current) rulerScrollRef.current.style.transform = `translateX(-${el.scrollLeft}px)`;
             updateCursorPosition(currentTimeRef.current, el.scrollLeft);
+            el.style.backgroundPositionY = `${el.scrollTop}px`;
         };
         el.addEventListener('scroll', onScroll, { passive: true });
         return () => el.removeEventListener('scroll', onScroll);
@@ -349,7 +350,6 @@ function Timeline({
                         style={{
                             backgroundImage: `repeating-linear-gradient(to bottom, rgba(255,255,255,0.07) 0px, rgba(0,0,0,0.2) 1px, rgba(0,0,0,0.2) ${TRACK_HEIGHT - 1}px, rgba(255,255,255,0.07) ${TRACK_HEIGHT - 1}px)`,
                             backgroundSize: `100% ${TRACK_HEIGHT}px`,
-                            backgroundAttachment: 'local',
                         }}
                     >
                         <ContextMenu>

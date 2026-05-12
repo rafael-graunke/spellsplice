@@ -30,6 +30,7 @@ interface MoveDragState {
     companions: EventDragData[];
     startX: number;
     startLayer: number;
+    startScrollLeft: number;
 }
 
 type MoveResult = {
@@ -63,9 +64,11 @@ export function useEventMoveDrag(
     const moveDragRef = useRef<MoveDragState | null>(null);
     const scrollRafRef = useRef<number | null>(null);
     const scrollSpeedRef = useRef(0);
+    const scrollSpeedXRef = useRef(0);
 
     const stopAutoScroll = () => {
         scrollSpeedRef.current = 0;
+        scrollSpeedXRef.current = 0;
         if (scrollRafRef.current) {
             cancelAnimationFrame(scrollRafRef.current);
             scrollRafRef.current = null;
@@ -127,6 +130,7 @@ export function useEventMoveDrag(
             companions,
             startX: e.clientX,
             startLayer: sourceLayer,
+            startScrollLeft: scrollContainerRef.current?.scrollLeft ?? 0,
         };
 
         const zoom = zoomRef.current!;
@@ -147,7 +151,9 @@ export function useEventMoveDrag(
 
             const rect = inner.getBoundingClientRect();
             const zoom = zoomRef.current!;
-            const deltaX = e.clientX - drag.startX;
+            const scrollEl = scrollContainerRef.current;
+            const scrollDelta = (scrollEl?.scrollLeft ?? 0) - drag.startScrollLeft;
+            const deltaX = (e.clientX - drag.startX) + scrollDelta;
             const deltaTime = deltaX / zoom;
 
             const yInInner = e.clientY - rect.top;
@@ -166,11 +172,12 @@ export function useEventMoveDrag(
             setGhostPositions(ghosts);
 
             // Edge scroll
-            const scrollEl = scrollContainerRef.current;
             if (scrollEl) {
                 const sr = scrollEl.getBoundingClientRect();
                 const distBottom = sr.bottom - e.clientY;
                 const distTop = e.clientY - sr.top;
+                const distRight = sr.right - e.clientX;
+                const distLeft = e.clientX - sr.left;
                 if (distBottom < 0) {
                     scrollSpeedRef.current = MAX_SCROLL_SPEED;
                 } else if (distBottom < SCROLL_ZONE) {
@@ -182,10 +189,22 @@ export function useEventMoveDrag(
                 } else {
                     scrollSpeedRef.current = 0;
                 }
-                if (scrollSpeedRef.current !== 0 && !scrollRafRef.current) {
+                if (distRight < 0) {
+                    scrollSpeedXRef.current = MAX_SCROLL_SPEED;
+                } else if (distRight < SCROLL_ZONE) {
+                    scrollSpeedXRef.current = ((SCROLL_ZONE - distRight) / SCROLL_ZONE) * MAX_SCROLL_SPEED;
+                } else if (distLeft < 0) {
+                    scrollSpeedXRef.current = -MAX_SCROLL_SPEED;
+                } else if (distLeft < SCROLL_ZONE) {
+                    scrollSpeedXRef.current = -((SCROLL_ZONE - distLeft) / SCROLL_ZONE) * MAX_SCROLL_SPEED;
+                } else {
+                    scrollSpeedXRef.current = 0;
+                }
+                if ((scrollSpeedRef.current !== 0 || scrollSpeedXRef.current !== 0) && !scrollRafRef.current) {
                     const tick = () => {
                         scrollEl.scrollTop += scrollSpeedRef.current;
-                        scrollRafRef.current = scrollSpeedRef.current !== 0
+                        scrollEl.scrollLeft += scrollSpeedXRef.current;
+                        scrollRafRef.current = (scrollSpeedRef.current !== 0 || scrollSpeedXRef.current !== 0)
                             ? requestAnimationFrame(tick)
                             : null;
                     };
@@ -206,7 +225,8 @@ export function useEventMoveDrag(
 
             const rect = inner.getBoundingClientRect();
             const zoom = zoomRef.current!;
-            const deltaX = e.clientX - drag.startX;
+            const scrollDeltaUp = (scrollContainerRef.current?.scrollLeft ?? 0) - drag.startScrollLeft;
+            const deltaX = (e.clientX - drag.startX) + scrollDeltaUp;
             const deltaTime = deltaX / zoom;
 
             const yInInner = e.clientY - rect.top;

@@ -10,11 +10,16 @@ import {
     Reveal,
     UnstackDeck,
     StackDeck,
+    Win,
 } from '@/assets/icons';
 import { EventColorMap } from '../types/event';
 import type { EventType } from '../types/event';
+import { RefreshCcw, Squircle, SquircleDashed } from 'lucide-react';
 
 type SvgIcon = FunctionComponent<ComponentProps<'svg'> & { title?: string }>;
+
+// Lucide icons render via stroke; asset icons render via fill.
+const strokeTypes = new Set<EventType>(['HIDE_UI', 'RESET']);
 
 export const iconMap: Record<EventType, SvgIcon> = {
     ADD_TO_HAND: Draw,
@@ -25,6 +30,10 @@ export const iconMap: Record<EventType, SvgIcon> = {
     STACK_DECK: StackDeck,
     UNSTACK_DECK: UnstackDeck,
     DISPLAY_CARD: Reveal,
+    WIN: Win,
+    HIDE_UI: SquircleDashed,
+    SHOW_UI: Squircle,
+    RESET: RefreshCcw,
 };
 
 interface TimelineEventIconProps extends ComponentProps<'div'> {
@@ -64,7 +73,10 @@ function TimelineEventIcon({
                     selected && 'stroke-white stroke-25'
                 )}
             />
-            <Icon className="absolute inset-0 size-7 fill-white -translate-x-1/2 left-1/2 -translate-y-[calc(50%-3px)] top-1/2" />
+            <Icon className={cn(
+                'absolute inset-0 size-7 -translate-x-1/2 left-1/2 -translate-y-[calc(50%-3px)] top-1/2',
+                strokeTypes.has(type) ? 'stroke-white fill-none' : 'fill-white'
+            )} />
         </div>
     );
 }

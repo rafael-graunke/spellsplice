@@ -22,8 +22,8 @@ type PlayerInit = Omit<Player, 'track'>;
 const AUTOSAVE_KEY = 'spellsplice-autosave';
 
 const initialPlayers: PlayerInit[] = [
-    { id: 'player1', name: 'Player 1', handSize: 0, lifeTotal: 20, cards: [], topStack: []},
-    { id: 'player2', name: 'Player 2', handSize: 0, lifeTotal: 20, cards: [], topStack: []},
+    { id: 'player1', name: 'Player 1', handSize: 0, lifeTotal: 20, wins: 0, cards: [], topStack: []},
+    { id: 'player2', name: 'Player 2', handSize: 0, lifeTotal: 20, wins: 0, cards: [], topStack: []},
 ];
 
 const makeFreshPlayers = (): Player[] =>
@@ -50,6 +50,7 @@ function App() {
     const [fileToLoad, setFileToLoad] = useState<File | null>(null);
     const [isDirty, setIsDirty] = useState(false);
     const [exportDialogOpen, setExportDialogOpen] = useState(false);
+    const [newEventId, setNewEventId] = useState<number | null>(null);
     const isFirstPlayersRender = useRef(true);
     const skipDirtyRef = useRef(false);
     const currentTimeRef = useRef(0);
@@ -152,6 +153,20 @@ function App() {
     const videoRef = useRef(video);
     videoRef.current = video;
 
+    const handleCreateEventWithFocus = useCallback(
+        (...args: Parameters<typeof handleCreateEvent>) => {
+            const created = handleCreateEvent(...args);
+            if (created) setNewEventId(created.id);
+        },
+        [handleCreateEvent]
+    );
+
+    useEffect(() => {
+        if (newEventId !== null && selectedEvents[0]?.id !== newEventId) {
+            setNewEventId(null);
+        }
+    }, [selectedEvents, newEventId]);
+
     const handleInspectorUpdate = useCallback((eventId: number, meta: EventMeta) => {
         const player = rawSelectedPlayerRef.current;
         if (!player) return;
@@ -178,11 +193,11 @@ function App() {
                     players={players}
                 />
                 <ResizablePanelGroup orientation="vertical" className="flex-1">
-                    <ResizablePanel minSize={100} defaultSize="70%">
+                    <ResizablePanel minSize={100} defaultSize="60%">
                         <ResizablePanelGroup orientation="horizontal">
                             <ResizablePanel
                                 minSize={100}
-                                defaultSize="75%"
+                                defaultSize="85%"
                                 className="bg-muted/20"
                             >
                                 <VideoPreview
@@ -198,13 +213,13 @@ function App() {
                                 />
                             </ResizablePanel>
                             <ResizableHandle />
-                            <ResizablePanel minSize="400px" defaultSize="25%">
-                                <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} player={rawSelectedPlayer} />
+                            <ResizablePanel minSize="400px" defaultSize="15%">
+                                <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} player={rawSelectedPlayer} autoFocus={selectedEvents[0]?.id === newEventId} />
                             </ResizablePanel>
                         </ResizablePanelGroup>
                     </ResizablePanel>
                     <ResizableHandle />
-                    <ResizablePanel minSize={100} defaultSize="30%">
+                    <ResizablePanel minSize={100} defaultSize="40%">
                         <Timeline
                             setCurrentTime={setCurrentTime}
                             duration={video ? video.duration || 120 : 120}
@@ -215,7 +230,7 @@ function App() {
                             players={players}
                             selectedPlayer={rawSelectedPlayer}
                             setSelectedPlayerId={setSelectedPlayerId}
-                            handleCreateEvent={handleCreateEvent}
+                            handleCreateEvent={handleCreateEventWithFocus}
                             handleDeleteEvents={handleDeleteEvents}
                             handleDuplicateEvents={handleDuplicateEvents}
                             handlePasteEvents={handlePasteEvents}

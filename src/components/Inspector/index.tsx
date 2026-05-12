@@ -7,9 +7,10 @@ interface InspectorProps {
     editObject: TrackEvent[] | null;
     onUpdate: (eventId: number, meta: EventMeta) => void;
     player?: Player | null;
+    autoFocus?: boolean;
 }
 
-function Inspector({ editObject, onUpdate, player }: InspectorProps) {
+function Inspector({ editObject, onUpdate, player, autoFocus }: InspectorProps) {
     const event = editObject?.[0] ?? null;
     const count = editObject?.length ?? 0;
 
@@ -29,6 +30,7 @@ function Inspector({ editObject, onUpdate, player }: InspectorProps) {
                         event={event}
                         onUpdate={(meta) => onUpdate(event.id, meta)}
                         player={player}
+                        autoFocus={autoFocus}
                     />
                 </>
             ) : (

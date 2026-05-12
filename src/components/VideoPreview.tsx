@@ -115,7 +115,9 @@ function VideoPreview({
                         e.type === 'ADD_TO_HAND' ||
                         e.type === 'REMOVE_FROM_HAND' ||
                         e.type === 'STACK_DECK' ||
-                        e.type === 'UNSTACK_DECK'
+                        e.type === 'UNSTACK_DECK' ||
+                        e.type === 'HIDE_UI' ||
+                        e.type === 'SHOW_UI'
                     ) {
                         return e.time <= time && e.time > time - ANIM_DURATION;
                     }

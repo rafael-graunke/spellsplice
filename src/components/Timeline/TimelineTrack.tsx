@@ -24,7 +24,6 @@ interface TimelineTrackProps {
         duration: number
     ) => void;
     draggingEventIds?: Set<number>;
-    onBackgroundMouseDown?: (e: React.MouseEvent) => void;
     onResizeStart?: () => void;
     onResizeEnd?: () => void;
 }
@@ -44,7 +43,6 @@ function TimelineTrack({
     onDuplicate,
     onMoveStart,
     draggingEventIds,
-    onBackgroundMouseDown,
     onResizeStart,
     onResizeEnd,
 }: TimelineTrackProps) {
@@ -64,15 +62,9 @@ function TimelineTrack({
 
     return (
         <div
-            className="h-12 py-1"
-            onMouseDown={(e) => onBackgroundMouseDown?.(e)}
+            className="h-13 py-1"
             style={{
                 width: `max(100%, ${width}px)`,
-                backgroundImage:
-                    'repeating-linear-gradient(to right, #4B5563 0px, #4B5563 4px, transparent 4px, transparent 12px)',
-                backgroundPosition: 'bottom',
-                backgroundSize: '100% 1px',
-                backgroundRepeat: 'no-repeat',
             }}
         >
             <div className="relative h-full" style={{ width }}>

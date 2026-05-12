@@ -1,5 +1,5 @@
 import type { Player } from '@/components/types/player';
-import { derivePlayerState, getActiveWindowedEvents } from '@/lib/deriveState';
+import { derivePlayerState, getActiveWindowedEvents, deriveUIVisibility } from '@/lib/deriveState';
 import { renderPlayerState } from '@/renders/renderPlayerState';
 import { renderHandStack } from '@/renders/renderHandStack';
 import { renderDeckStack } from '@/renders/renderDeckStack';
@@ -138,11 +138,12 @@ export class Compositor {
 
         const playerStates = players.map((p) => derivePlayerState(p, p.track.events, time));
         const activeEvents = players.map((p) => getActiveWindowedEvents(p.track.events, time));
+        const uiVisibility = deriveUIVisibility(players, time);
 
         const ctx2d = overlayCtx as unknown as CanvasRenderingContext2D;
-        renderPlayerState(ctx2d, playerStates, offsetX, offsetY, drawW, drawH, d20Img);
-        renderHandStack(ctx2d, players, time, offsetX, offsetY, drawW, drawH, eyeImg);
-        renderDeckStack(ctx2d, players, time, offsetX, offsetY, drawW, drawH);
+        renderPlayerState(ctx2d, playerStates, offsetX, offsetY, drawW, drawH, d20Img, uiVisibility);
+        renderHandStack(ctx2d, players, time, offsetX, offsetY, drawW, drawH, eyeImg, uiVisibility);
+        renderDeckStack(ctx2d, players, time, offsetX, offsetY, drawW, drawH, uiVisibility);
 
         const CARD_ANIM_DURATION = 0.35;
         const cardEaseOut = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -170,6 +171,7 @@ export class Compositor {
                 }
 
                 overlayCtx.save();
+                overlayCtx.globalAlpha = uiVisibility;
                 overlayCtx.beginPath();
                 const corner_scale = card.edition?.startsWith("lea") ? 0.07 : 0.045;
                 overlayCtx.roundRect(cardX, cardY, cardW, cardH, cardW * corner_scale);

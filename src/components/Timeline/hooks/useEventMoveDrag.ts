@@ -4,6 +4,9 @@ import type { Player, } from '../../types/player';
 import type { TrackEvent, EventType } from '../../types/event';
 import { TRACK_HEIGHT } from '../constants';
 
+const SCROLL_ZONE = 30;
+const MAX_SCROLL_SPEED = 10;
+
 interface GhostPos {
     left: number;
     top: number;
@@ -27,6 +30,7 @@ interface MoveDragState {
     companions: EventDragData[];
     startX: number;
     startLayer: number;
+    startScrollLeft: number;
 }
 
 type MoveResult = {
@@ -40,7 +44,7 @@ function makeGhost(data: EventDragData, newTime: number, layerIndex: number, zoo
     return {
         left: newTime * zoom,
         top: data.isWaypoint
-            ? layerIndex * TRACK_HEIGHT
+            ? layerIndex * TRACK_HEIGHT + 3
             : layerIndex * TRACK_HEIGHT + 4,
         width: data.isWaypoint ? 44 : data.startDuration * zoom,
         type: data.type,
@@ -51,12 +55,25 @@ function makeGhost(data: EventDragData, newTime: number, layerIndex: number, zoo
 export function useEventMoveDrag(
     innerRef: RefObject<HTMLDivElement | null>,
     zoomRef: RefObject<number>,
+    scrollContainerRef: RefObject<HTMLDivElement | null>,
     selectedPlayer: Player | null,
     selectedEvents: TrackEvent[],
     onMoveEvents: (moves: MoveResult[]) => void,
 ) {
     const [ghostPositions, setGhostPositions] = useState<GhostPos[]>([]);
     const moveDragRef = useRef<MoveDragState | null>(null);
+    const scrollRafRef = useRef<number | null>(null);
+    const scrollSpeedRef = useRef(0);
+    const scrollSpeedXRef = useRef(0);
+
+    const stopAutoScroll = () => {
+        scrollSpeedRef.current = 0;
+        scrollSpeedXRef.current = 0;
+        if (scrollRafRef.current) {
+            cancelAnimationFrame(scrollRafRef.current);
+            scrollRafRef.current = null;
+        }
+    };
 
     const handleMoveStart = useCallback((
         playerId: string,
@@ -113,6 +130,7 @@ export function useEventMoveDrag(
             companions,
             startX: e.clientX,
             startLayer: sourceLayer,
+            startScrollLeft: scrollContainerRef.current?.scrollLeft ?? 0,
         };
 
         const zoom = zoomRef.current!;
@@ -126,8 +144,6 @@ export function useEventMoveDrag(
     useEffect(() => {
         if (ghostPositions.length === 0) return;
 
-        const totalLayers = selectedPlayer?.track.layers ?? 1;
-
         const onMouseMove = (e: MouseEvent) => {
             const drag = moveDragRef.current;
             const inner = innerRef.current;
@@ -135,12 +151,13 @@ export function useEventMoveDrag(
 
             const rect = inner.getBoundingClientRect();
             const zoom = zoomRef.current!;
-            const deltaX = e.clientX - drag.startX;
+            const scrollEl = scrollContainerRef.current;
+            const scrollDelta = (scrollEl?.scrollLeft ?? 0) - drag.startScrollLeft;
+            const deltaX = (e.clientX - drag.startX) + scrollDelta;
             const deltaTime = deltaX / zoom;
 
             const yInInner = e.clientY - rect.top;
-            const rawIndex = Math.floor(yInInner / TRACK_HEIGHT);
-            const primaryLayer = Math.max(0, Math.min(totalLayers - 1, rawIndex));
+            const primaryLayer = Math.max(0, Math.floor(yInInner / TRACK_HEIGHT));
             const layerDelta = primaryLayer - drag.startLayer;
 
             const newTime = Math.max(0, drag.primary.startTime + deltaTime);
@@ -148,17 +165,57 @@ export function useEventMoveDrag(
             const ghosts = [
                 makeGhost(drag.primary, newTime, primaryLayer, zoom),
                 ...drag.companions.map((c) => {
-                    const cLayer = Math.max(
-                        0,
-                        Math.min(totalLayers - 1, c.sourceLayer + layerDelta)
-                    );
+                    const cLayer = Math.max(0, c.sourceLayer + layerDelta);
                     return makeGhost(c, Math.max(0, c.startTime + deltaTime), cLayer, zoom);
                 }),
             ];
             setGhostPositions(ghosts);
+
+            // Edge scroll
+            if (scrollEl) {
+                const sr = scrollEl.getBoundingClientRect();
+                const distBottom = sr.bottom - e.clientY;
+                const distTop = e.clientY - sr.top;
+                const distRight = sr.right - e.clientX;
+                const distLeft = e.clientX - sr.left;
+                if (distBottom < 0) {
+                    scrollSpeedRef.current = MAX_SCROLL_SPEED;
+                } else if (distBottom < SCROLL_ZONE) {
+                    scrollSpeedRef.current = ((SCROLL_ZONE - distBottom) / SCROLL_ZONE) * MAX_SCROLL_SPEED;
+                } else if (distTop < 0) {
+                    scrollSpeedRef.current = -MAX_SCROLL_SPEED;
+                } else if (distTop < SCROLL_ZONE) {
+                    scrollSpeedRef.current = -((SCROLL_ZONE - distTop) / SCROLL_ZONE) * MAX_SCROLL_SPEED;
+                } else {
+                    scrollSpeedRef.current = 0;
+                }
+                if (distRight < 0) {
+                    scrollSpeedXRef.current = MAX_SCROLL_SPEED;
+                } else if (distRight < SCROLL_ZONE) {
+                    scrollSpeedXRef.current = ((SCROLL_ZONE - distRight) / SCROLL_ZONE) * MAX_SCROLL_SPEED;
+                } else if (distLeft < 0) {
+                    scrollSpeedXRef.current = -MAX_SCROLL_SPEED;
+                } else if (distLeft < SCROLL_ZONE) {
+                    scrollSpeedXRef.current = -((SCROLL_ZONE - distLeft) / SCROLL_ZONE) * MAX_SCROLL_SPEED;
+                } else {
+                    scrollSpeedXRef.current = 0;
+                }
+                if ((scrollSpeedRef.current !== 0 || scrollSpeedXRef.current !== 0) && !scrollRafRef.current) {
+                    const tick = () => {
+                        scrollEl.scrollTop += scrollSpeedRef.current;
+                        scrollEl.scrollLeft += scrollSpeedXRef.current;
+                        scrollRafRef.current = (scrollSpeedRef.current !== 0 || scrollSpeedXRef.current !== 0)
+                            ? requestAnimationFrame(tick)
+                            : null;
+                    };
+                    scrollRafRef.current = requestAnimationFrame(tick);
+                }
+            }
         };
 
         const onMouseUp = (e: MouseEvent) => {
+            stopAutoScroll();
+
             const drag = moveDragRef.current;
             const inner = innerRef.current;
             if (!drag || !inner) {
@@ -168,12 +225,12 @@ export function useEventMoveDrag(
 
             const rect = inner.getBoundingClientRect();
             const zoom = zoomRef.current!;
-            const deltaX = e.clientX - drag.startX;
+            const scrollDeltaUp = (scrollContainerRef.current?.scrollLeft ?? 0) - drag.startScrollLeft;
+            const deltaX = (e.clientX - drag.startX) + scrollDeltaUp;
             const deltaTime = deltaX / zoom;
 
             const yInInner = e.clientY - rect.top;
-            const rawIndex = Math.floor(yInInner / TRACK_HEIGHT);
-            const primaryLayer = Math.max(0, Math.min(totalLayers - 1, rawIndex));
+            const primaryLayer = Math.max(0, Math.floor(yInInner / TRACK_HEIGHT));
             const layerDelta = primaryLayer - drag.startLayer;
 
             onMoveEvents([
@@ -187,7 +244,7 @@ export function useEventMoveDrag(
                     playerId: c.sourcePlayerId,
                     eventId: c.eventId,
                     newTime: Math.max(0, c.startTime + deltaTime),
-                    newLayer: Math.max(0, Math.min(totalLayers - 1, c.sourceLayer + layerDelta)),
+                    newLayer: Math.max(0, c.sourceLayer + layerDelta),
                 })),
             ]);
 
@@ -200,6 +257,7 @@ export function useEventMoveDrag(
         return () => {
             window.removeEventListener('mousemove', onMouseMove);
             window.removeEventListener('mouseup', onMouseUp);
+            stopAutoScroll();
         };
     }, [ghostPositions, selectedPlayer?.id, selectedPlayer?.track.layers]);
 

@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import type { RefObject } from 'react';
 import type { Player } from '../../types/player';
 import type { TrackEvent } from '../../types/event';
-import { TRACK_HEIGHT } from '../constants';
+import { TRACK_HEIGHT, MIN_LANES } from '../constants';
 
 interface MarqueeRect {
     x: number;
@@ -85,8 +85,9 @@ export function useMarqueeDrag(
             const matched: TrackEvent[] = [];
             const sp = selectedPlayerRef.current;
 
-            const totalLayers = sp?.track.layers ?? 0;
             const events = sp?.track.events ?? [];
+            const maxLayer = events.reduce((m, e) => Math.max(m, e.layer), -1);
+            const totalLayers = Math.max(MIN_LANES, maxLayer + 1);
 
             for (let layerIndex = 0; layerIndex < totalLayers; layerIndex++) {
                 const trackTop = layerIndex * TRACK_HEIGHT;

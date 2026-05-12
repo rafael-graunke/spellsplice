@@ -15,6 +15,7 @@ export interface Player {
     cards: Card[];
     topStack: Card[];
     track: Track;
+    wins: number;
     deckName?: string;
     decklist?: Decklist;
 }

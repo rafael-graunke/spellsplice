@@ -14,6 +14,7 @@ export function renderHandStack(
     drawW: number,
     drawH: number,
     eyeIcon: HTMLImageElement | null,
+    uiVisibility = 1,
 ) {
     const bottomY = offsetY + drawH - 20;
 
@@ -28,6 +29,10 @@ export function renderHandStack(
 
         const handTS = deriveHandWithTimestamps(player, events, time);
         if (handTS.length === 0) return;
+
+        const slideX = (isLeft ? -1 : 1) * 500 * (1 - uiVisibility);
+        ctx.save();
+        ctx.translate(slideX, 0);
 
         // Find recent REMOVE_FROM_HAND events still within animation window.
         const recentRemovals = events.filter(
@@ -110,5 +115,6 @@ export function renderHandStack(
                 }
             }
         }
+        ctx.restore();
     });
 }

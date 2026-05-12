@@ -5,6 +5,28 @@ import { useHistory } from '@/hooks/useHistory';
 
 type PlayerInit = Omit<Player, 'track'>;
 
+const COLLISION_THRESHOLD = 1.0;
+
+function findAvailableLayer(
+    events: TrackEvent[],
+    time: number,
+    duration: number,
+    resizable: boolean,
+): number {
+    for (let layer = 0; ; layer++) {
+        const collides = events.some((e) => {
+            if (e.layer !== layer) return false;
+            if (resizable || e.resizable) {
+                const newEnd = time + duration;
+                const eEnd = e.time + (e.duration ?? 1);
+                return time < eEnd && newEnd > e.time;
+            }
+            return Math.abs(e.time - time) < COLLISION_THRESHOLD;
+        });
+        if (!collides) return layer;
+    }
+}
+
 export function usePlayerTracks(
     initialPlayers: PlayerInit[],
     currentTimeRef: React.RefObject<number>,
@@ -47,12 +69,19 @@ export function usePlayerTracks(
     ) => {
         const targetId = playerId ?? playersRef.current[0]?.id;
         if (!targetId) return;
+        const player = playersRef.current.find((p) => p.id === targetId);
+        const time = currentTimeRef.current;
+        const resizable = partial.resizable ?? false;
+        const duration = partial.duration ?? 1;
+        const layer = player
+            ? findAvailableLayer(player.track.events, time, duration, resizable)
+            : 0;
         const newEvent: TrackEvent = {
             id: nextEventId.current++,
-            time: currentTimeRef.current,
-            layer: 0,
-            duration: 1,
-            resizable: false,
+            time,
+            layer,
+            duration,
+            resizable,
             ...partial,
         };
         record((draft) => {
@@ -60,6 +89,7 @@ export function usePlayerTracks(
             if (player) player.track.events.push(newEvent as any);
         });
         setSelectedEvents([newEvent]);
+        return newEvent;
     }, [record, setSelectedEvents]);
 
     const handleDeleteEvents = useCallback((playerId: string, eventIds: number[]) => {
@@ -131,7 +161,7 @@ export function usePlayerTracks(
                 const event = player.track.events.find((e) => e.id === eventId);
                 if (!event) continue;
                 event.time = newTime;
-                event.layer = Math.max(0, Math.min(player.track.layers - 1, newLayer));
+                event.layer = Math.max(0, newLayer);
             }
         });
     }, [record]);

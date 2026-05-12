@@ -4,11 +4,10 @@ import type { Player } from '../components/types/player';
 import {
     applyGainLife,
     applyLoseLife,
-    applyAddToHand,
-    applyRemoveFromHand,
-    applyRevealFromHand,
     applyStackDeck,
     applyUnstackDeck,
+    applyWin,
+    applyReset,
 } from './stateHandlers';
 
 export interface CardWithTimestamp {
@@ -46,6 +45,16 @@ export function deriveHandWithTimestamps(
                 }
                 return true;
             });
+        } else if (event.type === 'REVEAL_FROM_HAND' && event.meta?.cards) {
+            const counts = new Map<string, number>();
+            for (const c of event.meta.cards) counts.set(c.name, (counts.get(c.name) ?? 0) + 1);
+            hand = hand.map(({ card, enteredAt }) => {
+                const rem = counts.get(card.name) ?? 0;
+                if (rem > 0) { counts.set(card.name, rem - 1); return { card: { ...card, revealed: true }, enteredAt }; }
+                return { card, enteredAt };
+            });
+        } else if (event.type === 'RESET') {
+            hand = [];
         }
     }
 
@@ -61,7 +70,9 @@ export function derivePlayerState(
         .filter((e) => !e.resizable && e.time <= time)
         .sort((a, b) => a.time - b.time);
 
-    return persistent.reduce(applyEvent, { ...player });
+    const state = persistent.reduce(applyEvent, { ...player });
+    const handTS = deriveHandWithTimestamps(player, events, time);
+    return { ...state, cards: handTS.map((h) => h.card), handSize: handTS.length };
 }
 
 export function getActiveWindowedEvents(
@@ -74,6 +85,35 @@ export function getActiveWindowedEvents(
 }
 
 // Returns the next time after `time` at which derived state would change.
+const UI_ANIM_DURATION = 0.35;
+const uiEaseOut = (t: number) => 1 - Math.pow(1 - t, 3);
+
+export function deriveUIVisibility(players: Player[], time: number): number {
+    const events = players
+        .flatMap((p) => p.track.events)
+        .filter((e) => !e.resizable && (e.type === 'HIDE_UI' || e.type === 'SHOW_UI') && e.time <= time)
+        .sort((a, b) => a.time - b.time);
+
+    let state: 'visible' | 'hidden' = 'visible';
+    let lastTransition: TrackEvent | null = null;
+
+    for (const e of events) {
+        if (e.type === 'HIDE_UI' && state === 'visible') {
+            state = 'hidden';
+            lastTransition = e;
+        } else if (e.type === 'SHOW_UI' && state === 'hidden') {
+            state = 'visible';
+            lastTransition = e;
+        }
+    }
+
+    if (!lastTransition) return 1;
+
+    const t = Math.min(1, (time - lastTransition.time) / UI_ANIM_DURATION);
+    const ease = uiEaseOut(t);
+    return state === 'visible' ? ease : 1 - ease;
+}
+
 export function getNextChangeTime(
     tracks: { events: TrackEvent[] }[],
     time: number
@@ -99,16 +139,17 @@ function applyEvent(state: Player, event: TrackEvent): Player {
             return applyGainLife(state, event);
         case 'LOSE_LIFE':
             return applyLoseLife(state, event);
-        case 'ADD_TO_HAND':
-            return applyAddToHand(state, event);
-        case 'REMOVE_FROM_HAND':
-            return applyRemoveFromHand(state, event);
-        case 'REVEAL_FROM_HAND':
-            return applyRevealFromHand(state, event);
         case 'STACK_DECK':
             return applyStackDeck(state, event);
         case 'UNSTACK_DECK':
             return applyUnstackDeck(state, event);
+        case 'WIN':
+            return applyWin(state);
+        case 'HIDE_UI':
+        case 'SHOW_UI':
+            return state;
+        case 'RESET':
+            return applyReset(state);
         default:
             return state;
     }

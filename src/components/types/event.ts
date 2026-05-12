@@ -14,6 +14,10 @@ export const EventType = {
     StackDeck: 'STACK_DECK',
     UnstackDeck: 'UNSTACK_DECK',
     DisplayCard: 'DISPLAY_CARD',
+    Win: 'WIN',
+    HideUi: 'HIDE_UI',
+    ShowUi: 'SHOW_UI',
+    Reset: 'RESET',
 } as const;
 
 export type EventType = (typeof EventType)[keyof typeof EventType];
@@ -73,6 +77,30 @@ export const EventColorMap: Record<EventType, EventColor> = {
         bg: 'bg-taupe-500',
         fill: 'fill-taupe-500',
         stroke: 'stroke-taupe-500',
+    },
+    WIN: {
+        text: 'text-yellow-500',
+        bg: 'bg-yellow-500',
+        fill: 'fill-yellow-500',
+        stroke: 'stroke-yellow-500',
+    },
+    HIDE_UI: {
+        text: 'text-slate-400',
+        bg: 'bg-slate-400',
+        fill: 'fill-slate-400',
+        stroke: 'stroke-slate-400',
+    },
+    SHOW_UI: {
+        text: 'text-slate-400',
+        bg: 'bg-slate-400',
+        fill: 'fill-slate-400',
+        stroke: 'stroke-slate-400',
+    },
+    RESET: {
+        text: 'text-red-500',
+        bg: 'bg-red-500',
+        fill: 'fill-red-500',
+        stroke: 'stroke-red-500',
     },
 };
 

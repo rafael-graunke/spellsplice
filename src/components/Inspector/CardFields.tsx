@@ -324,7 +324,7 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true,
             hasInitedRef.current = true;
             return;
         }
-        focusNextMountRef.current = false;
+        focusNextMountRef.current = !!autoFocus;
         setComboKey((k) => k + 1);
     }, [event.id]);
 

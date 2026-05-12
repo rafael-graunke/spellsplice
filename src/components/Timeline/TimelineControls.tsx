@@ -77,7 +77,7 @@ function CreateControls({ open, onOpenChange, setIsPlaying, onCreateEvent, selec
 
     return (
         <div className="flex flex-col gap-4">
-            <CommandDialog open={open} onOpenChange={onOpenChange}>
+            <CommandDialog open={open} onOpenChange={onOpenChange} onCloseAutoFocus={(e) => e.preventDefault()}>
                 <Command>
                     <CommandInput placeholder="Type a command or search..." />
                     <CommandList>

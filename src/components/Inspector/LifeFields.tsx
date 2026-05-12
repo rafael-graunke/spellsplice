@@ -15,11 +15,16 @@ export function LifeFields({ event, onUpdate, autoFocus }: LifeFieldsProps) {
 
     useEffect(() => {
         setRaw(String(committed));
-        if (autoFocus) {
+    }, [event.id]);
+
+    useEffect(() => {
+        if (!autoFocus) return;
+        const id = setTimeout(() => {
             inputRef.current?.focus();
             inputRef.current?.select();
-        }
-    }, [event.id]);
+        }, 0);
+        return () => clearTimeout(id);
+    }, [event.id, autoFocus]);
 
     return (
         <div className="flex flex-col gap-1.5">

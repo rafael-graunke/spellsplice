@@ -24,6 +24,7 @@ interface VideoPreviewProps {
     setVideo: React.Dispatch<React.SetStateAction<VideoState | null>>;
     players: Player[];
     fileToLoad?: File | null;
+    overlayStartHidden?: boolean;
 }
 
 function VideoPreview({
@@ -36,11 +37,13 @@ function VideoPreview({
     setVideo,
     players,
     fileToLoad,
+    overlayStartHidden = false,
 }: VideoPreviewProps) {
     const inputRef = useRef<HTMLInputElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const playersRef = useRef(players);
+    const overlayStartHiddenRef = useRef(overlayStartHidden);
     const prevTimeRef = useRef(-1);
     const d20Ref = useRef<HTMLImageElement | null>(null);
     const eyeRef = useRef<HTMLImageElement | null>(null);
@@ -93,6 +96,7 @@ function VideoPreview({
     };
 
     isPlayingRef.current = isPlaying;
+    overlayStartHiddenRef.current = overlayStartHidden;
 
     const renderFrame = () => {
         const compositor = compositorRef.current;
@@ -107,7 +111,7 @@ function VideoPreview({
         compositor.uploadVideoElement(v);
 
         if (overlayStale) {
-            compositor.updateOverlay(playersRef.current, time, d20Ref.current, eyeRef.current);
+            compositor.updateOverlay(playersRef.current, time, d20Ref.current, eyeRef.current, overlayStartHiddenRef.current);
             const ANIM_DURATION = 0.35;
             const anyAnimating = playersRef.current.some((p) =>
                 p.track.events.some((e) => {

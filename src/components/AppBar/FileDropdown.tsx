@@ -14,6 +14,7 @@ import {
     DropdownMenuContent,
     DropdownMenuGroup,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuShortcut,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -24,9 +25,10 @@ interface FileDropdownProps {
     onExport: () => Promise<void>;
     onImport: (file: File) => void;
     onExportVideo: () => void;
+    onOpenSettings: () => void;
 }
 
-function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: FileDropdownProps) {
+function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo, onOpenSettings }: FileDropdownProps) {
     const importRef = useRef<HTMLInputElement>(null);
     const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
@@ -51,11 +53,14 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: Fil
                 e.preventDefault();
                 if (isDirty) setPendingAction(() => onNew);
                 else onNew();
+            } else if (e.ctrlKey && !e.altKey && e.code === 'Comma') {
+                e.preventDefault();
+                onOpenSettings();
             }
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [isDirty, onExport, onNew]);
+    }, [isDirty, onExport, onNew, onOpenSettings]);
 
     return (
         <>
@@ -108,6 +113,10 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: Fil
                         <DropdownMenuItem onClick={onExport}>
                             Save<DropdownMenuShortcut>{modKey}+S</DropdownMenuShortcut>
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={onOpenSettings}>
+                            Settings<DropdownMenuShortcut>{modKey}+,</DropdownMenuShortcut>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={onExportVideo}>Export...</DropdownMenuItem>
                     </DropdownMenuGroup>
                 </DropdownMenuContent>

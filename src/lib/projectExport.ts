@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import type { Player } from '@/components/types/player';
 import type { VideoState } from '@/components/types/video';
+import type { ProjectConfig } from '@/components/types/config';
 import { cardDataCache, restoreCardDataCache } from './cardCache';
 
 export interface ProjectExport {
@@ -11,15 +12,17 @@ export interface ProjectExport {
         duration: number;
     };
     players: Player[];
+    config?: ProjectConfig;
 }
 
-export async function exportProject(players: Player[], video: VideoState | null) {
+export async function exportProject(players: Player[], video: VideoState | null, config: ProjectConfig) {
     const zip = new JSZip();
 
     const manifest: ProjectExport = {
         version: '1',
         createdAt: new Date().toISOString(),
         players,
+        config,
         ...(video && { video: { filename: video.file.name, duration: video.duration } }),
     };
 
@@ -39,6 +42,7 @@ export async function exportProject(players: Player[], video: VideoState | null)
 export async function importProject(file: File): Promise<{
     manifest: ProjectExport;
     videoFile: File | null;
+    config: ProjectConfig | null;
 }> {
     const zip = await JSZip.loadAsync(file);
 
@@ -60,5 +64,5 @@ export async function importProject(file: File): Promise<{
         restoreCardDataCache(JSON.parse(cacheJson));
     }
 
-    return { manifest, videoFile };
+    return { manifest, videoFile, config: manifest.config ?? null };
 }

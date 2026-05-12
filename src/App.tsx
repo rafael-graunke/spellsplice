@@ -16,6 +16,9 @@ import { Inspector } from './components/Inspector';
 import { usePlayerTracks } from './components/Timeline/hooks/usePlayerTracks';
 import AppBar from './components/AppBar';
 import { ExportDialog } from './components/ExportDialog';
+import SettingsDialog from './components/Settings/SettingsDialog';
+import type { ProjectConfig } from './components/types/config';
+import { DEFAULT_PROJECT_CONFIG } from './components/types/config';
 
 type PlayerInit = Omit<Player, 'track'>;
 
@@ -50,9 +53,12 @@ function App() {
     const [fileToLoad, setFileToLoad] = useState<File | null>(null);
     const [isDirty, setIsDirty] = useState(false);
     const [exportDialogOpen, setExportDialogOpen] = useState(false);
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    const [projectConfig, setProjectConfig] = useState<ProjectConfig>(DEFAULT_PROJECT_CONFIG);
     const [newEventId, setNewEventId] = useState<number | null>(null);
     const isFirstPlayersRender = useRef(true);
     const skipDirtyRef = useRef(false);
+    const clearAutosaveRef = useRef(false);
     const currentTimeRef = useRef(0);
 
     useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
@@ -92,11 +98,22 @@ function App() {
             isFirstPlayersRender.current = false;
             return;
         }
-        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(players));
+        if (clearAutosaveRef.current) {
+            clearAutosaveRef.current = false;
+            localStorage.removeItem(AUTOSAVE_KEY);
+        } else {
+            localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(players));
+        }
         if (isDirty) return;
         if (skipDirtyRef.current) { skipDirtyRef.current = false; return; }
         setIsDirty(true);
     }, [players]);
+
+    const isFirstConfigRender = useRef(true);
+    useEffect(() => {
+        if (isFirstConfigRender.current) { isFirstConfigRender.current = false; return; }
+        setIsDirty(true);
+    }, [projectConfig]);
 
     // Keep selectedEvents in sync with players state (handles undo/redo restoring event data).
     useEffect(() => {
@@ -110,25 +127,32 @@ function App() {
         });
     }, [players]);
 
+    const projectConfigRef = useRef(projectConfig);
+    projectConfigRef.current = projectConfig;
+
     const handleExport = useCallback(async () => {
-        await exportProject(playersRef.current, videoRef.current);
+        await exportProject(playersRef.current, videoRef.current, projectConfigRef.current);
         setIsDirty(false);
     }, []);
 
     const handleImport = useCallback(async (file: File) => {
-        const { manifest, videoFile } = await importProject(file);
+        const { manifest, videoFile, config } = await importProject(file);
         skipDirtyRef.current = true;
+        clearAutosaveRef.current = true;
+        isFirstConfigRender.current = true;
         resetPlayers(manifest.players);
         setSelectedPlayerId(manifest.players[0]?.id ?? null);
         setSelectedEvents([]);
         setCurrentTime(0);
         setIsPlaying(false);
         setIsDirty(false);
+        setProjectConfig(config ? { ...DEFAULT_PROJECT_CONFIG, ...config } : DEFAULT_PROJECT_CONFIG);
         if (videoFile) setFileToLoad(videoFile);
     }, [resetPlayers]);
 
     const handleNew = useCallback(() => {
         skipDirtyRef.current = true;
+        isFirstConfigRender.current = true;
         resetPlayers(makeFreshPlayers());
         localStorage.removeItem(AUTOSAVE_KEY);
         setVideo(null);
@@ -137,10 +161,12 @@ function App() {
         setIsPlaying(false);
         setFileToLoad(null);
         setIsDirty(false);
+        setProjectConfig(DEFAULT_PROJECT_CONFIG);
     }, [resetPlayers]);
 
     const handleOpenExportDialog = useCallback(() => setExportDialogOpen(true), []);
     const handleCloseExportDialog = useCallback(() => setExportDialogOpen(false), []);
+    const handleOpenSettings = useCallback(() => setSettingsOpen(true), []);
 
     const rawSelectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? players[0];
 
@@ -185,6 +211,13 @@ function App() {
                     onExport={handleExport}
                     onImport={handleImport}
                     onExportVideo={handleOpenExportDialog}
+                    onOpenSettings={handleOpenSettings}
+                />
+                <SettingsDialog
+                    open={settingsOpen}
+                    onOpenChange={setSettingsOpen}
+                    config={projectConfig}
+                    onConfigChange={setProjectConfig}
                 />
                 <ExportDialog
                     open={exportDialogOpen}
@@ -210,6 +243,7 @@ function App() {
                                     setIsPlaying={setIsPlaying}
                                     players={players}
                                     fileToLoad={fileToLoad}
+                                    overlayStartHidden={projectConfig.overlayStartHidden}
                                 />
                             </ResizablePanel>
                             <ResizableHandle />

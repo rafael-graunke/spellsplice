@@ -130,6 +130,7 @@ export class Compositor {
         time: number,
         d20Img: HTMLImageElement | null,
         eyeImg: HTMLImageElement | null,
+        overlayStartHidden = false,
     ): void {
         const { overlayCtx, overlayCanvas, gl } = this;
         const { drawW, drawH, offsetX, offsetY, outW, outH } = this;
@@ -138,7 +139,7 @@ export class Compositor {
 
         const playerStates = players.map((p) => derivePlayerState(p, p.track.events, time));
         const activeEvents = players.map((p) => getActiveWindowedEvents(p.track.events, time));
-        const uiVisibility = deriveUIVisibility(players, time);
+        const uiVisibility = deriveUIVisibility(players, time, overlayStartHidden);
 
         const ctx2d = overlayCtx as unknown as CanvasRenderingContext2D;
         renderPlayerState(ctx2d, playerStates, offsetX, offsetY, drawW, drawH, d20Img, uiVisibility);

@@ -88,13 +88,13 @@ export function getActiveWindowedEvents(
 const UI_ANIM_DURATION = 0.35;
 const uiEaseOut = (t: number) => 1 - Math.pow(1 - t, 3);
 
-export function deriveUIVisibility(players: Player[], time: number): number {
+export function deriveUIVisibility(players: Player[], time: number, startHidden = false): number {
     const events = players
         .flatMap((p) => p.track.events)
         .filter((e) => !e.resizable && (e.type === 'HIDE_UI' || e.type === 'SHOW_UI') && e.time <= time)
         .sort((a, b) => a.time - b.time);
 
-    let state: 'visible' | 'hidden' = 'visible';
+    let state: 'visible' | 'hidden' = startHidden ? 'hidden' : 'visible';
     let lastTransition: TrackEvent | null = null;
 
     for (const e of events) {
@@ -107,7 +107,7 @@ export function deriveUIVisibility(players: Player[], time: number): number {
         }
     }
 
-    if (!lastTransition) return 1;
+    if (!lastTransition) return startHidden ? 0 : 1;
 
     const t = Math.min(1, (time - lastTransition.time) / UI_ANIM_DURATION);
     const ease = uiEaseOut(t);

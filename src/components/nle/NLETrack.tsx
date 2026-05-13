@@ -3,6 +3,10 @@ import type { ReactNode, RefObject } from 'react';
 import { Eye, EyeOff, Lock, Volume2, VolumeOff } from 'lucide-react';
 import type { NLETrack as NLETrackType } from '../types/nle';
 import { TrackType, TrackTypeColorMap } from '../types/nle';
+import type { TrackEvent } from '../types/event';
+import type { NLEGhostPos, NLEMoveResult } from './hooks/useNLEEventDrag';
+import NLEEvent from './NLEEvent';
+import NLEEventIcon from './NLEEventIcon';
 import {
     TRACK_HEIGHT,
     TRACK_INFO_WIDTH,
@@ -116,6 +120,7 @@ interface TrackContentProps {
     paddingX?: number;
     scrollLeftRef: RefObject<number>;
     subscribe: (fn: (x: number) => void) => () => void;
+    ghosts?: NLEGhostPos[];
 }
 
 export function TrackContent({
@@ -125,6 +130,7 @@ export function TrackContent({
     paddingX = 0,
     scrollLeftRef,
     subscribe,
+    ghosts,
 }: TrackContentProps) {
     const innerRef = useRef<HTMLDivElement>(null);
 
@@ -150,6 +156,22 @@ export function TrackContent({
                 }}
             >
                 {children}
+                {ghosts?.map((ghost, i) =>
+                    ghost.isWaypoint ? (
+                        <NLEEventIcon
+                            key={i}
+                            type={ghost.type}
+                            position={ghost.left}
+                            className="opacity-50 pointer-events-none"
+                        />
+                    ) : (
+                        <div
+                            key={i}
+                            className="absolute h-[calc(100%-6px)] top-1/2 -translate-y-1/2 rounded-sm opacity-50 pointer-events-none bg-white/20"
+                            style={{ left: ghost.left, width: ghost.width }}
+                        />
+                    )
+                )}
             </div>
         </div>
     );
@@ -167,6 +189,20 @@ interface TrackProps {
     onToggleBlocked: () => void;
     onToggleHidden?: () => void;
     onToggleMuted?: () => void;
+    // event track props
+    events?: TrackEvent[];
+    selectedIds?: Set<number>;
+    draggingIds?: Set<number>;
+    ghosts?: NLEGhostPos[];
+    onSelect?: (id: number, additive: boolean) => void;
+    onMoveStart?: (trackId: string, eventId: number, e: React.MouseEvent, time: number, duration: number) => void;
+    onUpdate?: (trackId: string, eventId: number, time: number, duration: number) => void;
+    onDelete?: (trackId: string, eventId: number) => void;
+    onDeleteSelected?: (trackId: string) => void;
+    onCopy?: (trackId: string, eventId: number) => void;
+    onDuplicate?: (trackId: string, eventId: number) => void;
+    onMoveEvents?: (moves: NLEMoveResult[]) => void;
+    onMount?: (el: HTMLDivElement | null) => void;
 }
 
 export function Track({
@@ -181,9 +217,24 @@ export function Track({
     onToggleBlocked,
     onToggleHidden,
     onToggleMuted,
+    events,
+    selectedIds,
+    draggingIds,
+    ghosts,
+    onSelect,
+    onMoveStart,
+    onUpdate,
+    onDelete,
+    onDeleteSelected,
+    onCopy,
+    onDuplicate,
+    onMount,
 }: TrackProps) {
+    const isEventTrack = track.type === TrackType.Event;
+    const showEvents = isEventTrack && !track.isBlocked && !track.isHidden && events && events.length > 0;
+
     return (
-        <div className="flex flex-row w-full">
+        <div ref={onMount} className="flex flex-row w-full">
             <TrackInfo
                 trackId={trackId}
                 type={track.type}
@@ -200,8 +251,25 @@ export function Track({
                 paddingX={paddingX}
                 scrollLeftRef={scrollLeftRef}
                 subscribe={subscribe}
+                ghosts={ghosts}
             >
                 {children}
+                {showEvents && events.map((event) => (
+                    <NLEEvent
+                        key={event.id}
+                        event={event}
+                        zoom={zoom}
+                        isSelected={selectedIds?.has(event.id) ?? false}
+                        isBeingDragged={draggingIds?.has(event.id) ?? false}
+                        onSelect={(additive) => onSelect?.(event.id, additive)}
+                        onMoveStart={(e, time, dur) => onMoveStart?.(trackId, event.id, e, time, dur)}
+                        onUpdate={(time, dur) => onUpdate?.(trackId, event.id, time, dur)}
+                        onDelete={() => onDelete?.(trackId, event.id)}
+                        onDeleteSelected={onDeleteSelected ? () => onDeleteSelected(trackId) : undefined}
+                        onCopy={onCopy ? () => onCopy(trackId, event.id) : undefined}
+                        onDuplicate={onDuplicate ? () => onDuplicate(trackId, event.id) : undefined}
+                    />
+                ))}
             </TrackContent>
         </div>
     );

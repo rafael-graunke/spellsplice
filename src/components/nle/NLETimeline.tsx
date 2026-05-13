@@ -1,15 +1,19 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useMemo } from 'react';
 import type { RefObject } from 'react';
 import NLEControls from './NLEControls';
 import { Track, TrackGroup } from './NLETrack';
 import NLERuler from './NLERuler';
 import type { NLETrackGroup } from '../types/nle';
+import { TrackType } from '../types/nle';
+import type { TrackEvent } from '../types/event';
 import { useTimelineScroll } from './hooks/useTimelineScroll';
 import { useTimelineZoom } from './hooks/useTimelineZoom';
 import { useTimelineViewport } from './hooks/useTimelineViewport';
 import { usePlayhead } from './hooks/usePlayhead';
 import { useTimelineSelection } from './hooks/useTimelineSelection';
 import { useTimelineKeyboard } from './hooks/useTimelineKeyboard';
+import { useNLEEventDrag } from './hooks/useNLEEventDrag';
+import type { NLEMoveResult } from './hooks/useNLEEventDrag';
 import {
     RULER_HEIGHT,
     TRACK_GROUP_LABEL_WIDTH,
@@ -32,6 +36,11 @@ interface NLETimelineProps {
     onRedo: () => void;
     canUndo: boolean;
     canRedo: boolean;
+    onMoveEvent?: (moves: NLEMoveResult[]) => void;
+    onUpdateEvent?: (trackId: string, eventId: number, time: number, duration: number) => void;
+    onDeleteEvent?: (trackId: string, eventId: number) => void;
+    onCopyEvent?: (trackId: string, eventId: number) => void;
+    onDuplicateEvent?: (trackId: string, eventId: number) => void;
 }
 
 export function NLETimeline({
@@ -43,10 +52,17 @@ export function NLETimeline({
     trackGroups,
     onUndo,
     onRedo,
+    onMoveEvent,
+    onUpdateEvent,
+    onDeleteEvent,
+    onCopyEvent,
+    onDuplicateEvent,
 }: NLETimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
+    const scrollBoundaryRef = useRef<HTMLDivElement>(null);
+    const trackElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
     const containerWidthRef = useRef(0);
 
     const { scrollLeftRef, setScroll, setMaxScroll, subscribe } =
@@ -57,15 +73,46 @@ export function NLETimeline({
         zoomRef,
         containerWidthRef
     );
-    const {
-        selectedIds: _selectedIds,
-        select: _select,
-        clearSelection: _clearSelection,
-    } = useTimelineSelection();
+    const { selectedIds, select } = useTimelineSelection();
+
+    // Collect all EVENT tracks in DOM order (top→bottom within each group)
+    const eventTracks = useMemo(
+        () =>
+            trackGroups
+                .flatMap((g) => g.tracks)
+                .filter((t) => t.type === TrackType.Event),
+        [trackGroups],
+    );
+
+    const getAllEvents = useCallback((): Map<string, TrackEvent[]> => {
+        const map = new Map<string, TrackEvent[]>();
+        for (const track of eventTracks) {
+            map.set(track.id, track.events);
+        }
+        return map;
+    }, [eventTracks]);
+
+    const handleMoveEvents = useCallback(
+        (moves: NLEMoveResult[]) => {
+            onMoveEvent?.(moves);
+        },
+        [onMoveEvent],
+    );
+
+    const { ghostsByTrack, draggingIds, handleMoveStart } = useNLEEventDrag(
+        zoomRef,
+        scrollLeftRef,
+        setScroll,
+        trackElsRef,
+        scrollBoundaryRef,
+        eventTracks,
+        selectedIds,
+        getAllEvents,
+        handleMoveEvents,
+    );
 
     const handleTick = useCallback(
         (_cursorAbsPx: number) => {
-            // TODO: update cursor DOM position, auto-scroll during playback
             void subscribe;
             void getViewport;
         },
@@ -170,37 +217,64 @@ export function NLETimeline({
                         />
                     </div>
                 </div>
-                <ResizablePanelGroup orientation="vertical" className="flex-1 overflow-x-hidden">
-                    {trackGroups.flatMap((group, i) => [
-                        <ResizablePanel
-                            key={group.id}
-                            defaultSize={100 / trackGroups.length}
-                            className="overflow-y-auto"
-                            minSize="106px"
-                        >
-                            <TrackGroup label={group.label}>
-                                {group.tracks.map((track) => (
-                                    <Track
-                                        key={track.id}
-                                        track={track}
-                                        trackId={track.id}
-                                        duration={duration}
-                                        zoom={zoom}
-                                        paddingX={TIMELINE_PADDING_X}
-                                        scrollLeftRef={scrollLeftRef}
-                                        subscribe={subscribe}
-                                        onToggleBlocked={() => {}}
-                                        onToggleHidden={() => {}}
-                                        onToggleMuted={() => {}}
-                                    />
-                                ))}
-                            </TrackGroup>
-                        </ResizablePanel>,
-                        ...(i < trackGroups.length - 1
-                            ? [<ResizableHandle key={`handle-${group.id}`} className="aria-[orientation=horizontal]:h-2 bg-zinc-950" />]
-                            : []),
-                    ])}
-                </ResizablePanelGroup>
+                <div ref={scrollBoundaryRef} className="flex-1 overflow-hidden">
+                    <ResizablePanelGroup orientation="vertical" className="h-full overflow-x-hidden">
+                        {trackGroups.flatMap((group, i) => [
+                            <ResizablePanel
+                                key={group.id}
+                                defaultSize={100 / trackGroups.length}
+                                className="overflow-y-auto"
+                                minSize="106px"
+                            >
+                                <TrackGroup label={group.label}>
+                                    {group.tracks.map((track) => (
+                                        <Track
+                                            key={track.id}
+                                            track={track}
+                                            trackId={track.id}
+                                            onMount={(el) => {
+                                                if (el) trackElsRef.current.set(track.id, el);
+                                                else trackElsRef.current.delete(track.id);
+                                            }}
+                                            duration={duration}
+                                            zoom={zoom}
+                                            paddingX={TIMELINE_PADDING_X}
+                                            scrollLeftRef={scrollLeftRef}
+                                            subscribe={subscribe}
+                                            onToggleBlocked={() => {}}
+                                            onToggleHidden={() => {}}
+                                            onToggleMuted={() => {}}
+                                            events={track.events}
+                                            selectedIds={selectedIds}
+                                            draggingIds={draggingIds}
+                                            ghosts={ghostsByTrack.get(track.id)}
+                                            onSelect={(id, additive) => select(id, additive)}
+                                            onMoveStart={(tId, eventId, e, time, dur) =>
+                                                handleMoveStart(tId, eventId, e, time, dur)
+                                            }
+                                            onUpdate={onUpdateEvent}
+                                            onDelete={onDeleteEvent}
+                                            onDeleteSelected={
+                                                onDeleteEvent
+                                                    ? (tId) => {
+                                                          for (const id of selectedIds) {
+                                                              onDeleteEvent(tId, id);
+                                                          }
+                                                      }
+                                                    : undefined
+                                            }
+                                            onCopy={onCopyEvent}
+                                            onDuplicate={onDuplicateEvent}
+                                        />
+                                    ))}
+                                </TrackGroup>
+                            </ResizablePanel>,
+                            ...(i < trackGroups.length - 1
+                                ? [<ResizableHandle key={`handle-${group.id}`} className="aria-[orientation=horizontal]:h-2 bg-zinc-950" />]
+                                : []),
+                        ])}
+                    </ResizablePanelGroup>
+                </div>
 
                 {/* TODO: NLECursor, marquee overlay */}
             </div>

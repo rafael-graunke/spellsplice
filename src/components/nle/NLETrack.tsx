@@ -17,15 +17,17 @@ interface TrackGroupProps {
 
 export function TrackGroup({ children, label }: TrackGroupProps) {
     return (
-        <div className="flex flex-row">
-            <div
-                style={{ width: TRACK_GROUP_LABEL_WIDTH }}
-                className="bg-zinc-800 text-zinc-300 rounded-l-md flex items-center justify-center text-md border-l border-y border-zinc-500"
-            >
-                <p className="[writing-mode:sideways-lr]">{label}</p>
+            <div className="flex flex-row h-full overflow-hidden">
+                <div
+                    style={{ width: TRACK_GROUP_LABEL_WIDTH }}
+                    className="bg-zinc-800 text-zinc-300 rounded-l-md flex items-center justify-center text-md border-l border-y border-zinc-700"
+                >
+                    <p className="[writing-mode:sideways-lr]">{label}</p>
+                </div>
+                <div className="flex flex-col-reverse flex-1 bg-zinc-800 overflow-y-auto scrollbar-thin border-y border-l border-zinc-700">
+                    {children}
+                </div>
             </div>
-            <div className="flex flex-col flex-1">{children}</div>
-        </div>
     );
 }
 
@@ -55,7 +57,7 @@ export function TrackInfo({
 
     return (
         <div
-            className="shrink-0 flex items-center justify-between bg-zinc-800"
+            className="shrink-0 flex items-center justify-between bg-zinc-900"
             style={{ width: TRACK_INFO_WIDTH, height: TRACK_HEIGHT }}
         >
             <span
@@ -66,38 +68,42 @@ export function TrackInfo({
             >
                 {trackId}
             </span>
-            <div className="h-full w-full border-b border-zinc-500 flex items-center justify-end">
-            <div className="flex items-center gap-1 px-2">
-                {showVisibility && (
+            <div className="h-full w-full border-t border-zinc-700 flex items-center justify-end">
+                <div className="flex items-center gap-1 px-2">
+                    {showVisibility && (
+                        <button
+                            className="text-zinc-500 hover:text-zinc-300 transition-colors"
+                            onClick={onToggleHidden}
+                        >
+                            {isHidden ? (
+                                <EyeOff size={14} />
+                            ) : (
+                                <Eye size={14} />
+                            )}
+                        </button>
+                    )}
+                    {showMute && (
+                        <button
+                            className="text-zinc-500 hover:text-zinc-300 transition-colors"
+                            onClick={onToggleMuted}
+                        >
+                            {isMuted ? (
+                                <VolumeOff size={14} />
+                            ) : (
+                                <Volume2 size={14} />
+                            )}
+                        </button>
+                    )}
                     <button
                         className="text-zinc-500 hover:text-zinc-300 transition-colors"
-                        onClick={onToggleHidden}
+                        onClick={onToggleBlocked}
                     >
-                        {isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                        <Lock
+                            size={14}
+                            className={isBlocked ? 'text-amber-400' : ''}
+                        />
                     </button>
-                )}
-                {showMute && (
-                    <button
-                        className="text-zinc-500 hover:text-zinc-300 transition-colors"
-                        onClick={onToggleMuted}
-                    >
-                        {isMuted ? (
-                            <VolumeOff size={14} />
-                        ) : (
-                            <Volume2 size={14} />
-                        )}
-                    </button>
-                )}
-                <button
-                    className="text-zinc-500 hover:text-zinc-300 transition-colors"
-                    onClick={onToggleBlocked}
-                >
-                    <Lock
-                        size={14}
-                        className={isBlocked ? 'text-amber-400' : ''}
-                    />
-                </button>
-            </div>
+                </div>
             </div>
         </div>
     );
@@ -112,18 +118,26 @@ interface TrackContentProps {
     subscribe: (fn: (x: number) => void) => () => void;
 }
 
-export function TrackContent({ children, duration, zoom, paddingX = 0, scrollLeftRef, subscribe }: TrackContentProps) {
+export function TrackContent({
+    children,
+    duration,
+    zoom,
+    paddingX = 0,
+    scrollLeftRef,
+    subscribe,
+}: TrackContentProps) {
     const innerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         return subscribe((x) => {
-            if (innerRef.current) innerRef.current.style.transform = `translateX(${-x}px)`;
+            if (innerRef.current)
+                innerRef.current.style.transform = `translateX(${-x}px)`;
         });
     }, [subscribe]);
 
     return (
         <div
-            className="flex-1 overflow-hidden border-b border-zinc-800 relative"
+            className="flex-1 overflow-hidden border-t border-zinc-700 relative"
             style={{ height: TRACK_HEIGHT }}
         >
             <div
@@ -180,7 +194,13 @@ export function Track({
                 onToggleHidden={onToggleHidden}
                 onToggleMuted={onToggleMuted}
             />
-            <TrackContent duration={duration} zoom={zoom} paddingX={paddingX} scrollLeftRef={scrollLeftRef} subscribe={subscribe}>
+            <TrackContent
+                duration={duration}
+                zoom={zoom}
+                paddingX={paddingX}
+                scrollLeftRef={scrollLeftRef}
+                subscribe={subscribe}
+            >
                 {children}
             </TrackContent>
         </div>

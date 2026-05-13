@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState, useEffect } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import type { RefObject } from 'react';
 import NLEControls from './NLEControls';
 import { Track, TrackGroup } from './NLETrack';
@@ -10,7 +10,14 @@ import { useTimelineViewport } from './hooks/useTimelineViewport';
 import { usePlayhead } from './hooks/usePlayhead';
 import { useTimelineSelection } from './hooks/useTimelineSelection';
 import { useTimelineKeyboard } from './hooks/useTimelineKeyboard';
-import { RULER_HEIGHT, TRACK_GROUP_LABEL_WIDTH, TRACK_INFO_WIDTH } from '../Timeline/constants';
+import {
+    RULER_HEIGHT,
+    TRACK_GROUP_LABEL_WIDTH,
+    TRACK_INFO_WIDTH,
+    MIN_ZOOM,
+    MAX_ZOOM,
+} from '../Timeline/constants';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../ui/resizable';
 
 const TIMELINE_PADDING_X = 20;
 
@@ -39,25 +46,42 @@ export function NLETimeline({
 }: NLETimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
+    const scrollAreaRef = useRef<HTMLDivElement>(null);
     const containerWidthRef = useRef(0);
 
-    const { scrollLeftRef, setScroll, setMaxScroll, subscribe } = useTimelineScroll();
+    const { scrollLeftRef, setScroll, setMaxScroll, subscribe } =
+        useTimelineScroll();
     const { zoom, zoomRef, setZoom } = useTimelineZoom();
-    const { getViewport } = useTimelineViewport(scrollLeftRef, zoomRef, containerWidthRef);
-    const { selectedIds: _selectedIds, select: _select, clearSelection: _clearSelection } = useTimelineSelection();
+    const { getViewport } = useTimelineViewport(
+        scrollLeftRef,
+        zoomRef,
+        containerWidthRef
+    );
+    const {
+        selectedIds: _selectedIds,
+        select: _select,
+        clearSelection: _clearSelection,
+    } = useTimelineSelection();
 
-    const handleTick = useCallback((_cursorAbsPx: number) => {
-        // TODO: update cursor DOM position, auto-scroll during playback
-        void subscribe;
-        void getViewport;
-    }, [subscribe, getViewport]);
+    const handleTick = useCallback(
+        (_cursorAbsPx: number) => {
+            // TODO: update cursor DOM position, auto-scroll during playback
+            void subscribe;
+            void getViewport;
+        },
+        [subscribe, getViewport]
+    );
 
-    const [zoomPercent, setZoomPercent] = useState(50);
+    const zoomPercent = Math.round(
+        ((zoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)) * 100
+    );
 
     const handleZoomChange = (percent: number) => {
         const clamped = Math.max(0, Math.min(100, percent));
-        setZoomPercent(clamped);
-        // TODO: map percent → px/sec via useTimelineZoom
+        const pxPerSec = MIN_ZOOM + (clamped / 100) * (MAX_ZOOM - MIN_ZOOM);
+        const pivotPx = (contentRef.current?.clientWidth ?? 0) / 2;
+        const newScroll = setZoom(pxPerSec, pivotPx, scrollLeftRef.current);
+        setScroll(newScroll);
     };
 
     const { seekTo } = usePlayhead(
@@ -66,13 +90,19 @@ export function NLETimeline({
         currentTimeRef,
         zoomRef,
         setCurrentTime,
-        handleTick,
+        handleTick
     );
 
     useTimelineKeyboard({
-        onDelete: () => { /* TODO: delete selected events */ },
-        onCopy: () => { /* TODO: copy selected events */ },
-        onPaste: () => { /* TODO: paste events at playhead */ },
+        onDelete: () => {
+            /* TODO: delete selected events */
+        },
+        onCopy: () => {
+            /* TODO: copy selected events */
+        },
+        onPaste: () => {
+            /* TODO: paste events at playhead */
+        },
         onUndo,
         onRedo,
     });
@@ -81,16 +111,18 @@ export function NLETimeline({
         const el = containerRef.current;
         if (!el) return;
         const onWheel = (e: WheelEvent) => {
+            if (!(e.ctrlKey || e.metaKey)) return;
             e.preventDefault();
-            if (e.ctrlKey || e.metaKey) {
-                const contentLeft = contentRef.current?.getBoundingClientRect().left ?? 0;
-                const pivotPx = e.clientX - contentLeft + scrollLeftRef.current;
-                const delta = e.deltaY > 0 ? -2 : 2;
-                const newScroll = setZoom(zoomRef.current + delta, pivotPx, scrollLeftRef.current);
-                setScroll(newScroll);
-            } else {
-                setScroll(scrollLeftRef.current + e.deltaX + e.deltaY);
-            }
+            const scrollAreaLeft =
+                scrollAreaRef.current?.getBoundingClientRect().left ?? 0;
+            const pivotPx = e.clientX - scrollAreaLeft - TIMELINE_PADDING_X;
+            const delta = e.deltaY > 0 ? -2 : 2;
+            const newScroll = setZoom(
+                zoomRef.current + delta,
+                pivotPx,
+                scrollLeftRef.current
+            );
+            setScroll(newScroll);
         };
         el.addEventListener('wheel', onWheel, { passive: false });
         return () => el.removeEventListener('wheel', onWheel);
@@ -110,11 +142,22 @@ export function NLETimeline({
                 zoom={zoomPercent}
                 onZoomChange={handleZoomChange}
             />
-            <div ref={contentRef} className="flex flex-col flex-1 overflow-hidden bg-zinc-950 pl-4">
+            <div
+                ref={contentRef}
+                className="flex flex-col flex-1 overflow-hidden bg-zinc-950 pl-4 pb-4"
+            >
                 {/* Ruler row */}
                 <div className="flex shrink-0" style={{ height: RULER_HEIGHT }}>
-                    <div className="shrink-0" style={{ width: TRACK_INFO_WIDTH + TRACK_GROUP_LABEL_WIDTH }} />
-                    <div className="flex-1 border-b border-zinc-800">
+                    <div
+                        className="shrink-0"
+                        style={{
+                            width: TRACK_INFO_WIDTH + TRACK_GROUP_LABEL_WIDTH,
+                        }}
+                    />
+                    <div
+                        ref={scrollAreaRef}
+                        className="flex-1 border-b border-zinc-600"
+                    >
                         <NLERuler
                             duration={duration}
                             zoom={zoom}
@@ -127,27 +170,37 @@ export function NLETimeline({
                         />
                     </div>
                 </div>
-                <div className="flex-1 overflow-y-auto overflow-x-hidden">
-                    {trackGroups.map((group) => (
-                        <TrackGroup key={group.id} label={group.label}>
-                            {group.tracks.map((track) => (
-                                <Track
-                                    key={track.id}
-                                    track={track}
-                                    trackId={track.id}
-                                    duration={duration}
-                                    zoom={zoom}
-                                    paddingX={TIMELINE_PADDING_X}
-                                    scrollLeftRef={scrollLeftRef}
-                                    subscribe={subscribe}
-                                    onToggleBlocked={() => {}}
-                                    onToggleHidden={() => {}}
-                                    onToggleMuted={() => {}}
-                                />
-                            ))}
-                        </TrackGroup>
-                    ))}
-                </div>
+                <ResizablePanelGroup orientation="vertical" className="flex-1 overflow-x-hidden">
+                    {trackGroups.flatMap((group, i) => [
+                        <ResizablePanel
+                            key={group.id}
+                            defaultSize={100 / trackGroups.length}
+                            className="overflow-y-auto"
+                            minSize="106px"
+                        >
+                            <TrackGroup label={group.label}>
+                                {group.tracks.map((track) => (
+                                    <Track
+                                        key={track.id}
+                                        track={track}
+                                        trackId={track.id}
+                                        duration={duration}
+                                        zoom={zoom}
+                                        paddingX={TIMELINE_PADDING_X}
+                                        scrollLeftRef={scrollLeftRef}
+                                        subscribe={subscribe}
+                                        onToggleBlocked={() => {}}
+                                        onToggleHidden={() => {}}
+                                        onToggleMuted={() => {}}
+                                    />
+                                ))}
+                            </TrackGroup>
+                        </ResizablePanel>,
+                        ...(i < trackGroups.length - 1
+                            ? [<ResizableHandle key={`handle-${group.id}`} className="aria-[orientation=horizontal]:h-2 bg-zinc-950" />]
+                            : []),
+                    ])}
+                </ResizablePanelGroup>
 
                 {/* TODO: NLECursor, marquee overlay */}
             </div>

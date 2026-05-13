@@ -74,11 +74,11 @@ function TimelineRuler({
                     return (
                         <div
                             key={t}
-                            className={`absolute top-0 border-l border-zinc-700 text-xs text-zinc-400 ${hasLabel ? 'h-5' : 'h-3'}`}
+                            className={`absolute bottom-0 border-l border-zinc-700 text-xs text-zinc-400 ${hasLabel ? 'h-5' : 'h-3'}`}
                             style={{ left: t * zoom }}
                         >
                             {hasLabel && (
-                                <span className="absolute top-5 left-1/2 -translate-x-1/2">
+                                <span className="absolute top-[-16px] left-1/2 -translate-x-1/2">
                                     {formatTime(t)}
                                 </span>
                             )}

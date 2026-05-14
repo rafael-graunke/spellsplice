@@ -55,7 +55,7 @@ function NLEEventIcon({
     return (
         <div
             className={cn(
-                'size-12 absolute top-1/2 -translate-y-1/2',
+                'size-12 absolute top-1/2 -translate-y-1/2 -translate-x-1/2',
                 'cursor-grab active:cursor-grabbing select-none',
                 isBeingDragged && 'opacity-0',
                 className

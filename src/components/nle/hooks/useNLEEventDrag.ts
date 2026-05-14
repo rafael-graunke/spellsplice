@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject, MouseEvent as ReactMouseEvent } from 'react';
 import type { TrackEvent, EventType } from '../../types/event';
 import type { NLETrack } from '../../types/nle';
-import { TrackType } from '../../types/nle';
 
 const SCROLL_ZONE = 30;
 const MAX_SCROLL_SPEED = 10;
@@ -80,6 +79,11 @@ export function useNLEEventDrag(
     const [ghostsByTrack, setGhostsByTrack] = useState<Map<string, NLEGhostPos[]>>(new Map());
     const [draggingIds, setDraggingIds] = useState<Set<number>>(new Set());
     const moveDragRef = useRef<MoveDragState | null>(null);
+    // Sync selectedIds to a ref so handleMoveStart always reads the latest value
+    // without needing to be in the useCallback deps (which would cause NLEEvent's
+    // memoized onMoveStart closures to go stale for all but the last-selected event).
+    const selectedIdsRef = useRef(selectedIds);
+    selectedIdsRef.current = selectedIds;
     const targetTrackIndexRef = useRef(0);
     const scrollRafRef = useRef<number | null>(null);
     const scrollSpeedXRef = useRef(0);
@@ -116,8 +120,9 @@ export function useNLEEventDrag(
             isWaypoint: !event.resizable,
         };
 
+        const currentSelectedIds = selectedIdsRef.current;
         const isMultiMove =
-            selectedIds.size > 1 && selectedIds.has(eventId);
+            currentSelectedIds.size > 1 && currentSelectedIds.has(eventId);
 
         const companions: EventDragData[] = isMultiMove
             ? (() => {
@@ -126,7 +131,7 @@ export function useNLEEventDrag(
                     const track = eventTracks.find((t) => t.id === tId);
                     if (!track) continue;
                     for (const ev of evs) {
-                        if (ev.id !== eventId && selectedIds.has(ev.id)) {
+                        if (ev.id !== eventId && currentSelectedIds.has(ev.id)) {
                             results.push({
                                 eventId: ev.id,
                                 fromTrackId: tId,
@@ -162,7 +167,7 @@ export function useNLEEventDrag(
         setGhostsByTrack(initialGhosts);
         setDraggingIds(new Set([primary.eventId, ...companions.map((c) => c.eventId)]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [eventTracks, selectedIds]);
+    }, [eventTracks]);
 
     useEffect(() => {
         if (ghostsByTrack.size === 0) return;
@@ -301,5 +306,3 @@ export function useNLEEventDrag(
 
     return { ghostsByTrack, draggingIds, handleMoveStart };
 }
-
-export { TrackType };

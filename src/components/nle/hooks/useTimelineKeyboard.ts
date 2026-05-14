@@ -26,8 +26,8 @@ export function useTimelineKeyboard({
             if (e.key === 'Delete' || e.key === 'Backspace') { onDelete(); }
             else if (mod && e.key === 'c') { onCopy(); }
             else if (mod && e.key === 'v') { onPaste(); }
-            else if (mod && e.key === 'z' && !e.shiftKey) { e.preventDefault(); onUndo(); }
-            else if (mod && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); onRedo(); }
+            else if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); onUndo(); }
+            else if (mod && (e.key === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); onRedo(); }
             else if (e.key === 'Tab' && !mod && onTabNext) { e.preventDefault(); onTabNext(); }
         };
         window.addEventListener('keydown', onKeyDown);

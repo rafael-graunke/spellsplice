@@ -4,7 +4,7 @@ import { Eye, EyeOff, Lock, Volume2, VolumeOff } from 'lucide-react';
 import type { NLETrack as NLETrackType } from '../types/nle';
 import { TrackType, TrackTypeColorMap } from '../types/nle';
 import type { TrackEvent } from '../types/event';
-import type { NLEGhostPos, NLEMoveResult } from './hooks/useNLEEventDrag';
+import type { NLEGhostPos } from './hooks/useNLEEventDrag';
 import NLEEvent from './NLEEvent';
 import NLEEventIcon from './NLEEventIcon';
 import {
@@ -121,6 +121,7 @@ interface TrackContentProps {
     scrollLeftRef: RefObject<number>;
     subscribe: (fn: (x: number) => void) => () => void;
     ghosts?: NLEGhostPos[];
+    onDeselect?: () => void;
 }
 
 export function TrackContent({
@@ -131,8 +132,13 @@ export function TrackContent({
     scrollLeftRef,
     subscribe,
     ghosts,
+    onDeselect,
 }: TrackContentProps) {
     const innerRef = useRef<HTMLDivElement>(null);
+    // Tracks whether the mousedown came from this background (not from a child NLEEvent,
+    // which calls stopPropagation). Also stores position so we can suppress deselect if
+    // the user dragged (marquee) rather than clicked.
+    const bgDownRef = useRef<{ x: number; y: number } | null>(null);
 
     useEffect(() => {
         return subscribe((x) => {
@@ -145,6 +151,17 @@ export function TrackContent({
         <div
             className="flex-1 overflow-hidden border-t border-zinc-700 relative"
             style={{ height: TRACK_HEIGHT }}
+            onMouseDown={onDeselect ? (e) => { bgDownRef.current = { x: e.clientX, y: e.clientY }; } : undefined}
+            onClick={onDeselect ? (e) => {
+                const down = bgDownRef.current;
+                bgDownRef.current = null;
+                if (!down) return; // mousedown was on NLEEvent (stopPropagation)
+                const dx = e.clientX - down.x;
+                const dy = e.clientY - down.y;
+                if (dx * dx + dy * dy > 25) return; // drag — marquee or event move
+                if (!e.currentTarget.contains(e.target as Node)) return; // portal click
+                onDeselect();
+            } : undefined}
         >
             <div
                 ref={innerRef}
@@ -185,7 +202,6 @@ interface TrackProps {
     paddingX?: number;
     scrollLeftRef: RefObject<number>;
     subscribe: (fn: (x: number) => void) => () => void;
-    children?: ReactNode;
     onToggleBlocked: () => void;
     onToggleHidden?: () => void;
     onToggleMuted?: () => void;
@@ -197,12 +213,11 @@ interface TrackProps {
     onSelect?: (id: number, additive: boolean) => void;
     onMoveStart?: (trackId: string, eventId: number, e: React.MouseEvent, time: number, duration: number) => void;
     onUpdate?: (trackId: string, eventId: number, time: number, duration: number) => void;
-    onDelete?: (trackId: string, eventId: number) => void;
     onDeleteSelected?: (trackId: string) => void;
     onCopy?: (trackId: string, eventId: number) => void;
     onDuplicate?: (trackId: string, eventId: number) => void;
-    onMoveEvents?: (moves: NLEMoveResult[]) => void;
     onMount?: (el: HTMLDivElement | null) => void;
+    onDeselect?: () => void;
 }
 
 export function Track({
@@ -213,7 +228,6 @@ export function Track({
     paddingX = 0,
     scrollLeftRef,
     subscribe,
-    children,
     onToggleBlocked,
     onToggleHidden,
     onToggleMuted,
@@ -224,11 +238,11 @@ export function Track({
     onSelect,
     onMoveStart,
     onUpdate,
-    onDelete,
     onDeleteSelected,
     onCopy,
     onDuplicate,
     onMount,
+    onDeselect,
 }: TrackProps) {
     const isEventTrack = track.type === TrackType.Event;
     const showEvents = isEventTrack && !track.isBlocked && !track.isHidden && events && events.length > 0;
@@ -252,8 +266,8 @@ export function Track({
                 scrollLeftRef={scrollLeftRef}
                 subscribe={subscribe}
                 ghosts={ghosts}
+                onDeselect={onDeselect}
             >
-                {children}
                 {showEvents && events.map((event) => (
                     <NLEEvent
                         key={event.id}
@@ -264,7 +278,6 @@ export function Track({
                         onSelect={(additive) => onSelect?.(event.id, additive)}
                         onMoveStart={(e, time, dur) => onMoveStart?.(trackId, event.id, e, time, dur)}
                         onUpdate={(time, dur) => onUpdate?.(trackId, event.id, time, dur)}
-                        onDelete={() => onDelete?.(trackId, event.id)}
                         onDeleteSelected={onDeleteSelected ? () => onDeleteSelected(trackId) : undefined}
                         onCopy={onCopy ? () => onCopy(trackId, event.id) : undefined}
                         onDuplicate={onDuplicate ? () => onDuplicate(trackId, event.id) : undefined}

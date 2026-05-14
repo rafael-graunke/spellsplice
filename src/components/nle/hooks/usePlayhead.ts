@@ -7,7 +7,7 @@ export function usePlayhead(
     currentTimeRef: MutableRefObject<number>,
     zoomRef: MutableRefObject<number>,
     onSeek: (t: number) => void,
-    onTick: (cursorPx: number) => void,
+    onTick?: (cursorPx: number) => void,
 ) {
     const seekTo = useCallback((t: number) => {
         currentTimeRef.current = Math.max(0, Math.min(duration, t));
@@ -22,7 +22,7 @@ export function usePlayhead(
         if (!isPlaying) return;
         let raf: number;
         const tick = () => {
-            onTick(currentTimeRef.current * zoomRef.current);
+            onTick?.(currentTimeRef.current * zoomRef.current);
             raf = requestAnimationFrame(tick);
         };
         raf = requestAnimationFrame(tick);

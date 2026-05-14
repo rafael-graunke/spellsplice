@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useMemo } from 'react';
+import { useRef, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import type { RefObject } from 'react';
 import NLEControls from './NLEControls';
 import { Track, TrackGroup } from './NLETrack';
@@ -13,6 +13,7 @@ import { usePlayhead } from './hooks/usePlayhead';
 import { useTimelineSelection } from './hooks/useTimelineSelection';
 import { useTimelineKeyboard } from './hooks/useTimelineKeyboard';
 import { useNLEEventDrag } from './hooks/useNLEEventDrag';
+import { useNLEMarqueeDrag } from './hooks/useNLEMarqueeDrag';
 import type { NLEMoveResult } from './hooks/useNLEEventDrag';
 import {
     RULER_HEIGHT,
@@ -22,8 +23,32 @@ import {
     MAX_ZOOM,
 } from '../Timeline/constants';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../ui/resizable';
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuSeparator,
+    ContextMenuShortcut,
+    ContextMenuTrigger,
+} from '../ui/context-menu';
+import { modKey } from '@/lib/platform';
 
-const TIMELINE_PADDING_X = 20;
+const TIMELINE_PADDING_X = 30;
+
+export interface PasteItem {
+    trackId: string;
+    event: TrackEvent;
+}
+
+export interface DuplicateItem {
+    trackId: string;
+    eventId: number;
+}
+
+export interface DeleteItem {
+    trackId: string;
+    eventId: number;
+}
 
 interface NLETimelineProps {
     duration: number;
@@ -38,9 +63,10 @@ interface NLETimelineProps {
     canRedo: boolean;
     onMoveEvent?: (moves: NLEMoveResult[]) => void;
     onUpdateEvent?: (trackId: string, eventId: number, time: number, duration: number) => void;
-    onDeleteEvent?: (trackId: string, eventId: number) => void;
+    onDeleteEvents: (items: DeleteItem[]) => void;
     onCopyEvent?: (trackId: string, eventId: number) => void;
-    onDuplicateEvent?: (trackId: string, eventId: number) => void;
+    onDuplicateEvents?: (items: DuplicateItem[], onCreated: (newIds: number[]) => void) => void;
+    onPasteEvents?: (items: PasteItem[], pasteTime: number, onCreated: (newIds: number[]) => void) => void;
 }
 
 export function NLETimeline({
@@ -52,11 +78,13 @@ export function NLETimeline({
     trackGroups,
     onUndo,
     onRedo,
+    canUndo,
+    canRedo,
     onMoveEvent,
     onUpdateEvent,
-    onDeleteEvent,
-    onCopyEvent,
-    onDuplicateEvent,
+    onDeleteEvents,
+    onDuplicateEvents,
+    onPasteEvents,
 }: NLETimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
@@ -64,16 +92,17 @@ export function NLETimeline({
     const scrollBoundaryRef = useRef<HTMLDivElement>(null);
     const trackElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
     const containerWidthRef = useRef(0);
+    const pasteTimeRef = useRef(0);
 
     const { scrollLeftRef, setScroll, setMaxScroll, subscribe } =
         useTimelineScroll();
     const { zoom, zoomRef, setZoom } = useTimelineZoom();
-    const { getViewport } = useTimelineViewport(
-        scrollLeftRef,
-        zoomRef,
-        containerWidthRef
-    );
-    const { selectedIds, select } = useTimelineSelection();
+    useTimelineViewport(scrollLeftRef, zoomRef, containerWidthRef);
+    const { selectedIds, select, selectMany, clearSelection } = useTimelineSelection();
+    // Refs so that callbacks passed through NLEEvent.memo always read fresh values
+    // without recreating on every selection/trackGroups change.
+    const selectedIdsRef = useRef(selectedIds);
+    selectedIdsRef.current = selectedIds;
 
     // Collect all EVENT tracks in DOM order (top→bottom within each group)
     const eventTracks = useMemo(
@@ -83,6 +112,19 @@ export function NLETimeline({
                 .filter((t) => t.type === TrackType.Event),
         [trackGroups],
     );
+
+    // Map eventId → trackId for fast lookup
+    const trackByEventId = useMemo(() => {
+        const map = new Map<number, string>();
+        for (const track of eventTracks) {
+            for (const ev of track.events) {
+                map.set(ev.id, track.id);
+            }
+        }
+        return map;
+    }, [eventTracks]);
+    const trackByEventIdRef = useRef(trackByEventId);
+    trackByEventIdRef.current = trackByEventId;
 
     const getAllEvents = useCallback((): Map<string, TrackEvent[]> => {
         const map = new Map<string, TrackEvent[]>();
@@ -111,14 +153,6 @@ export function NLETimeline({
         handleMoveEvents,
     );
 
-    const handleTick = useCallback(
-        (_cursorAbsPx: number) => {
-            void subscribe;
-            void getViewport;
-        },
-        [subscribe, getViewport]
-    );
-
     const zoomPercent = Math.round(
         ((zoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)) * 100
     );
@@ -137,22 +171,78 @@ export function NLETimeline({
         currentTimeRef,
         zoomRef,
         setCurrentTime,
-        handleTick
     );
 
+    // Copy / paste state
+    const [copiedItems, setCopiedItems] = useState<PasteItem[]>([]);
+    const pendingSelectRef = useRef<number[]>([]);
+
+    // After a duplicate/paste render, select the newly created events before paint
+    useLayoutEffect(() => {
+        if (pendingSelectRef.current.length === 0) return;
+        const toSelect = pendingSelectRef.current.filter((id) => trackByEventId.has(id));
+        pendingSelectRef.current = [];
+        if (toSelect.length > 0) selectMany(toSelect);
+    }, [trackByEventId, selectMany]);
+
+    const handleDelete = useCallback(() => {
+        const items: DeleteItem[] = [];
+        for (const id of selectedIdsRef.current) {
+            const trackId = trackByEventIdRef.current.get(id);
+            if (trackId) items.push({ trackId, eventId: id });
+        }
+        if (items.length === 0) return;
+        onDeleteEvents(items);
+        clearSelection();
+    }, [onDeleteEvents, clearSelection]);
+
+    const handleCopy = useCallback(() => {
+        if (selectedIdsRef.current.size === 0) return;
+        const items: PasteItem[] = [];
+        for (const track of eventTracks) {
+            for (const ev of track.events) {
+                if (selectedIdsRef.current.has(ev.id)) items.push({ trackId: track.id, event: ev });
+            }
+        }
+        setCopiedItems(items);
+    }, [eventTracks]);
+
+    const handleDuplicateForEvent = useCallback((trackId: string, eventId: number) => {
+        if (!onDuplicateEvents) return;
+        const items: DuplicateItem[] = selectedIds.has(eventId)
+            ? eventTracks.flatMap((t) =>
+                  t.events
+                      .filter((e) => selectedIds.has(e.id))
+                      .map((e) => ({ trackId: t.id, eventId: e.id }))
+              )
+            : [{ trackId, eventId }];
+        onDuplicateEvents(items, (newIds) => { pendingSelectRef.current = newIds; });
+    }, [selectedIds, eventTracks, onDuplicateEvents, selectMany]);
+
+    const handlePaste = useCallback((pasteTime: number) => {
+        if (copiedItems.length === 0) return;
+        onPasteEvents?.(copiedItems, pasteTime, (newIds) => { pendingSelectRef.current = newIds; });
+    }, [copiedItems, onPasteEvents, selectMany]);
+
     useTimelineKeyboard({
-        onDelete: () => {
-            /* TODO: delete selected events */
-        },
-        onCopy: () => {
-            /* TODO: copy selected events */
-        },
-        onPaste: () => {
-            /* TODO: paste events at playhead */
-        },
+        onDelete: handleDelete,
+        onCopy: handleCopy,
+        onPaste: () => handlePaste(currentTimeRef.current),
         onUndo,
         onRedo,
     });
+
+    const { marqueeRect, handleMarqueeMouseDown } = useNLEMarqueeDrag(
+        scrollBoundaryRef,
+        trackElsRef,
+        eventTracks,
+        zoomRef,
+        scrollLeftRef,
+        selectMany,
+        clearSelection,
+        TRACK_GROUP_LABEL_WIDTH + TRACK_INFO_WIDTH,
+        TIMELINE_PADDING_X,
+    );
 
     useEffect(() => {
         const el = containerRef.current;
@@ -217,7 +307,17 @@ export function NLETimeline({
                         />
                     </div>
                 </div>
-                <div ref={scrollBoundaryRef} className="flex-1 overflow-hidden">
+                <ContextMenu>
+                <ContextMenuTrigger asChild>
+                <div
+                    ref={scrollBoundaryRef}
+                    className="flex-1 overflow-hidden relative"
+                    onMouseDown={handleMarqueeMouseDown}
+                    onContextMenu={(e) => {
+                        const contentLeft = (scrollAreaRef.current?.getBoundingClientRect().left ?? 0) + TIMELINE_PADDING_X;
+                        pasteTimeRef.current = Math.max(0, (e.clientX - contentLeft + scrollLeftRef.current) / zoomRef.current);
+                    }}
+                >
                     <ResizablePanelGroup orientation="vertical" className="h-full overflow-x-hidden">
                         {trackGroups.flatMap((group, i) => [
                             <ResizablePanel
@@ -249,22 +349,14 @@ export function NLETimeline({
                                             draggingIds={draggingIds}
                                             ghosts={ghostsByTrack.get(track.id)}
                                             onSelect={(id, additive) => select(id, additive)}
+                                            onDeselect={clearSelection}
                                             onMoveStart={(tId, eventId, e, time, dur) =>
                                                 handleMoveStart(tId, eventId, e, time, dur)
                                             }
                                             onUpdate={onUpdateEvent}
-                                            onDelete={onDeleteEvent}
-                                            onDeleteSelected={
-                                                onDeleteEvent
-                                                    ? (tId) => {
-                                                          for (const id of selectedIds) {
-                                                              onDeleteEvent(tId, id);
-                                                          }
-                                                      }
-                                                    : undefined
-                                            }
-                                            onCopy={onCopyEvent}
-                                            onDuplicate={onDuplicateEvent}
+                                            onDeleteSelected={() => handleDelete()}
+                                            onCopy={(_tId, _eId) => handleCopy()}
+                                            onDuplicate={onDuplicateEvents ? handleDuplicateForEvent : undefined}
                                         />
                                     ))}
                                 </TrackGroup>
@@ -274,9 +366,38 @@ export function NLETimeline({
                                 : []),
                         ])}
                     </ResizablePanelGroup>
+                    {marqueeRect && (
+                        <div
+                            className="absolute pointer-events-none border rounded-sm border-violet-500 bg-violet-500/20 z-40"
+                            style={{
+                                left: marqueeRect.x,
+                                top: marqueeRect.y,
+                                width: marqueeRect.w,
+                                height: marqueeRect.h,
+                            }}
+                        />
+                    )}
                 </div>
-
-                {/* TODO: NLECursor, marquee overlay */}
+                </ContextMenuTrigger>
+                <ContextMenuContent>
+                    <ContextMenuItem
+                        disabled={copiedItems.length === 0}
+                        onClick={() => handlePaste(pasteTimeRef.current)}
+                    >
+                        Paste
+                        <ContextMenuShortcut>{modKey}+V</ContextMenuShortcut>
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem disabled={!canUndo} onClick={onUndo}>
+                        Undo
+                        <ContextMenuShortcut>{modKey}+Z</ContextMenuShortcut>
+                    </ContextMenuItem>
+                    <ContextMenuItem disabled={!canRedo} onClick={onRedo}>
+                        Redo
+                        <ContextMenuShortcut>{modKey}+Shift+Z</ContextMenuShortcut>
+                    </ContextMenuItem>
+                </ContextMenuContent>
+                </ContextMenu>
             </div>
         </div>
     );

@@ -20,7 +20,7 @@ export interface NLEEventProps {
     onSelect: (additive: boolean) => void;
     onMoveStart: (e: React.MouseEvent, time: number, duration: number) => void;
     onUpdate: (time: number, duration: number) => void;
-    onDelete: () => void;
+    onDelete?: () => void;
     onDeleteSelected?: () => void;
     onCopy?: () => void;
     onDuplicate?: () => void;
@@ -57,12 +57,27 @@ function NLEEvent({
     const hasDragged = useRef(false);
 
     const handleMouseDown = (e: React.MouseEvent, mode: 'move' | DragMode) => {
+        if (e.button !== 0) return; // ignore right-click; context menu handled via contextmenu event
         e.preventDefault();
         e.stopPropagation();
         hasDragged.current = false;
 
         if (mode === 'move') {
             onMoveStart(e, time, duration ?? 0);
+            const startX = e.clientX, startY = e.clientY;
+            const trackMove = (mv: MouseEvent) => {
+                if (Math.abs(mv.clientX - startX) > 3 || Math.abs(mv.clientY - startY) > 3) {
+                    hasDragged.current = true;
+                    if (!isSelected) onSelect(false); // exclusive-select only when drag confirmed
+                    window.removeEventListener('mousemove', trackMove);
+                }
+            };
+            const cleanup = () => {
+                window.removeEventListener('mousemove', trackMove);
+                window.removeEventListener('mouseup', cleanup);
+            };
+            window.addEventListener('mousemove', trackMove);
+            window.addEventListener('mouseup', cleanup);
             return;
         }
 
@@ -108,6 +123,7 @@ function NLEEvent({
     const sharedMouseProps = {
         onMouseDown: (e: React.MouseEvent) => handleMouseDown(e, 'move'),
         onClick: (e: React.MouseEvent) => {
+            e.stopPropagation();
             if (!hasDragged.current) onSelect(e.ctrlKey || e.metaKey);
         },
     };

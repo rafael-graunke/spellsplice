@@ -34,6 +34,7 @@ export function useHistory<S extends Objectish>(initialState: S) {
         const [nextState, patches, inversePatches] = produceWithPatches(stateRef.current, recipe);
         if (patches.length === 0) return;
         pushEntry({ kind: 'patch', patches, inversePatches });
+        stateRef.current = nextState as S; // keep ref current so batched record() calls chain correctly
         setState(nextState as S);
     }, [pushEntry]);
 

@@ -1,4 +1,6 @@
 import { useRef, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import NLECursor from './NLECursor';
+import type { NLECursorHandle } from './NLECursor';
 import type { RefObject } from 'react';
 import NLEControls from './NLEControls';
 import { Track, TrackGroup } from './NLETrack';
@@ -185,6 +187,7 @@ export function NLETimeline({
     const containerRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
+    const cursorRef = useRef<NLECursorHandle>(null);
     const scrollBoundaryRef = useRef<HTMLDivElement>(null);
     const trackElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
     const containerWidthRef = useRef(0);
@@ -260,15 +263,32 @@ export function NLETimeline({
         const pivotPx = (contentRef.current?.clientWidth ?? 0) / 2;
         const newScroll = setZoom(pxPerSec, pivotPx, scrollLeftRef.current);
         setScroll(newScroll);
+        updateCursorPosition();
     };
+
+    const updateCursorPosition = useCallback(() => {
+        cursorRef.current?.setPosition(
+            TIMELINE_PADDING_X + currentTimeRef.current * zoomRef.current - scrollLeftRef.current
+        );
+    }, []); // stable — reads only refs
+
+    const handleSetCurrentTime = useCallback((t: number) => {
+        setCurrentTime(t);
+        updateCursorPosition();
+    }, [setCurrentTime, updateCursorPosition]);
+
+    useEffect(() => subscribe((_x) => updateCursorPosition()), [subscribe, updateCursorPosition]);
 
     const { seekTo } = usePlayhead(
         isPlaying,
         duration,
         currentTimeRef,
         zoomRef,
-        setCurrentTime,
+        handleSetCurrentTime,
+        updateCursorPosition,
     );
+
+    useEffect(() => { updateCursorPosition(); }, [updateCursorPosition]);
 
     // Copy / paste state
     const [copiedItems, setCopiedItems] = useState<PasteItem[]>([]);
@@ -496,6 +516,21 @@ export function NLETimeline({
                                 : []),
                         ])}
                     </ResizablePanelGroup>
+                    <div
+                        className="absolute inset-y-0 pointer-events-none overflow-hidden"
+                        style={{ left: TRACK_GROUP_LABEL_WIDTH + TRACK_INFO_WIDTH, right: 0 }}
+                    >
+                        <NLECursor
+                            ref={cursorRef}
+                            setIsPlaying={setIsPlaying}
+                            scrollAreaRef={scrollAreaRef}
+                            onSeek={seekTo}
+                            zoomRef={zoomRef}
+                            scrollLeftRef={scrollLeftRef}
+                            paddingX={TIMELINE_PADDING_X}
+                            duration={duration}
+                        />
+                    </div>
                     {marqueeRect && (
                         <div
                             className="absolute pointer-events-none border rounded-sm border-violet-500 bg-violet-500/20 z-40"

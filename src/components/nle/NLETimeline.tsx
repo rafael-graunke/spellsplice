@@ -377,6 +377,9 @@ export function NLETimeline({
         onPaste: () => handlePaste(currentTimeRef.current),
         onUndo,
         onRedo,
+        onSeek: seekTo,
+        currentTimeRef,
+        duration,
     });
 
     const { marqueeRect, handleMarqueeMouseDown } = useNLEMarqueeDrag(
@@ -430,6 +433,7 @@ export function NLETimeline({
                 ref={contentRef}
                 className="flex flex-col flex-1 overflow-hidden bg-zinc-950 pl-4 pb-4"
             >
+                <div className="flex flex-col flex-1 relative">
                 {/* Ruler row */}
                 <div className="flex shrink-0" style={{ height: RULER_HEIGHT }}>
                     <div
@@ -516,21 +520,6 @@ export function NLETimeline({
                                 : []),
                         ])}
                     </ResizablePanelGroup>
-                    <div
-                        className="absolute inset-y-0 pointer-events-none overflow-hidden"
-                        style={{ left: TRACK_GROUP_LABEL_WIDTH + TRACK_INFO_WIDTH, right: 0 }}
-                    >
-                        <NLECursor
-                            ref={cursorRef}
-                            setIsPlaying={setIsPlaying}
-                            scrollAreaRef={scrollAreaRef}
-                            onSeek={seekTo}
-                            zoomRef={zoomRef}
-                            scrollLeftRef={scrollLeftRef}
-                            paddingX={TIMELINE_PADDING_X}
-                            duration={duration}
-                        />
-                    </div>
                     {marqueeRect && (
                         <div
                             className="absolute pointer-events-none border rounded-sm border-violet-500 bg-violet-500/20 z-40"
@@ -542,6 +531,22 @@ export function NLETimeline({
                             }}
                         />
                     )}
+                </div>
+                <div
+                    className="absolute inset-y-0 pointer-events-none overflow-hidden"
+                    style={{ left: TRACK_GROUP_LABEL_WIDTH + TRACK_INFO_WIDTH, right: 0 }}
+                >
+                    <NLECursor
+                        ref={cursorRef}
+                        setIsPlaying={setIsPlaying}
+                        scrollAreaRef={scrollAreaRef}
+                        onSeek={seekTo}
+                        zoomRef={zoomRef}
+                        scrollLeftRef={scrollLeftRef}
+                        paddingX={TIMELINE_PADDING_X}
+                        duration={duration}
+                    />
+                </div>
                 </div>
             </div>
             <NLECreateDialog

@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { expect, userEvent, fireEvent, within, screen } from 'storybook/test';
 import { NLETimeline } from './NLETimeline';
 import type { PasteItem, DuplicateItem, DeleteItem } from './NLETimeline';
 import type { NLETrackGroup } from '../types/nle';
@@ -273,5 +274,46 @@ export const WithEvents: Story = {
         onRedo: () => {},
         canUndo: false,
         canRedo: false,
+    },
+};
+
+// Regression test: duplicate from an already-selected event when multi-selected
+// should duplicate all selected events, not just the right-clicked one.
+export const MultiSelectDuplicate: Story = {
+    render: (args) => <WithEventsWrapper {...args} />,
+    args: {
+        duration: 120,
+        isPlaying: false,
+        setIsPlaying: () => {},
+        setCurrentTime: () => {},
+        trackGroups: [],
+        onUndo: () => {},
+        onRedo: () => {},
+        canUndo: false,
+        canRedo: false,
+    },
+    play: async ({ canvasElement }) => {
+        const canvas = within(canvasElement);
+
+        // Initial event count across all tracks
+        const countEvents = () =>
+            canvasElement.querySelectorAll('[data-testid^="nle-event-"]').length;
+        const initialCount = countEvents();
+
+        // Select event 1, then ctrl+click event 2 to add to selection
+        const event1 = canvas.getByTestId('nle-event-1');
+        const event2 = canvas.getByTestId('nle-event-2');
+        await userEvent.click(event1);
+        fireEvent.click(event2, { ctrlKey: true });
+
+        // Right-click on event 1 (which was selected first) to open context menu
+        fireEvent.contextMenu(event1);
+
+        // Click "Duplicate" in the context menu (renders in a portal outside canvasElement)
+        const duplicateItem = await screen.findByRole('menuitem', { name: 'Duplicate' });
+        fireEvent.click(duplicateItem);
+
+        // Both selected events should have been duplicated
+        expect(countEvents()).toBe(initialCount + 2);
     },
 };

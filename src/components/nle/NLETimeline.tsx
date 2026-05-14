@@ -22,6 +22,7 @@ import {
     TRACK_INFO_WIDTH,
     MIN_ZOOM,
     MAX_ZOOM,
+    TRACK_HEIGHT,
 } from '../Timeline/constants';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../ui/resizable';
 import {
@@ -219,6 +220,8 @@ export function NLETimeline({
     }, [eventTracks]);
     const trackByEventIdRef = useRef(trackByEventId);
     trackByEventIdRef.current = trackByEventId;
+    const eventTracksRef = useRef(eventTracks);
+    eventTracksRef.current = eventTracks;
 
     const getAllEvents = useCallback((): Map<string, TrackEvent[]> => {
         const map = new Map<string, TrackEvent[]>();
@@ -308,15 +311,16 @@ export function NLETimeline({
 
     const handleDuplicateForEvent = useCallback((trackId: string, eventId: number) => {
         if (!onDuplicateEvents) return;
-        const items: DuplicateItem[] = selectedIds.has(eventId)
-            ? eventTracks.flatMap((t) =>
+        const sel = selectedIdsRef.current;
+        const items: DuplicateItem[] = sel.has(eventId)
+            ? eventTracksRef.current.flatMap((t) =>
                   t.events
-                      .filter((e) => selectedIds.has(e.id))
+                      .filter((e) => sel.has(e.id))
                       .map((e) => ({ trackId: t.id, eventId: e.id }))
               )
             : [{ trackId, eventId }];
         onDuplicateEvents(items, (newIds) => { pendingSelectRef.current = newIds; });
-    }, [selectedIds, eventTracks, onDuplicateEvents, selectMany]);
+    }, [onDuplicateEvents]);
 
     const handlePaste = useCallback((pasteTime: number) => {
         if (copiedItems.length === 0) return;
@@ -416,7 +420,7 @@ export function NLETimeline({
                     />
                     <div
                         ref={scrollAreaRef}
-                        className="flex-1 border-b border-zinc-600"
+                        className="flex-1"
                     >
                         <NLERuler
                             duration={duration}
@@ -441,7 +445,7 @@ export function NLETimeline({
                                 key={group.id}
                                 defaultSize={100 / trackGroups.length}
                                 className="overflow-y-auto"
-                                minSize="106px"
+                                minSize={TRACK_HEIGHT * 2 + 2}
                             >
                                 <TrackGroup label={group.label}>
                                     {group.tracks.map((track) => (

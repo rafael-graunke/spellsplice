@@ -144,6 +144,7 @@ function NLEEvent({
                         onClick={sharedMouseProps.onClick}
                         onResizeLeftDown={(e) => handleMouseDown(e, 'resize-left')}
                         onResizeRightDown={(e) => handleMouseDown(e, 'resize-right')}
+                        data-testid={`nle-event-${event.id}`}
                     />
                 ) : (
                     <NLEEventIcon
@@ -151,6 +152,7 @@ function NLEEvent({
                         selected={isSelected}
                         isBeingDragged={isBeingDragged}
                         position={time * zoom}
+                        data-testid={`nle-event-${event.id}`}
                         {...sharedMouseProps}
                     />
                 )}

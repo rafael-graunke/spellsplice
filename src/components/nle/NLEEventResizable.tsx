@@ -22,6 +22,7 @@ interface NLEEventResizableProps {
     onClick: (e: React.MouseEvent) => void;
     onResizeLeftDown: (e: React.MouseEvent) => void;
     onResizeRightDown: (e: React.MouseEvent) => void;
+    'data-testid'?: string;
 }
 
 export function NLEEventResizable({
@@ -36,6 +37,7 @@ export function NLEEventResizable({
     onClick,
     onResizeLeftDown,
     onResizeRightDown,
+    'data-testid': dataTestId,
 }: NLEEventResizableProps) {
     const Icon = iconMap[type];
 
@@ -50,6 +52,7 @@ export function NLEEventResizable({
             style={{ left: time * zoom, width: duration * zoom }}
             onMouseDown={onMouseDown}
             onClick={onClick}
+            data-testid={dataTestId}
         >
             {Icon && <Icon className="absolute fill-white size-7 left-3 top-1/2 -translate-y-1/2" />}
             <div

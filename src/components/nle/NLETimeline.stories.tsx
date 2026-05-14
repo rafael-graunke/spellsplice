@@ -209,6 +209,24 @@ function WithEventsWrapper(args: React.ComponentProps<typeof NLETimeline>) {
         onCreated(newIds);
     };
 
+    const handleCreateEvent = (trackId: string, partial: Parameters<NonNullable<React.ComponentProps<typeof NLETimeline>['onCreateEvent']>>[1]) => {
+        record((draft) => {
+            for (const g of draft) {
+                const track = g.tracks.find((t) => t.id === trackId);
+                if (track) {
+                    track.events.push({
+                        id: nextIdRef.current++,
+                        time: currentTimeRef.current,
+                        layer: 0,
+                        duration: partial.duration ?? 1,
+                        resizable: partial.resizable ?? false,
+                        ...partial,
+                    });
+                }
+            }
+        });
+    };
+
     return (
         <NLETimeline
             {...args}
@@ -219,6 +237,7 @@ function WithEventsWrapper(args: React.ComponentProps<typeof NLETimeline>) {
             onDeleteEvents={handleDeleteEvents}
             onDuplicateEvents={handleDuplicateEvents}
             onPasteEvents={handlePasteEvents}
+            onCreateEvent={handleCreateEvent}
             onUndo={undo}
             onRedo={redo}
             canUndo={canUndo}

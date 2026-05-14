@@ -13,6 +13,15 @@ import {
     TRACK_GROUP_LABEL_WIDTH,
 } from '../Timeline/constants';
 import { cn } from '@/lib/utils';
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuSeparator,
+    ContextMenuShortcut,
+    ContextMenuTrigger,
+} from '../ui/context-menu';
+import { modKey } from '@/lib/platform';
 
 interface TrackGroupProps {
     children: ReactNode;
@@ -122,6 +131,13 @@ interface TrackContentProps {
     subscribe: (fn: (x: number) => void) => () => void;
     ghosts?: NLEGhostPos[];
     onDeselect?: () => void;
+    onOpenCreateDialog?: (time: number) => void;
+    onPasteAtTime?: (time: number) => void;
+    canPaste?: boolean;
+    onUndo?: () => void;
+    canUndo?: boolean;
+    onRedo?: () => void;
+    canRedo?: boolean;
 }
 
 export function TrackContent({
@@ -133,8 +149,17 @@ export function TrackContent({
     subscribe,
     ghosts,
     onDeselect,
+    onOpenCreateDialog,
+    onPasteAtTime,
+    canPaste,
+    onUndo,
+    canUndo,
+    onRedo,
+    canRedo,
 }: TrackContentProps) {
     const innerRef = useRef<HTMLDivElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const clickTimeRef = useRef(0);
     // Tracks whether the mousedown came from this background (not from a child NLEEvent,
     // which calls stopPropagation). Also stores position so we can suppress deselect if
     // the user dragged (marquee) rather than clicked.
@@ -148,49 +173,83 @@ export function TrackContent({
     }, [subscribe]);
 
     return (
-        <div
-            className="flex-1 overflow-hidden border-t border-zinc-700 relative"
-            style={{ height: TRACK_HEIGHT }}
-            onMouseDown={onDeselect ? (e) => { bgDownRef.current = { x: e.clientX, y: e.clientY }; } : undefined}
-            onClick={onDeselect ? (e) => {
-                const down = bgDownRef.current;
-                bgDownRef.current = null;
-                if (!down) return; // mousedown was on NLEEvent (stopPropagation)
-                const dx = e.clientX - down.x;
-                const dy = e.clientY - down.y;
-                if (dx * dx + dy * dy > 25) return; // drag — marquee or event move
-                if (!e.currentTarget.contains(e.target as Node)) return; // portal click
-                onDeselect();
-            } : undefined}
-        >
-            <div
-                ref={innerRef}
-                className="absolute inset-y-0"
-                style={{
-                    left: paddingX,
-                    width: duration * zoom,
-                    transform: `translateX(${-(scrollLeftRef.current ?? 0)}px)`,
-                }}
-            >
-                {children}
-                {ghosts?.map((ghost, i) =>
-                    ghost.isWaypoint ? (
-                        <NLEEventIcon
-                            key={i}
-                            type={ghost.type}
-                            position={ghost.left}
-                            className="opacity-50 pointer-events-none"
-                        />
-                    ) : (
-                        <div
-                            key={i}
-                            className="absolute h-[calc(100%-6px)] top-1/2 -translate-y-1/2 rounded-sm opacity-50 pointer-events-none bg-white/20"
-                            style={{ left: ghost.left, width: ghost.width }}
-                        />
-                    )
+        <ContextMenu>
+            <ContextMenuTrigger asChild>
+                <div
+                    ref={containerRef}
+                    className="flex-1 overflow-hidden border-t border-zinc-700 relative"
+                    style={{ height: TRACK_HEIGHT }}
+                    onMouseDown={onDeselect ? (e) => { bgDownRef.current = { x: e.clientX, y: e.clientY }; } : undefined}
+                    onClick={onDeselect ? (e) => {
+                        const down = bgDownRef.current;
+                        bgDownRef.current = null;
+                        if (!down) return; // mousedown was on NLEEvent (stopPropagation)
+                        const dx = e.clientX - down.x;
+                        const dy = e.clientY - down.y;
+                        if (dx * dx + dy * dy > 25) return; // drag — marquee or event move
+                        if (!e.currentTarget.contains(e.target as Node)) return; // portal click
+                        onDeselect();
+                    } : undefined}
+                    onContextMenu={(e) => {
+                        const rect = containerRef.current?.getBoundingClientRect();
+                        if (!rect) return;
+                        clickTimeRef.current = Math.max(0, (e.clientX - rect.left + (scrollLeftRef.current ?? 0) - paddingX) / zoom);
+                    }}
+                >
+                    <div
+                        ref={innerRef}
+                        className="absolute inset-y-0"
+                        style={{
+                            left: paddingX,
+                            width: duration * zoom,
+                            transform: `translateX(${-(scrollLeftRef.current ?? 0)}px)`,
+                        }}
+                    >
+                        {children}
+                        {ghosts?.map((ghost, i) =>
+                            ghost.isWaypoint ? (
+                                <NLEEventIcon
+                                    key={i}
+                                    type={ghost.type}
+                                    position={ghost.left}
+                                    className="opacity-50 pointer-events-none"
+                                />
+                            ) : (
+                                <div
+                                    key={i}
+                                    className="absolute h-[calc(100%-6px)] top-1/2 -translate-y-1/2 rounded-sm opacity-50 pointer-events-none bg-white/20"
+                                    style={{ left: ghost.left, width: ghost.width }}
+                                />
+                            )
+                        )}
+                    </div>
+                </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+                {onOpenCreateDialog && (
+                    <>
+                        <ContextMenuItem onClick={() => onOpenCreateDialog(clickTimeRef.current)}>
+                            Create event
+                            <ContextMenuShortcut>{modKey}+K</ContextMenuShortcut>
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                    </>
                 )}
-            </div>
-        </div>
+                <ContextMenuItem disabled={!canPaste} onClick={() => onPasteAtTime?.(clickTimeRef.current)}>
+                    Paste
+                    <ContextMenuShortcut>{modKey}+V</ContextMenuShortcut>
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem disabled={!canUndo} onClick={onUndo}>
+                    Undo
+                    <ContextMenuShortcut>{modKey}+Z</ContextMenuShortcut>
+                </ContextMenuItem>
+                <ContextMenuItem disabled={!canRedo} onClick={onRedo}>
+                    Redo
+                    <ContextMenuShortcut>{modKey}+Shift+Z</ContextMenuShortcut>
+                </ContextMenuItem>
+            </ContextMenuContent>
+        </ContextMenu>
     );
 }
 
@@ -218,6 +277,13 @@ interface TrackProps {
     onDuplicate?: (trackId: string, eventId: number) => void;
     onMount?: (el: HTMLDivElement | null) => void;
     onDeselect?: () => void;
+    onOpenCreateDialog?: (time: number) => void;
+    onPasteAtTime?: (time: number) => void;
+    canPaste?: boolean;
+    onUndo?: () => void;
+    canUndo?: boolean;
+    onRedo?: () => void;
+    canRedo?: boolean;
 }
 
 export function Track({
@@ -243,6 +309,13 @@ export function Track({
     onDuplicate,
     onMount,
     onDeselect,
+    onOpenCreateDialog,
+    onPasteAtTime,
+    canPaste,
+    onUndo,
+    canUndo,
+    onRedo,
+    canRedo,
 }: TrackProps) {
     const isEventTrack = track.type === TrackType.Event;
     const showEvents = isEventTrack && !track.isBlocked && !track.isHidden && events && events.length > 0;
@@ -267,6 +340,13 @@ export function Track({
                 subscribe={subscribe}
                 ghosts={ghosts}
                 onDeselect={onDeselect}
+                onOpenCreateDialog={onOpenCreateDialog}
+                onPasteAtTime={onPasteAtTime}
+                canPaste={canPaste}
+                onUndo={onUndo}
+                canUndo={canUndo}
+                onRedo={onRedo}
+                canRedo={canRedo}
             >
                 {showEvents && events.map((event) => (
                     <NLEEvent

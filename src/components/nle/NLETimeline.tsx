@@ -6,6 +6,7 @@ import NLERuler from './NLERuler';
 import type { NLETrackGroup } from '../types/nle';
 import { TrackType } from '../types/nle';
 import type { TrackEvent } from '../types/event';
+import { EventType } from '../types/event';
 import { useTimelineScroll } from './hooks/useTimelineScroll';
 import { useTimelineZoom } from './hooks/useTimelineZoom';
 import { useTimelineViewport } from './hooks/useTimelineViewport';
@@ -24,16 +25,108 @@ import {
 } from '../Timeline/constants';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../ui/resizable';
 import {
-    ContextMenu,
-    ContextMenuContent,
-    ContextMenuItem,
-    ContextMenuSeparator,
-    ContextMenuShortcut,
-    ContextMenuTrigger,
-} from '../ui/context-menu';
-import { modKey } from '@/lib/platform';
+    Command,
+    CommandDialog,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from '../ui/command';
 
 const TIMELINE_PADDING_X = 30;
+
+interface NLECreateDialogProps {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    setIsPlaying: (v: boolean) => void;
+    onCreateEvent: (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => void;
+}
+
+function NLECreateDialog({ open, onOpenChange, setIsPlaying, onCreateEvent }: NLECreateDialogProps) {
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+                e.preventDefault();
+                setIsPlaying(false);
+                onOpenChange(!open);
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [open]);
+
+    const handleSelect = (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => {
+        onCreateEvent(partial);
+        onOpenChange(false);
+    };
+
+    return (
+        <CommandDialog open={open} onOpenChange={onOpenChange} onCloseAutoFocus={(e) => e.preventDefault()}>
+            <Command>
+                <CommandInput placeholder="Type a command or search..." />
+                <CommandList>
+                    <CommandEmpty>No actions found.</CommandEmpty>
+                    <CommandGroup heading="Player Actions">
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.AddToHand, duration: 1 })}>
+                            Draw
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.RemoveFromHand })}>
+                            Discard
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.LoseLife, meta: { amount: 1 } })}>
+                            Damage
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.GainLife, meta: { amount: 1 } })}>
+                            Heal
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.RevealFromHand })}>
+                            Reveal
+                        </CommandItem>
+                    </CommandGroup>
+                    <CommandGroup heading="Basic Actions">
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.AddToHand, duration: 1 })}>
+                            Add to Hand
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.RemoveFromHand })}>
+                            Remove from Hand
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.LoseLife, meta: { amount: 1 } })}>
+                            Lose Life
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.GainLife, meta: { amount: 1 } })}>
+                            Gain Life
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.RevealFromHand })}>
+                            Reveal from Hand
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.StackDeck, meta: { cards: [] } })}>
+                            Stack Deck
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.UnstackDeck })}>
+                            Unstack Deck
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.DisplayCard, duration: 5, resizable: true })}>
+                            Display Card
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.Win })}>
+                            Win
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.Reset })}>
+                            Reset
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.HideUi })}>
+                            Hide UI
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.ShowUi })}>
+                            Show UI
+                        </CommandItem>
+                    </CommandGroup>
+                </CommandList>
+            </Command>
+        </CommandDialog>
+    );
+}
 
 export interface PasteItem {
     trackId: string;
@@ -67,6 +160,7 @@ interface NLETimelineProps {
     onCopyEvent?: (trackId: string, eventId: number) => void;
     onDuplicateEvents?: (items: DuplicateItem[], onCreated: (newIds: number[]) => void) => void;
     onPasteEvents?: (items: PasteItem[], pasteTime: number, onCreated: (newIds: number[]) => void) => void;
+    onCreateEvent?: (trackId: string, partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => void;
 }
 
 export function NLETimeline({
@@ -85,6 +179,7 @@ export function NLETimeline({
     onDeleteEvents,
     onDuplicateEvents,
     onPasteEvents,
+    onCreateEvent,
 }: NLETimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
@@ -92,7 +187,6 @@ export function NLETimeline({
     const scrollBoundaryRef = useRef<HTMLDivElement>(null);
     const trackElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
     const containerWidthRef = useRef(0);
-    const pasteTimeRef = useRef(0);
 
     const { scrollLeftRef, setScroll, setMaxScroll, subscribe } =
         useTimelineScroll();
@@ -175,6 +269,11 @@ export function NLETimeline({
 
     // Copy / paste state
     const [copiedItems, setCopiedItems] = useState<PasteItem[]>([]);
+
+    // Create event state
+    const [createOpen, setCreateOpen] = useState(false);
+    const [createTrackId, setCreateTrackId] = useState<string | undefined>(undefined);
+    const createTimeRef = useRef<number | undefined>(undefined);
     const pendingSelectRef = useRef<number[]>([]);
 
     // After a duplicate/paste render, select the newly created events before paint
@@ -223,6 +322,30 @@ export function NLETimeline({
         if (copiedItems.length === 0) return;
         onPasteEvents?.(copiedItems, pasteTime, (newIds) => { pendingSelectRef.current = newIds; });
     }, [copiedItems, onPasteEvents, selectMany]);
+
+    const handleCreateOpenChange = useCallback((open: boolean) => {
+        if (open) {
+            createTimeRef.current = undefined;
+            if (!createTrackId) setCreateTrackId(eventTracks[0]?.id);
+        } else {
+            createTimeRef.current = undefined;
+            setCreateTrackId(undefined);
+        }
+        setCreateOpen(open);
+    }, [createTrackId, eventTracks]);
+
+    const handleOpenCreateDialog = useCallback((trackId: string, time: number) => {
+        setCreateTrackId(trackId);
+        createTimeRef.current = time;
+        setCreateOpen(true);
+    }, []);
+
+    const handleCreateEventForTrack = useCallback((partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => {
+        if (!createTrackId) return;
+        const t = createTimeRef.current;
+        const finalPartial = t !== undefined ? { ...partial, time: t } : partial;
+        onCreateEvent?.(createTrackId, finalPartial);
+    }, [createTrackId, onCreateEvent]);
 
     useTimelineKeyboard({
         onDelete: handleDelete,
@@ -307,16 +430,10 @@ export function NLETimeline({
                         />
                     </div>
                 </div>
-                <ContextMenu>
-                <ContextMenuTrigger asChild>
                 <div
                     ref={scrollBoundaryRef}
                     className="flex-1 overflow-hidden relative"
                     onMouseDown={handleMarqueeMouseDown}
-                    onContextMenu={(e) => {
-                        const contentLeft = (scrollAreaRef.current?.getBoundingClientRect().left ?? 0) + TIMELINE_PADDING_X;
-                        pasteTimeRef.current = Math.max(0, (e.clientX - contentLeft + scrollLeftRef.current) / zoomRef.current);
-                    }}
                 >
                     <ResizablePanelGroup orientation="vertical" className="h-full overflow-x-hidden">
                         {trackGroups.flatMap((group, i) => [
@@ -357,6 +474,15 @@ export function NLETimeline({
                                             onDeleteSelected={() => handleDelete()}
                                             onCopy={(_tId, _eId) => handleCopy()}
                                             onDuplicate={onDuplicateEvents ? handleDuplicateForEvent : undefined}
+                                            onOpenCreateDialog={track.type === TrackType.Event
+                                                ? (time) => handleOpenCreateDialog(track.id, time)
+                                                : undefined}
+                                            onPasteAtTime={handlePaste}
+                                            canPaste={copiedItems.length > 0}
+                                            onUndo={onUndo}
+                                            canUndo={canUndo}
+                                            onRedo={onRedo}
+                                            canRedo={canRedo}
                                         />
                                     ))}
                                 </TrackGroup>
@@ -378,27 +504,13 @@ export function NLETimeline({
                         />
                     )}
                 </div>
-                </ContextMenuTrigger>
-                <ContextMenuContent>
-                    <ContextMenuItem
-                        disabled={copiedItems.length === 0}
-                        onClick={() => handlePaste(pasteTimeRef.current)}
-                    >
-                        Paste
-                        <ContextMenuShortcut>{modKey}+V</ContextMenuShortcut>
-                    </ContextMenuItem>
-                    <ContextMenuSeparator />
-                    <ContextMenuItem disabled={!canUndo} onClick={onUndo}>
-                        Undo
-                        <ContextMenuShortcut>{modKey}+Z</ContextMenuShortcut>
-                    </ContextMenuItem>
-                    <ContextMenuItem disabled={!canRedo} onClick={onRedo}>
-                        Redo
-                        <ContextMenuShortcut>{modKey}+Shift+Z</ContextMenuShortcut>
-                    </ContextMenuItem>
-                </ContextMenuContent>
-                </ContextMenu>
             </div>
+            <NLECreateDialog
+                open={createOpen}
+                onOpenChange={handleCreateOpenChange}
+                setIsPlaying={setIsPlaying}
+                onCreateEvent={handleCreateEventForTrack}
+            />
         </div>
     );
 }

@@ -8,66 +8,31 @@ export default meta;
 
 export const TrackInfoEvent: StoryObj = {
     render: () => (
-        <TrackInfo
-            trackId="E1"
-            type={TrackType.Event}
-            isBlocked={false}
-            isHidden={false}
-            onToggleBlocked={() => {}}
-            onToggleHidden={() => {}}
-        />
+        <TrackInfo index={1} type={TrackType.Event} isBlocked={false} isHidden={false} onToggleBlocked={() => {}} onToggleHidden={() => {}} />
     ),
 };
 
 export const TrackInfoVideo: StoryObj = {
     render: () => (
-        <TrackInfo
-            trackId="V1"
-            type={TrackType.Video}
-            isBlocked={false}
-            isHidden={false}
-            onToggleBlocked={() => {}}
-            onToggleHidden={() => {}}
-        />
+        <TrackInfo index={1} type={TrackType.Video} isBlocked={false} isHidden={false} onToggleBlocked={() => {}} onToggleHidden={() => {}} />
     ),
 };
 
 export const TrackInfoAudio: StoryObj = {
     render: () => (
-        <TrackInfo
-            trackId="A1"
-            type={TrackType.Audio}
-            isBlocked={false}
-            isMuted={false}
-            onToggleBlocked={() => {}}
-            onToggleMuted={() => {}}
-        />
+        <TrackInfo index={1} type={TrackType.Audio} isBlocked={false} isMuted={false} onToggleBlocked={() => {}} onToggleMuted={() => {}} />
     ),
 };
 
 export const TrackInfoBlocked: StoryObj = {
     render: () => (
-        <TrackInfo
-            trackId="E2"
-            type={TrackType.Event}
-            isBlocked={true}
-            isHidden={false}
-            onToggleBlocked={() => {}}
-            onToggleHidden={() => {}}
-        />
+        <TrackInfo index={1} type={TrackType.Event} isBlocked={true} isHidden={false} onToggleBlocked={() => {}} onToggleHidden={() => {}} />
     ),
 };
 
 export const TrackInfoHidden: StoryObj = {
     render: () => (
-        <TrackInfo
-            trackId="V2"
-            type={TrackType.Video}
-            isBlocked={false}
-            isHidden={true}
-            onToggleBlocked={() => {}}
-            onToggleHidden={() => {}}
-        />
+        <TrackInfo index={1} type={TrackType.Video} isBlocked={false} isHidden={true} onToggleBlocked={() => {}} onToggleHidden={() => {}} />
     ),
 };
 
@@ -79,6 +44,7 @@ function TrackHarness({ type, id }: { type: (typeof TrackType)[keyof typeof Trac
             <Track
                 track={track}
                 trackId={id}
+                index={1}
                 duration={120}
                 zoom={5}
                 paddingX={20}
@@ -117,11 +83,12 @@ function TrackGroupHarness() {
     return (
         <div className="w-[600px]">
             <TrackGroup label="Events">
-                {tracks.map((t) => (
+                {tracks.map((t, i) => (
                     <Track
                         key={t.id}
                         track={t}
                         trackId={t.id}
+                        index={i + 1}
                         duration={120}
                         zoom={5}
                         paddingX={20}
@@ -149,22 +116,22 @@ function MultiGroupHarness() {
     return (
         <div className="w-[600px] flex flex-col gap-2">
             <TrackGroup label="Events">
-                {[makeTrack('E1', TrackType.Event), makeTrack('E2', TrackType.Event)].map((t) => (
-                    <Track key={t.id} track={t} trackId={t.id} duration={120} zoom={5} paddingX={20}
+                {[makeTrack('E1', TrackType.Event), makeTrack('E2', TrackType.Event)].map((t, i) => (
+                    <Track key={t.id} track={t} trackId={t.id} index={i + 1} duration={120} zoom={5} paddingX={20}
                         scrollLeftRef={scrollLeftRef} subscribe={subscribe}
                         onToggleBlocked={() => {}} onToggleHidden={() => {}} />
                 ))}
             </TrackGroup>
             <TrackGroup label="Video">
-                {[makeTrack('V1', TrackType.Video)].map((t) => (
-                    <Track key={t.id} track={t} trackId={t.id} duration={120} zoom={5} paddingX={20}
+                {[makeTrack('V1', TrackType.Video)].map((t, i) => (
+                    <Track key={t.id} track={t} trackId={t.id} index={i + 1} duration={120} zoom={5} paddingX={20}
                         scrollLeftRef={scrollLeftRef} subscribe={subscribe}
                         onToggleBlocked={() => {}} onToggleHidden={() => {}} />
                 ))}
             </TrackGroup>
             <TrackGroup label="Audio">
-                {[makeTrack('A1', TrackType.Audio), makeTrack('A2', TrackType.Audio)].map((t) => (
-                    <Track key={t.id} track={t} trackId={t.id} duration={120} zoom={5} paddingX={20}
+                {[makeTrack('A1', TrackType.Audio), makeTrack('A2', TrackType.Audio)].map((t, i) => (
+                    <Track key={t.id} track={t} trackId={t.id} index={i + 1} duration={120} zoom={5} paddingX={20}
                         scrollLeftRef={scrollLeftRef} subscribe={subscribe}
                         onToggleBlocked={() => {}} onToggleMuted={() => {}} />
                 ))}

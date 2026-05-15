@@ -25,7 +25,7 @@ export interface NLETrack {
     id: string;
     type: TrackType;
     events: TrackEvent[];
-    player: Player;
+    player?: Player;
     isBlocked: boolean;
     isHidden?: boolean;
     isMuted?: boolean;

@@ -163,7 +163,10 @@ interface NLETimelineProps {
     onCopyEvent?: (trackId: string, eventId: number) => void;
     onDuplicateEvents?: (items: DuplicateItem[], onCreated: (newIds: number[]) => void) => void;
     onPasteEvents?: (items: PasteItem[], pasteTime: number, onCreated: (newIds: number[]) => void) => void;
-    onCreateEvent?: (trackId: string, partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => void;
+    onCreateEvent?: (trackId: string, partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>, onCreated?: (id: number) => void) => void;
+    onSelectionChange?: (ids: Set<number>) => void;
+    onResizeStart?: () => void;
+    onResizeEnd?: () => void;
 }
 
 export function NLETimeline({
@@ -183,6 +186,9 @@ export function NLETimeline({
     onDuplicateEvents,
     onPasteEvents,
     onCreateEvent,
+    onSelectionChange,
+    onResizeStart,
+    onResizeEnd,
 }: NLETimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
@@ -201,6 +207,10 @@ export function NLETimeline({
     // without recreating on every selection/trackGroups change.
     const selectedIdsRef = useRef(selectedIds);
     selectedIdsRef.current = selectedIds;
+
+    useEffect(() => {
+        onSelectionChange?.(selectedIds);
+    }, [selectedIds, onSelectionChange]);
 
     // Collect all EVENT tracks in DOM order (top→bottom within each group)
     const eventTracks = useMemo(
@@ -368,7 +378,7 @@ export function NLETimeline({
         if (!createTrackId) return;
         const t = createTimeRef.current;
         const finalPartial = t !== undefined ? { ...partial, time: t } : partial;
-        onCreateEvent?.(createTrackId, finalPartial);
+        onCreateEvent?.(createTrackId, finalPartial, (id) => { pendingSelectRef.current = [id]; });
     }, [createTrackId, onCreateEvent]);
 
     useTimelineKeyboard({
@@ -470,13 +480,17 @@ export function NLETimeline({
                                 defaultSize={100 / trackGroups.length}
                                 className="overflow-y-auto"
                                 minSize={TRACK_HEIGHT * 2 + 2}
+                                groupResizeBehavior={group.tracks[0].type === TrackType.Event ? 'preserve-relative-size' : 'preserve-pixel-size'}
                             >
                                 <TrackGroup label={group.label}>
-                                    {group.tracks.map((track) => (
+                                    {group.tracks.map((track, i) => {
+                                        const index = group.tracks.slice(0, i + 1).filter(t => t.type === track.type).length;
+                                        return (
                                         <Track
                                             key={track.id}
                                             track={track}
                                             trackId={track.id}
+                                            index={index}
                                             onMount={(el) => {
                                                 if (el) trackElsRef.current.set(track.id, el);
                                                 else trackElsRef.current.delete(track.id);
@@ -499,6 +513,8 @@ export function NLETimeline({
                                                 handleMoveStart(tId, eventId, e, time, dur)
                                             }
                                             onUpdate={onUpdateEvent}
+                                            onResizeStart={onResizeStart}
+                                            onResizeEnd={onResizeEnd}
                                             onDeleteSelected={() => handleDelete()}
                                             onCopy={(_tId, _eId) => handleCopy()}
                                             onDuplicate={onDuplicateEvents ? handleDuplicateForEvent : undefined}
@@ -512,11 +528,12 @@ export function NLETimeline({
                                             onRedo={onRedo}
                                             canRedo={canRedo}
                                         />
-                                    ))}
+                                        );
+                                    })}
                                 </TrackGroup>
                             </ResizablePanel>,
                             ...(i < trackGroups.length - 1
-                                ? [<ResizableHandle key={`handle-${group.id}`} className="aria-[orientation=horizontal]:h-2 bg-zinc-950" />]
+                                ? [<ResizableHandle key={`handle-${group.id}`} className="aria-[orientation=horizontal]:h-1 bg-zinc-950" />]
                                 : []),
                         ])}
                     </ResizablePanelGroup>

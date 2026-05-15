@@ -111,6 +111,7 @@ export function usePlayerTracks(
             if (player) player.track.events.push(...(newEvents as any[]));
         });
         setSelectedEvents(newEvents);
+        return newEvents as TrackEvent[];
     }, [record, setSelectedEvents]);
 
     const handlePasteEvents = useCallback((playerId: string, events: TrackEvent[], pasteTime: number) => {
@@ -125,6 +126,7 @@ export function usePlayerTracks(
             if (player) player.track.events.push(...(newEvents as any[]));
         });
         setSelectedEvents(newEvents);
+        return newEvents as TrackEvent[];
     }, [record, setSelectedEvents]);
 
     // Called on every mousemove during resize — no history entry, committed by handleCommitResize.

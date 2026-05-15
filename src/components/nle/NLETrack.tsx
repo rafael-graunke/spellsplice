@@ -44,9 +44,15 @@ export function TrackGroup({ children, label }: TrackGroupProps) {
     );
 }
 
+const TRACK_TYPE_PREFIX: Record<string, string> = {
+    [TrackType.Event]: 'E',
+    [TrackType.Video]: 'V',
+    [TrackType.Audio]: 'A',
+};
+
 interface TrackInfoProps {
-    trackId: string;
     type: NLETrackType['type'];
+    index: number;
     isBlocked: boolean;
     isHidden?: boolean;
     isMuted?: boolean;
@@ -56,8 +62,8 @@ interface TrackInfoProps {
 }
 
 export function TrackInfo({
-    trackId,
     type,
+    index,
     isBlocked,
     isHidden,
     isMuted,
@@ -79,7 +85,7 @@ export function TrackInfo({
                     TrackTypeColorMap[type]
                 )}
             >
-                {trackId}
+                {`${TRACK_TYPE_PREFIX[type] ?? '?'}${index}`}
             </span>
             <div className="h-full w-full border-t border-zinc-700 flex items-center justify-end">
                 <div className="flex items-center gap-1 px-2">
@@ -256,6 +262,7 @@ export function TrackContent({
 interface TrackProps {
     track: NLETrackType;
     trackId: string;
+    index: number;
     duration: number;
     zoom: number;
     paddingX?: number;
@@ -275,6 +282,8 @@ interface TrackProps {
     onDeleteSelected?: (trackId: string) => void;
     onCopy?: (trackId: string, eventId: number) => void;
     onDuplicate?: (trackId: string, eventId: number) => void;
+    onResizeStart?: () => void;
+    onResizeEnd?: () => void;
     onMount?: (el: HTMLDivElement | null) => void;
     onDeselect?: () => void;
     onOpenCreateDialog?: (time: number) => void;
@@ -289,6 +298,7 @@ interface TrackProps {
 export function Track({
     track,
     trackId,
+    index,
     duration,
     zoom,
     paddingX = 0,
@@ -307,6 +317,8 @@ export function Track({
     onDeleteSelected,
     onCopy,
     onDuplicate,
+    onResizeStart,
+    onResizeEnd,
     onMount,
     onDeselect,
     onOpenCreateDialog,
@@ -323,8 +335,8 @@ export function Track({
     return (
         <div ref={onMount} className="flex flex-row w-full">
             <TrackInfo
-                trackId={trackId}
                 type={track.type}
+                index={index}
                 isBlocked={track.isBlocked}
                 isHidden={track.isHidden}
                 isMuted={track.isMuted}
@@ -361,6 +373,8 @@ export function Track({
                         onDeleteSelected={onDeleteSelected ? () => onDeleteSelected(trackId) : undefined}
                         onCopy={onCopy ? () => onCopy(trackId, event.id) : undefined}
                         onDuplicate={onDuplicate ? () => onDuplicate(trackId, event.id) : undefined}
+                        onResizeStart={onResizeStart}
+                        onResizeEnd={onResizeEnd}
                     />
                 ))}
             </TrackContent>

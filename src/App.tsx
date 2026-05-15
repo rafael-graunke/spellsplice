@@ -5,10 +5,14 @@ import {
     ResizablePanel,
     ResizablePanelGroup,
 } from './components/ui/resizable';
-import { Timeline } from './components/Timeline';
+import { NLETimeline } from './components/nle/NLETimeline';
+import type { DeleteItem, DuplicateItem, PasteItem } from './components/nle/NLETimeline';
+import type { NLEMoveResult } from './components/nle/hooks/useNLEEventDrag';
+import type { NLETrackGroup } from './components/types/nle';
+import { TrackType } from './components/types/nle';
 import type { Player } from './components/types/player';
 import type { TrackEvent, EventMeta } from './components/types/event';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { exportProject, importProject } from '@/lib/projectExport';
 import VideoPreview from './components/VideoPreview';
 import type { VideoState } from './components/types/video';
@@ -75,7 +79,6 @@ function App() {
         handleCommitResize,
         handleMoveEvents,
         handleUpdateMeta,
-        handleUpdatePlayer,
         resetPlayers,
         undo,
         redo,
@@ -179,13 +182,114 @@ function App() {
     const videoRef = useRef(video);
     videoRef.current = video;
 
-    const handleCreateEventWithFocus = useCallback(
-        (...args: Parameters<typeof handleCreateEvent>) => {
-            const created = handleCreateEvent(...args);
-            if (created) setNewEventId(created.id);
+    const trackGroups = useMemo((): NLETrackGroup[] => [
+        ...players.map((p) => ({
+            id: p.id,
+            label: p.name,
+            tracks: [{
+                id: p.id,
+                type: TrackType.Event,
+                events: p.track.events,
+                player: p,
+                isBlocked: false,
+            }],
+        })),
+        {
+            id: 'video',
+            label: 'Video',
+            tracks: [{ id: 'video-1', type: TrackType.Video, events: [], isBlocked: false }],
         },
-        [handleCreateEvent]
-    );
+        {
+            id: 'audio',
+            label: 'Audio',
+            tracks: [{ id: 'audio-1', type: TrackType.Audio, events: [], isBlocked: false }],
+        },
+    ], [players]);
+
+    const handleSelectionChange = useCallback((ids: Set<number>) => {
+        if (ids.size === 0) {
+            setSelectedEvents([]);
+            return;
+        }
+        const events: TrackEvent[] = [];
+        let firstPlayerId: string | null = null;
+        for (const player of playersRef.current) {
+            for (const ev of player.track.events) {
+                if (ids.has(ev.id)) {
+                    events.push(ev);
+                    if (!firstPlayerId) firstPlayerId = player.id;
+                }
+            }
+        }
+        setSelectedEvents(events);
+        if (firstPlayerId) setSelectedPlayerId(firstPlayerId);
+    }, []);
+
+    const handleNLECreate = useCallback((
+        trackId: string,
+        partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>,
+        onCreated?: (id: number) => void,
+    ) => {
+        const event = handleCreateEvent(partial, trackId);
+        if (event) {
+            setNewEventId(event.id);
+            onCreated?.(event.id);
+        }
+    }, [handleCreateEvent]);
+
+    const handleNLEDelete = useCallback((items: DeleteItem[]) => {
+        const byPlayer = new Map<string, number[]>();
+        for (const { trackId, eventId } of items) {
+            const arr = byPlayer.get(trackId) ?? [];
+            arr.push(eventId);
+            byPlayer.set(trackId, arr);
+        }
+        for (const [playerId, eventIds] of byPlayer) {
+            handleDeleteEvents(playerId, eventIds);
+        }
+    }, [handleDeleteEvents]);
+
+    const handleNLEDuplicate = useCallback((items: DuplicateItem[], onCreated: (newIds: number[]) => void) => {
+        const byPlayer = new Map<string, TrackEvent[]>();
+        for (const { trackId, eventId } of items) {
+            const player = playersRef.current.find((p) => p.id === trackId);
+            const ev = player?.track.events.find((e) => e.id === eventId);
+            if (!ev) continue;
+            const arr = byPlayer.get(trackId) ?? [];
+            arr.push(ev);
+            byPlayer.set(trackId, arr);
+        }
+        const allNewIds: number[] = [];
+        for (const [playerId, events] of byPlayer) {
+            const newEvents = handleDuplicateEvents(playerId, events);
+            allNewIds.push(...newEvents.map((e) => e.id));
+        }
+        onCreated(allNewIds);
+    }, [handleDuplicateEvents]);
+
+    const handleNLEPaste = useCallback((items: PasteItem[], pasteTime: number, onCreated: (newIds: number[]) => void) => {
+        const byPlayer = new Map<string, TrackEvent[]>();
+        for (const { trackId, event } of items) {
+            const arr = byPlayer.get(trackId) ?? [];
+            arr.push(event);
+            byPlayer.set(trackId, arr);
+        }
+        const allNewIds: number[] = [];
+        for (const [playerId, events] of byPlayer) {
+            const newEvents = handlePasteEvents(playerId, events, pasteTime);
+            allNewIds.push(...newEvents.map((e) => e.id));
+        }
+        onCreated(allNewIds);
+    }, [handlePasteEvents]);
+
+    const handleNLEMove = useCallback((moves: NLEMoveResult[]) => {
+        handleMoveEvents(moves.map((m) => ({
+            playerId: m.toTrackId,
+            eventId: m.eventId,
+            newTime: m.newTime,
+            newLayer: 0,
+        })));
+    }, [handleMoveEvents]);
 
     useEffect(() => {
         if (newEventId !== null && selectedEvents[0]?.id !== newEventId) {
@@ -254,30 +358,26 @@ function App() {
                     </ResizablePanel>
                     <ResizableHandle />
                     <ResizablePanel minSize={100} defaultSize="40%">
-                        <Timeline
-                            setCurrentTime={setCurrentTime}
+                        <NLETimeline
                             duration={video ? video.duration || 120 : 120}
                             isPlaying={isPlaying}
                             setIsPlaying={setIsPlaying}
-                            selectedEvents={selectedEvents}
-                            setSelectedEvents={setSelectedEvents}
-                            players={players}
-                            selectedPlayer={rawSelectedPlayer}
-                            setSelectedPlayerId={setSelectedPlayerId}
-                            handleCreateEvent={handleCreateEventWithFocus}
-                            handleDeleteEvents={handleDeleteEvents}
-                            handleDuplicateEvents={handleDuplicateEvents}
-                            handlePasteEvents={handlePasteEvents}
-                            handleUpdateEvent={handleUpdateEvent}
-                            handleBeginResize={handleBeginResize}
-                            handleCommitResize={handleCommitResize}
-                            handleMoveEvents={handleMoveEvents}
-                            handleUpdatePlayer={handleUpdatePlayer}
-                            undo={undo}
-                            redo={redo}
+                            currentTimeRef={currentTimeRef}
+                            setCurrentTime={setCurrentTime}
+                            trackGroups={trackGroups}
+                            onUndo={undo}
+                            onRedo={redo}
                             canUndo={canUndo}
                             canRedo={canRedo}
-                            currentTimeRef={currentTimeRef}
+                            onCreateEvent={handleNLECreate}
+                            onDeleteEvents={handleNLEDelete}
+                            onDuplicateEvents={handleNLEDuplicate}
+                            onPasteEvents={handleNLEPaste}
+                            onUpdateEvent={handleUpdateEvent}
+                            onMoveEvent={handleNLEMove}
+                            onResizeStart={handleBeginResize}
+                            onResizeEnd={handleCommitResize}
+                            onSelectionChange={handleSelectionChange}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>

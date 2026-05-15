@@ -50,11 +50,6 @@ function PlaybackControls({ isPlaying, setIsPlaying, setCurrentTime, currentTime
                 if (e.repeat) return;
                 e.preventDefault();
                 setIsPlaying(!isPlaying);
-            } else if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
-                e.preventDefault();
-                const step = e.ctrlKey || e.metaKey ? 1 / 30 : 1;
-                const delta = e.code === 'ArrowLeft' ? -step : step;
-                setCurrentTime(Math.max(0, Math.min(duration, currentTimeRef.current + delta)));
             }
         };
         window.addEventListener('keydown', onKeyDown);

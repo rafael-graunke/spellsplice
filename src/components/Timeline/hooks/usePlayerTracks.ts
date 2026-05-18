@@ -154,16 +154,19 @@ export function usePlayerTracks(
     }, [recordFromBaseline]);
 
     const handleMoveEvents = useCallback((
-        moves: Array<{ playerId: string; eventId: number; newTime: number; newLayer: number }>
+        moves: Array<{ fromPlayerId: string; toPlayerId: string; eventId: number; newTime: number; newLayer: number }>
     ) => {
         record((draft) => {
-            for (const { playerId, eventId, newTime, newLayer } of moves) {
-                const player = draft.find((p) => p.id === playerId);
-                if (!player) continue;
-                const event = player.track.events.find((e) => e.id === eventId);
-                if (!event) continue;
+            for (const { fromPlayerId, toPlayerId, eventId, newTime, newLayer } of moves) {
+                const fromPlayer = draft.find((p) => p.id === fromPlayerId);
+                const toPlayer = draft.find((p) => p.id === toPlayerId);
+                if (!fromPlayer || !toPlayer) continue;
+                const idx = fromPlayer.track.events.findIndex((e) => e.id === eventId);
+                if (idx === -1) continue;
+                const [event] = fromPlayer.track.events.splice(idx, 1);
                 event.time = newTime;
                 event.layer = Math.max(0, newLayer);
+                toPlayer.track.events.push(event);
             }
         });
     }, [record]);

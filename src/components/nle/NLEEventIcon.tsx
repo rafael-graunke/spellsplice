@@ -15,7 +15,7 @@ import { EventColorMap } from '../types/event';
 import type { EventType } from '../types/event';
 import { RefreshCcw, Squircle, SquircleDashed } from 'lucide-react';
 
-type SvgIcon = FunctionComponent<ComponentProps<'svg'> & { title?: string }>;
+export type SvgIcon = FunctionComponent<ComponentProps<'svg'> & { title?: string }>;
 
 const strokeTypes = new Set<EventType>(['HIDE_UI', 'RESET']);
 
@@ -55,7 +55,7 @@ function NLEEventIcon({
     return (
         <div
             className={cn(
-                'size-12 absolute top-1/2 -translate-y-1/2 -translate-x-1/2',
+                'size-9 absolute top-1/2 -translate-y-1/2 -translate-x-1/2',
                 'cursor-grab active:cursor-grabbing select-none',
                 isBeingDragged && 'opacity-0',
                 className
@@ -71,7 +71,7 @@ function NLEEventIcon({
                 )}
             />
             {Icon && <Icon className={cn(
-                'absolute inset-0 size-7 -translate-x-1/2 left-1/2 -translate-y-[calc(50%-3px)] top-1/2',
+                'absolute inset-0 size-5 -translate-x-1/2 left-1/2 -translate-y-[calc(50%-3px)] top-1/2',
                 strokeTypes.has(type) ? 'stroke-white fill-none' : 'fill-white'
             )} />}
         </div>

@@ -6,7 +6,7 @@ import NLEControls from './NLEControls';
 import { Track, TrackGroup } from './NLETrack';
 import NLERuler from './NLERuler';
 import type { NLETrackGroup } from '../types/nle';
-import { TrackType } from '../types/nle';
+import { TrackType, TrackTypeIconMap } from '../types/nle';
 import type { TrackEvent } from '../types/event';
 import { EventType } from '../types/event';
 import { useTimelineScroll } from './hooks/useTimelineScroll';
@@ -428,7 +428,7 @@ export function NLETimeline({
     return (
         <div
             ref={containerRef}
-            className="flex flex-col h-full bg-zinc-950 select-none"
+            className="flex flex-col h-full bg-background select-none"
         >
             <NLEControls
                 isPlaying={isPlaying}
@@ -441,7 +441,7 @@ export function NLETimeline({
             />
             <div
                 ref={contentRef}
-                className="flex flex-col flex-1 overflow-hidden bg-zinc-950 pl-4 pb-4"
+                className="flex flex-col flex-1 overflow-hidden bg-background pl-4 pb-4"
             >
                 <div className="flex flex-col flex-1 relative">
                 {/* Ruler row */}
@@ -479,12 +479,12 @@ export function NLETimeline({
                                 key={group.id}
                                 defaultSize={100 / trackGroups.length}
                                 className="overflow-y-auto"
-                                minSize={TRACK_HEIGHT * 2 + 2}
-                                groupResizeBehavior={group.tracks[0].type === TrackType.Event ? 'preserve-relative-size' : 'preserve-pixel-size'}
+                                minSize={TRACK_HEIGHT + 1}
+                                groupResizeBehavior={group.type === TrackType.Event ? 'preserve-relative-size' : 'preserve-pixel-size'}
                             >
-                                <TrackGroup label={group.label}>
+                                <TrackGroup icon={TrackTypeIconMap[group.type]} label={group.label} >
                                     {group.tracks.map((track, i) => {
-                                        const index = group.tracks.slice(0, i + 1).filter(t => t.type === track.type).length;
+                                        const index = group.tracks.slice(0, i + 1).length;
                                         return (
                                         <Track
                                             key={track.id}
@@ -518,7 +518,7 @@ export function NLETimeline({
                                             onDeleteSelected={() => handleDelete()}
                                             onCopy={(_tId, _eId) => handleCopy()}
                                             onDuplicate={onDuplicateEvents ? handleDuplicateForEvent : undefined}
-                                            onOpenCreateDialog={track.type === TrackType.Event
+                                            onOpenCreateDialog={group.type === TrackType.Event
                                                 ? (time) => handleOpenCreateDialog(track.id, time)
                                                 : undefined}
                                             onPasteAtTime={handlePaste}

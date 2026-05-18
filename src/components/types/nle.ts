@@ -1,5 +1,7 @@
 import type { Player } from './player';
 import type { TrackEvent } from './event';
+import type { SvgIcon } from '../nle/NLEEventIcon';
+import { User2, Video, Volume2 } from 'lucide-react';
 
 export const TrackType = {
     Event: 'EVENT',
@@ -15,9 +17,16 @@ export const TrackTypeColorMap: Record<TrackType, string> = {
     [TrackType.Audio]: 'bg-yellow-600',
 };
 
+export const TrackTypeIconMap: Record<TrackType, SvgIcon> = {
+    [TrackType.Event]: User2,
+    [TrackType.Video]: Video,
+    [TrackType.Audio]: Volume2,
+};
+
 export interface NLETrackGroup {
     id: string;
     label: string;
+    type: TrackType;
     tracks: NLETrack[];
 }
 

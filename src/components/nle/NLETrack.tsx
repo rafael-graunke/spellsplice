@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { Eye, EyeOff, Lock, Volume2, VolumeOff } from 'lucide-react';
 import type { NLETrack as NLETrackType } from '../types/nle';
@@ -6,13 +6,19 @@ import { TrackType, TrackTypeColorMap } from '../types/nle';
 import type { TrackEvent } from '../types/event';
 import type { NLEGhostPos } from './hooks/useNLEEventDrag';
 import NLEEvent from './NLEEvent';
-import NLEEventIcon from './NLEEventIcon';
+import NLEEventIcon, { type SvgIcon } from './NLEEventIcon';
 import {
     TRACK_HEIGHT,
     TRACK_INFO_WIDTH,
     TRACK_GROUP_LABEL_WIDTH,
 } from '../Timeline/constants';
 import { cn } from '@/lib/utils';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from '../ui/tooltip';
 import {
     ContextMenu,
     ContextMenuContent,
@@ -26,16 +32,59 @@ import { modKey } from '@/lib/platform';
 interface TrackGroupProps {
     children: ReactNode;
     label: string;
+    icon?: SvgIcon;
 }
 
-export function TrackGroup({ children, label }: TrackGroupProps) {
+export function TrackGroup({ children, label, icon}: TrackGroupProps) {
+    const innerRef = useRef<HTMLDivElement>(null);
+    const measureRef = useRef<HTMLParagraphElement>(null);
+    const [overflows, setOverflows] = useState(false);
+    const Icon = icon;
+
+    useEffect(() => {
+        const inner = innerRef.current;
+        const measure = measureRef.current;
+        if (!inner || !measure) return;
+        const obs = new ResizeObserver(() => {
+            setOverflows(measure.clientHeight > inner.clientHeight);
+        });
+        obs.observe(inner);
+        obs.observe(measure);
+        return () => obs.disconnect();
+    }, []);
+
     return (
             <div className="flex flex-row h-full overflow-hidden">
                 <div
                     style={{ width: TRACK_GROUP_LABEL_WIDTH }}
-                    className="bg-zinc-800 text-zinc-300 rounded-l-md flex items-center justify-center text-md border-l border-y border-zinc-700"
+                    className={cn(
+                        "bg-zinc-800 text-zinc-300 relative flex items-center justify-center text-sm py-2",
+                        "rounded-l-md border-l border-y border-zinc-700"
+                    )}
                 >
-                    <p className="[writing-mode:sideways-lr]">{label}</p>
+                    {/* measurement element — outside overflow:hidden so clientHeight is unclamped */}
+                    <p ref={measureRef} aria-hidden className="absolute invisible whitespace-nowrap [writing-mode:sideways-lr]">{label}</p>
+                    {/* inner wrapper lives inside the padding area; clientHeight = usable space */}
+                    <div ref={innerRef} className="h-full w-full overflow-hidden flex items-center justify-center">
+                        {overflows ? (
+                            Icon ? (
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <span className="flex items-center justify-center">
+                                                <Icon className="size-4" />
+                                            </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="right">{label}</TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            ) : (
+                                <></>
+                            )
+                        ) : (
+                            <p className="whitespace-nowrap [writing-mode:sideways-lr] h-full text-center">{label}</p>
+                        )}
+                    </div>
                 </div>
                 <div className="flex flex-col-reverse flex-1 bg-zinc-800 overflow-y-auto scrollbar-thin border-y border-l border-zinc-700">
                     {children}

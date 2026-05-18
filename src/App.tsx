@@ -186,6 +186,7 @@ function App() {
         ...players.map((p) => ({
             id: p.id,
             label: p.name,
+            type: TrackType.Event,
             tracks: [{
                 id: p.id,
                 type: TrackType.Event,
@@ -197,11 +198,13 @@ function App() {
         {
             id: 'video',
             label: 'Video',
+            type: TrackType.Video,
             tracks: [{ id: 'video-1', type: TrackType.Video, events: [], isBlocked: false }],
         },
         {
             id: 'audio',
             label: 'Audio',
+            type: TrackType.Audio,
             tracks: [{ id: 'audio-1', type: TrackType.Audio, events: [], isBlocked: false }],
         },
     ], [players]);
@@ -284,7 +287,8 @@ function App() {
 
     const handleNLEMove = useCallback((moves: NLEMoveResult[]) => {
         handleMoveEvents(moves.map((m) => ({
-            playerId: m.toTrackId,
+            fromPlayerId: m.fromTrackId,
+            toPlayerId: m.toTrackId,
             eventId: m.eventId,
             newTime: m.newTime,
             newLayer: 0,
@@ -357,7 +361,7 @@ function App() {
                         </ResizablePanelGroup>
                     </ResizablePanel>
                     <ResizableHandle />
-                    <ResizablePanel minSize={100} defaultSize="40%">
+                    <ResizablePanel minSize="280px" defaultSize="40%">
                         <NLETimeline
                             duration={video ? video.duration || 120 : 120}
                             isPlaying={isPlaying}

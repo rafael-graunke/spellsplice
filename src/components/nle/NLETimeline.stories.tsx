@@ -26,6 +26,7 @@ const emptyGroups: NLETrackGroup[] = [
     {
         id: 'group-1',
         label: 'Events',
+        type: 'EVENT',
         tracks: [
             { id: 'E1', type: 'EVENT', events: [], player: null as never, isBlocked: false },
             { id: 'E2', type: 'EVENT', events: [], player: null as never, isBlocked: false },
@@ -35,6 +36,7 @@ const emptyGroups: NLETrackGroup[] = [
     {
         id: 'group-2',
         label: 'Video',
+        type: 'VIDEO',
         tracks: [
             { id: 'V1', type: 'VIDEO', events: [], player: null as never, isBlocked: false, isHidden: false },
             { id: 'V2', type: 'VIDEO', events: [], player: null as never, isBlocked: false, isHidden: false },
@@ -43,6 +45,7 @@ const emptyGroups: NLETrackGroup[] = [
     {
         id: 'group-3',
         label: 'Audio',
+        type: 'AUDIO',
         tracks: [
             { id: 'A1', type: 'AUDIO', events: [], player: null as never, isBlocked: false, isMuted: false },
             { id: 'A2', type: 'AUDIO', events: [], player: null as never, isBlocked: false, isMuted: false },
@@ -55,6 +58,7 @@ function makeInitialGroups(): NLETrackGroup[] {
         {
             id: 'group-1',
             label: 'Events',
+            type: 'EVENT',
             tracks: [
                 {
                     id: 'E1',
@@ -94,6 +98,7 @@ function makeInitialGroups(): NLETrackGroup[] {
         {
             id: 'group-2',
             label: 'Video',
+            type: 'VIDEO',
             tracks: [
                 { id: 'V1', type: 'VIDEO', events: [], player: null as never, isBlocked: false, isHidden: false },
             ],
@@ -101,6 +106,7 @@ function makeInitialGroups(): NLETrackGroup[] {
         {
             id: 'group-3',
             label: 'Audio',
+            type: 'AUDIO',
             tracks: [
                 { id: 'A1', type: 'AUDIO', events: [], player: null as never, isBlocked: false, isMuted: false },
             ],

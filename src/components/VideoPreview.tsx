@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
-import type { VideoState } from './types/video';
 import type { Player } from './types/player';
+import type { Clip } from './types/clip';
+import type { MediaSource } from './types/source';
 import { getNextChangeTime } from '@/lib/deriveState';
 import { Compositor } from '@/lib/export/compose';
 import { subscribeImageLoad } from '@/lib/cardCache';
@@ -12,12 +13,12 @@ interface VideoPreviewProps {
     currentTimeRef: RefObject<number>;
     setCurrentTime: React.Dispatch<React.SetStateAction<number>>;
     setIsPlaying: (playing: boolean) => void;
-    video: VideoState | null;
-    setVideo: React.Dispatch<React.SetStateAction<VideoState | null>>;
     players: Player[];
-    fileToLoad?: File | null;
     overlayStartHidden?: boolean;
     duration?: number;
+    videoClips?: Clip[];
+    audioClips?: Clip[];
+    sources?: MediaSource[];
 }
 
 function VideoPreview({
@@ -26,15 +27,14 @@ function VideoPreview({
     currentTimeRef,
     setCurrentTime,
     setIsPlaying,
-    video,
-    setVideo,
     players,
-    fileToLoad,
     overlayStartHidden = false,
     duration = Infinity,
+    videoClips = [],
+    audioClips = [],
+    sources = [],
 }: VideoPreviewProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const videoRef = useRef<HTMLVideoElement>(null);
     const playersRef = useRef(players);
     const overlayStartHiddenRef = useRef(overlayStartHidden);
     const prevTimeRef = useRef(-1);
@@ -45,6 +45,63 @@ function VideoPreview({
     const isPlayingRef = useRef(isPlaying);
     const durationRef = useRef(duration);
     const renderFrameRef = useRef<() => void>(() => {});
+    // Muted video elements — video frames only, no audio
+    const sourceVideoEls = useRef<Map<string, HTMLVideoElement>>(new Map());
+    // Unmuted audio elements — audio playback from audio clips
+    const sourceAudioEls = useRef<Map<string, HTMLAudioElement>>(new Map());
+    const videoClipsRef = useRef(videoClips);
+    videoClipsRef.current = videoClips;
+    const audioClipsRef = useRef(audioClips);
+    audioClipsRef.current = audioClips;
+    const activeVideoClipIdRef = useRef<string | null>(null);
+    const activeVideoSourceIdRef = useRef<string | null>(null);
+    const activeAudioClipIdRef = useRef<string | null>(null);
+    const activeAudioSourceIdRef = useRef<string | null>(null);
+    // Snapshot-anchored time: cursor is independent of live clip.time so dragging a clip
+    // while playing doesn't move the playhead. clipTimeAtStart lets us detect clip drag
+    // and re-seek when the clip's position changes.
+    const clipPlaybackSnapshotRef = useRef<{
+        clipId: string;
+        clipTimeAtStart: number;
+        outputTimeAtStart: number;
+        sourceTimeAtStart: number;
+    } | null>(null);
+    const audioPlaybackSnapshotRef = useRef<{
+        clipId: string;
+        clipTimeAtStart: number;
+        outputTimeAtStart: number;
+        sourceTimeAtStart: number;
+    } | null>(null);
+    // Last time the render loop pushed to React state — used to distinguish user seeks
+    // from the render loop's own throttled setCurrentTime calls.
+    const lastLoopSetTimeRef = useRef<number>(0);
+
+    const getActiveVideoClip = (t: number) =>
+        videoClipsRef.current.find((c) => c.time <= t && t < c.time + c.duration) ?? null;
+    const getActiveAudioClip = (t: number) =>
+        audioClipsRef.current.find((c) => c.time <= t && t < c.time + c.duration) ?? null;
+
+    const pauseAllSourceVideos = () => {
+        for (const el of sourceVideoEls.current.values()) el.pause();
+        for (const el of sourceAudioEls.current.values()) el.pause();
+        activeVideoClipIdRef.current = null;
+        activeVideoSourceIdRef.current = null;
+        activeAudioClipIdRef.current = null;
+        activeAudioSourceIdRef.current = null;
+    };
+
+    const seekSourceEl = (el: HTMLVideoElement | HTMLAudioElement, clip: Clip, t: number, play: boolean) => {
+        const targetTime = clip.sourceOffset + (t - clip.time);
+        el.currentTime = targetTime;
+        if (play) {
+            el.play();
+        } else {
+            el.pause();
+            if (el instanceof HTMLVideoElement) {
+                el.addEventListener('seeked', () => renderFrameRef.current(), { once: true });
+            }
+        }
+    };
 
     useEffect(() => {
         const img = new Image();
@@ -58,12 +115,44 @@ function VideoPreview({
         img.src = '/assets/eye.svg';
     }, []);
 
-    // Init compositor on mount — independent of video
+    // Manage per-source video/audio elements for clip playback.
+    useEffect(() => {
+        const videoPool = sourceVideoEls.current;
+        const audioPool = sourceAudioEls.current;
+        const activeIds = new Set(sources.map((s) => s.id));
+
+        for (const src of sources) {
+            if (src.type === 'video' && !videoPool.has(src.id)) {
+                const el = document.createElement('video');
+                el.src = URL.createObjectURL(src.file);
+                el.preload = 'auto';
+                el.muted = true;
+                videoPool.set(src.id, el);
+            }
+            if (!audioPool.has(src.id)) {
+                const el = document.createElement('audio');
+                el.src = URL.createObjectURL(src.file);
+                el.preload = 'auto';
+                audioPool.set(src.id, el);
+            }
+        }
+        for (const [id, el] of videoPool) {
+            if (!activeIds.has(id)) { URL.revokeObjectURL(el.src); videoPool.delete(id); }
+        }
+        for (const [id, el] of audioPool) {
+            if (!activeIds.has(id)) { URL.revokeObjectURL(el.src); audioPool.delete(id); }
+        }
+    }, [sources]);
+
+    // Init compositor on mount — full-canvas layout + black frame.
+    // Layout stays at 1920x1080 always; uploadVideoElement stretches the texture to fill.
     useEffect(() => {
         const canvas = canvasRef.current!;
         canvas.width = 1920;
         canvas.height = 1080;
         const comp = new Compositor(1920, 1080, canvas);
+        comp.setLayout(1920, 1080, 0, 0);
+        comp.uploadBlackFrame();
         compositorRef.current = comp;
         renderFrameRef.current();
         return () => {
@@ -71,42 +160,6 @@ function VideoPreview({
             compositorRef.current = null;
         };
     }, []);
-
-    // Update compositor layout when video source changes
-    useEffect(() => {
-        const comp = compositorRef.current;
-        if (!comp) return;
-        if (video) {
-            const v = video.videoEl;
-            const scale = Math.min(1920 / v.videoWidth, 1080 / v.videoHeight);
-            const drawW = Math.round(v.videoWidth * scale);
-            const drawH = Math.round(v.videoHeight * scale);
-            comp.setLayout(drawW, drawH, Math.round((1920 - drawW) / 2), Math.round((1080 - drawH) / 2));
-        } else {
-            // Full canvas layout so overlay render fns position correctly;
-            // uploadBlackFrame gives solid black background via the shader.
-            comp.setLayout(1920, 1080, 0, 0);
-            comp.uploadBlackFrame();
-        }
-        derivedCacheRef.current = null;
-        renderFrameRef.current();
-    }, [video]);
-
-    useEffect(() => {
-        if (fileToLoad) handleFile(fileToLoad);
-    }, [fileToLoad]);
-
-    const handleFile = (file: File) => {
-        if (!file) return;
-        const url = URL.createObjectURL(file);
-        const videoEl = videoRef.current!;
-        videoEl.src = url;
-        videoEl.preload = 'auto';
-        videoEl.muted = false;
-        videoEl.onloadedmetadata = () => {
-            setVideo({ file, url, duration: videoEl.duration, videoEl });
-        };
-    };
 
     isPlayingRef.current = isPlaying;
     overlayStartHiddenRef.current = overlayStartHidden;
@@ -120,11 +173,14 @@ function VideoPreview({
         const cache = derivedCacheRef.current;
         const overlayStale = !cache || time >= cache.validUntil || time < prevTimeRef.current;
 
-        if (video) {
-            const v = video.videoEl;
-            if (v.videoWidth && v.videoHeight) {
-                compositor.uploadVideoElement(v);
-            }
+        // Upload video frame — source element position is managed by seekSourceEl (paused scrub)
+        // and the render loop (playback transitions + clip drag detection).
+        const activeVideoClip = getActiveVideoClip(time);
+        const frameEl = activeVideoClip ? sourceVideoEls.current.get(activeVideoClip.sourceId) : null;
+        if (frameEl?.videoWidth) {
+            compositor.uploadVideoElement(frameEl);
+        } else {
+            compositor.uploadBlackFrame();
         }
 
         if (overlayStale) {
@@ -169,7 +225,7 @@ function VideoPreview({
                 }
             }
             derivedCacheRef.current = { validUntil };
-            if (anyAnimating && isPlayingRef.current && video && 'requestVideoFrameCallback' in video.videoEl) {
+            if (anyAnimating && isPlayingRef.current) {
                 requestAnimationFrame(renderFrameRef.current);
             }
         }
@@ -196,124 +252,176 @@ function VideoPreview({
         });
     }, []);
 
-    // Video element play/pause control
+    // Source element play/pause + snapshot reset
     useEffect(() => {
-        if (!video) return;
-        const v = video.videoEl;
-        if (isPlaying) {
-            v.play();
-            const handleEnded = () => {
-                setIsPlaying(false);
-                setCurrentTime(v.duration);
-            };
-            v.addEventListener('ended', handleEnded, { once: true });
-            return () => v.removeEventListener('ended', handleEnded);
+        if (!isPlaying) {
+            pauseAllSourceVideos();
+            clipPlaybackSnapshotRef.current = null;
+            audioPlaybackSnapshotRef.current = null;
         } else {
-            v.pause();
-            currentTimeRef.current = v.currentTime;
-            setCurrentTime(v.currentTime);
+            // Force re-detection of active clips so the render loop captures fresh snapshots.
+            activeVideoClipIdRef.current = null;
+            activeAudioClipIdRef.current = null;
+            clipPlaybackSnapshotRef.current = null;
+            audioPlaybackSnapshotRef.current = null;
         }
-    }, [isPlaying, video]);
+    }, [isPlaying]);
 
-    // Render loop — video-driven when video present, clock-driven otherwise
+    // Unified clock-driven render loop
     useEffect(() => {
         if (!isPlaying) return;
 
         let handle: number;
+        let lastTs = performance.now();
+        let lastSetTime = 0;
 
-        if (video) {
-            const v = video.videoEl;
-            if (v.requestVideoFrameCallback) {
-                const rVFC = v.requestVideoFrameCallback.bind(v);
-                const cVFC = v.cancelVideoFrameCallback!.bind(v);
-                const loop = () => {
-                    currentTimeRef.current = v.currentTime;
-                    renderFrameRef.current();
-                    handle = rVFC(loop);
-                };
-                handle = rVFC(loop);
-                return () => cVFC(handle);
+        const loop = (ts: number) => {
+            const t = currentTimeRef.current;
+
+            // --- Video clip transitions ---
+            const activeVideoClip = getActiveVideoClip(t);
+            const videoEl = activeVideoClip ? sourceVideoEls.current.get(activeVideoClip.sourceId) : null;
+            const prevVideoId = activeVideoClipIdRef.current;
+            const newVideoId = activeVideoClip?.id ?? null;
+
+            if (newVideoId !== prevVideoId) {
+                // Clip changed (or entered/exited a clip)
+                if (prevVideoId && activeVideoSourceIdRef.current) {
+                    sourceVideoEls.current.get(activeVideoSourceIdRef.current)?.pause();
+                }
+                if (activeVideoClip && videoEl) {
+                    seekSourceEl(videoEl, activeVideoClip, t, true);
+                    clipPlaybackSnapshotRef.current = {
+                        clipId: activeVideoClip.id,
+                        clipTimeAtStart: activeVideoClip.time,
+                        outputTimeAtStart: t,
+                        sourceTimeAtStart: activeVideoClip.sourceOffset + (t - activeVideoClip.time),
+                    };
+                    activeVideoClipIdRef.current = newVideoId;
+                    activeVideoSourceIdRef.current = activeVideoClip.sourceId;
+                } else {
+                    activeVideoClipIdRef.current = null;
+                    activeVideoSourceIdRef.current = null;
+                    clipPlaybackSnapshotRef.current = null;
+                }
+            } else if (activeVideoClip && videoEl && clipPlaybackSnapshotRef.current) {
+                // Same clip — detect if it was dragged to a new position
+                if (activeVideoClip.time !== clipPlaybackSnapshotRef.current.clipTimeAtStart) {
+                    seekSourceEl(videoEl, activeVideoClip, t, true);
+                    clipPlaybackSnapshotRef.current = {
+                        clipId: activeVideoClip.id,
+                        clipTimeAtStart: activeVideoClip.time,
+                        outputTimeAtStart: t,
+                        sourceTimeAtStart: activeVideoClip.sourceOffset + (t - activeVideoClip.time),
+                    };
+                }
+            }
+
+            // --- Audio clip transitions ---
+            const activeAudioClip = getActiveAudioClip(t);
+            const audioEl = activeAudioClip ? sourceAudioEls.current.get(activeAudioClip.sourceId) : null;
+            const prevAudioId = activeAudioClipIdRef.current;
+            const newAudioId = activeAudioClip?.id ?? null;
+
+            if (newAudioId !== prevAudioId) {
+                if (prevAudioId && activeAudioSourceIdRef.current) {
+                    sourceAudioEls.current.get(activeAudioSourceIdRef.current)?.pause();
+                }
+                if (activeAudioClip && audioEl) {
+                    seekSourceEl(audioEl, activeAudioClip, t, true);
+                    audioPlaybackSnapshotRef.current = {
+                        clipId: activeAudioClip.id,
+                        clipTimeAtStart: activeAudioClip.time,
+                        outputTimeAtStart: t,
+                        sourceTimeAtStart: activeAudioClip.sourceOffset + (t - activeAudioClip.time),
+                    };
+                    activeAudioClipIdRef.current = newAudioId;
+                    activeAudioSourceIdRef.current = activeAudioClip.sourceId;
+                } else {
+                    activeAudioClipIdRef.current = null;
+                    activeAudioSourceIdRef.current = null;
+                    audioPlaybackSnapshotRef.current = null;
+                }
+            } else if (activeAudioClip && audioEl && audioPlaybackSnapshotRef.current) {
+                if (activeAudioClip.time !== audioPlaybackSnapshotRef.current.clipTimeAtStart) {
+                    seekSourceEl(audioEl, activeAudioClip, t, true);
+                    audioPlaybackSnapshotRef.current = {
+                        clipId: activeAudioClip.id,
+                        clipTimeAtStart: activeAudioClip.time,
+                        outputTimeAtStart: t,
+                        sourceTimeAtStart: activeAudioClip.sourceOffset + (t - activeAudioClip.time),
+                    };
+                }
+            }
+
+            // Advance output time from video element clock (via snapshot) or wall clock.
+            // Using snapshot anchor means live clip.time changes (drag) don't move the cursor.
+            let next: number;
+            const snap = clipPlaybackSnapshotRef.current;
+            if (videoEl && !videoEl.paused && snap) {
+                next = snap.outputTimeAtStart + (videoEl.currentTime - snap.sourceTimeAtStart);
             } else {
-                const loop = () => {
-                    currentTimeRef.current = v.currentTime;
-                    renderFrameRef.current();
-                    handle = requestAnimationFrame(loop);
-                };
-                handle = requestAnimationFrame(loop);
-                return () => cancelAnimationFrame(handle);
+                next = Math.min(t + (ts - lastTs) / 1000, durationRef.current);
             }
-        } else {
-            let lastTs = performance.now();
-            let lastSetTime = 0;
-            const loop = (ts: number) => {
-                const dt = (ts - lastTs) / 1000;
-                lastTs = ts;
-                const next = Math.min(currentTimeRef.current + dt, durationRef.current);
-                currentTimeRef.current = next;
-                // Throttle React state updates to ~10/sec to avoid render storms
-                if (ts - lastSetTime > 100) {
-                    setCurrentTime(next);
-                    lastSetTime = ts;
-                }
-                if (next >= durationRef.current) {
-                    setCurrentTime(next);
-                    setIsPlaying(false);
-                    renderFrameRef.current();
-                    return;
-                }
+            lastTs = ts;
+            currentTimeRef.current = next;
+            if (ts - lastSetTime > 100) {
+                lastLoopSetTimeRef.current = next;
+                setCurrentTime(next);
+                lastSetTime = ts;
+            }
+            if (next >= durationRef.current) {
+                lastLoopSetTimeRef.current = next;
+                setCurrentTime(next);
+                setIsPlaying(false);
                 renderFrameRef.current();
-                handle = requestAnimationFrame(loop);
-            };
-            handle = requestAnimationFrame(loop);
-            return () => cancelAnimationFrame(handle);
-        }
-    }, [isPlaying, video]);
-
-    // Seek sync
-    useEffect(() => {
-        if (video) {
-            const v = video.videoEl;
-            const threshold = isPlaying ? 0.5 : 0.01;
-            if (Math.abs(v.currentTime - currentTime) > threshold) {
-                v.currentTime = currentTime;
-                if (!isPlaying) {
-                    const handler = () => renderFrameRef.current();
-                    v.addEventListener('seeked', handler, { once: true });
-                }
+                return;
             }
-        } else {
-            currentTimeRef.current = currentTime;
             renderFrameRef.current();
-        }
-        // isPlaying intentionally omitted
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentTime, video]);
-
-    // Sync React state from video timeupdate (~4-8Hz)
-    useEffect(() => {
-        if (!video) return;
-        const v = video.videoEl;
-        const handler = () => setCurrentTime(v.currentTime);
-        v.addEventListener('timeupdate', handler);
-        return () => v.removeEventListener('timeupdate', handler);
-    }, [video]);
-
-    useEffect(() => {
-        return () => {
-            if (video?.url) URL.revokeObjectURL(video.url);
+            handle = requestAnimationFrame(loop);
         };
-    }, [video]);
+        handle = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(handle);
+    }, [isPlaying]);
+
+    // Seek sync — fires on currentTime state changes.
+    // When paused: seek source elements and render preview frame.
+    // When playing: only act on user-initiated large seeks (not the render loop's own throttled updates).
+    useEffect(() => {
+        if (!isPlayingRef.current) {
+            pauseAllSourceVideos();
+            clipPlaybackSnapshotRef.current = null;
+            audioPlaybackSnapshotRef.current = null;
+            currentTimeRef.current = currentTime;
+
+            const activeVideoClip = getActiveVideoClip(currentTime);
+            if (activeVideoClip) {
+                const el = sourceVideoEls.current.get(activeVideoClip.sourceId);
+                if (el) seekSourceEl(el, activeVideoClip, currentTime, false);
+            } else {
+                renderFrameRef.current();
+            }
+            const activeAudioClip = getActiveAudioClip(currentTime);
+            if (activeAudioClip) {
+                const el = sourceAudioEls.current.get(activeAudioClip.sourceId);
+                if (el) seekSourceEl(el, activeAudioClip, currentTime, false);
+            }
+        } else if (Math.abs(currentTime - lastLoopSetTimeRef.current) > 0.5) {
+            // User seeked while playing — the render loop's own updates are small (~0.1s at 10Hz),
+            // so a delta > 0.5s means the user dragged the playhead.
+            currentTimeRef.current = currentTime;
+            activeVideoClipIdRef.current = null;
+            activeAudioClipIdRef.current = null;
+            clipPlaybackSnapshotRef.current = null;
+            audioPlaybackSnapshotRef.current = null;
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentTime]);
 
     return (
-        <>
-            <video
-                ref={videoRef}
-                style={{ position: 'absolute', width: 0, height: 0 }}
-            />
-            <div className="w-full h-full flex items-center justify-center">
-                <canvas ref={canvasRef} className="max-w-full max-h-full" style={{ aspectRatio: '16/9' }} />
-            </div>
-        </>
+        <div className="w-full h-full flex items-center justify-center">
+            <canvas ref={canvasRef} className="max-w-full max-h-full" style={{ aspectRatio: '16/9' }} />
+        </div>
     );
 }
 

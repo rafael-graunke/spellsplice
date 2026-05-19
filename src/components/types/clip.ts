@@ -5,6 +5,11 @@ export const ClipType = {
 
 export type ClipType = (typeof ClipType)[keyof typeof ClipType];
 
+export const ClipColorMap: Record<ClipType, string> = {
+    [ClipType.Video]: 'bg-lime-600',
+    [ClipType.Audio]: 'bg-yellow-500',
+};
+
 export interface Clip {
     id: string;
     type: ClipType;

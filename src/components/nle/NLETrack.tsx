@@ -4,8 +4,11 @@ import { Eye, EyeOff, Lock, Volume2, VolumeOff } from 'lucide-react';
 import type { NLETrack as NLETrackType } from '../types/nle';
 import { TrackType, TrackTypeColorMap } from '../types/nle';
 import type { TrackEvent } from '../types/event';
+import type { Clip } from '../types/clip';
 import type { NLEGhostPos } from './hooks/useNLEEventDrag';
+import type { NLEClipGhostPos } from './hooks/useNLEClipDrag';
 import NLEEvent from './NLEEvent';
+import { NLEClip } from './NLEClip';
 import NLEEventIcon, { type SvgIcon } from './NLEEventIcon';
 import {
     TRACK_HEIGHT,
@@ -185,6 +188,7 @@ interface TrackContentProps {
     scrollLeftRef: RefObject<number>;
     subscribe: (fn: (x: number) => void) => () => void;
     ghosts?: NLEGhostPos[];
+    clipGhosts?: NLEClipGhostPos[];
     onDeselect?: () => void;
     onOpenCreateDialog?: (time: number) => void;
     onPasteAtTime?: (time: number) => void;
@@ -197,6 +201,8 @@ interface TrackContentProps {
     onAddTrackBelow?: () => void;
     onDeleteTrack?: () => void;
     canDeleteTrack?: boolean;
+    onDropSource?: (sourceId: string, time: number) => void;
+    acceptSourceType?: 'video' | 'audio';
 }
 
 export function TrackContent({
@@ -207,6 +213,7 @@ export function TrackContent({
     scrollLeftRef,
     subscribe,
     ghosts,
+    clipGhosts,
     onDeselect,
     onOpenCreateDialog,
     onPasteAtTime,
@@ -219,10 +226,13 @@ export function TrackContent({
     onAddTrackBelow,
     onDeleteTrack,
     canDeleteTrack,
+    onDropSource,
+    acceptSourceType,
 }: TrackContentProps) {
     const innerRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const clickTimeRef = useRef(0);
+    const [isDragOver, setIsDragOver] = useState(false);
     // Tracks whether the mousedown came from this background (not from a child NLEEvent,
     // which calls stopPropagation). Also stores position so we can suppress deselect if
     // the user dragged (marquee) rather than clicked.
@@ -235,12 +245,21 @@ export function TrackContent({
         });
     }, [subscribe]);
 
+    const getTimeFromClientX = (clientX: number) => {
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return 0;
+        return Math.max(0, (clientX - rect.left + (scrollLeftRef.current ?? 0) - paddingX) / zoom);
+    };
+
     return (
         <ContextMenu>
             <ContextMenuTrigger asChild>
                 <div
                     ref={containerRef}
-                    className="flex-1 overflow-hidden border-t border-zinc-600 relative"
+                    className={cn(
+                        'flex-1 overflow-hidden border-t border-zinc-600 relative',
+                        isDragOver && acceptSourceType && 'ring-2 ring-inset ring-white/40',
+                    )}
                     style={{ height: TRACK_HEIGHT }}
                     onMouseDown={onDeselect ? (e) => { bgDownRef.current = { x: e.clientX, y: e.clientY }; } : undefined}
                     onClick={onDeselect ? (e) => {
@@ -254,10 +273,27 @@ export function TrackContent({
                         onDeselect();
                     } : undefined}
                     onContextMenu={(e) => {
-                        const rect = containerRef.current?.getBoundingClientRect();
-                        if (!rect) return;
-                        clickTimeRef.current = Math.max(0, (e.clientX - rect.left + (scrollLeftRef.current ?? 0) - paddingX) / zoom);
+                        clickTimeRef.current = getTimeFromClientX(e.clientX);
                     }}
+                    onDragOver={onDropSource && acceptSourceType ? (e) => {
+                        if (e.dataTransfer.types.includes('application/x-spellsplice-source')) {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'copy';
+                            setIsDragOver(true);
+                        }
+                    } : undefined}
+                    onDragLeave={onDropSource ? () => setIsDragOver(false) : undefined}
+                    onDrop={onDropSource && acceptSourceType ? (e) => {
+                        e.preventDefault();
+                        setIsDragOver(false);
+                        try {
+                            const data = JSON.parse(e.dataTransfer.getData('application/x-spellsplice-source'));
+                            if (data.sourceType !== acceptSourceType) return;
+                            onDropSource(data.sourceId, getTimeFromClientX(e.clientX));
+                        } catch {
+                            // ignore malformed drag data
+                        }
+                    } : undefined}
                 >
                     <div
                         ref={innerRef}
@@ -285,6 +321,13 @@ export function TrackContent({
                                 />
                             )
                         )}
+                        {clipGhosts?.map((ghost, i) => (
+                            <div
+                                key={`cg-${i}`}
+                                className={`absolute h-[calc(100%-6px)] top-1/2 -translate-y-1/2 rounded-sm opacity-50 pointer-events-none ${ghost.color}`}
+                                style={{ left: ghost.left, width: ghost.width }}
+                            />
+                        ))}
                     </div>
                 </div>
             </ContextMenuTrigger>
@@ -365,6 +408,15 @@ interface TrackProps {
     onAddTrackBelow?: () => void;
     onDeleteTrack?: () => void;
     canDeleteTrack?: boolean;
+    // clip track props
+    clips?: Clip[];
+    clipGhosts?: NLEClipGhostPos[];
+    draggingClipIds?: Set<string>;
+    sourceNameMap?: Map<string, string>;
+    onClipMoveStart?: (trackId: string, clip: Clip, e: React.MouseEvent) => void;
+    onDeleteClip?: (trackId: string, clipId: string) => void;
+    onDropSource?: (sourceId: string, time: number) => void;
+    acceptSourceType?: 'video' | 'audio';
 }
 
 export function Track({
@@ -404,9 +456,18 @@ export function Track({
     onAddTrackBelow,
     onDeleteTrack,
     canDeleteTrack,
+    clips,
+    clipGhosts,
+    draggingClipIds,
+    sourceNameMap,
+    onClipMoveStart,
+    onDeleteClip,
+    onDropSource,
+    acceptSourceType,
 }: TrackProps) {
     const isEventTrack = track.type === TrackType.Event;
     const showEvents = isEventTrack && !track.isBlocked && !track.isHidden && events && events.length > 0;
+    const showClips = !isEventTrack && !track.isBlocked && clips && clips.length > 0;
 
     return (
         <div ref={onMount} className="flex flex-row w-full">
@@ -427,6 +488,7 @@ export function Track({
                 scrollLeftRef={scrollLeftRef}
                 subscribe={subscribe}
                 ghosts={ghosts}
+                clipGhosts={clipGhosts}
                 onDeselect={onDeselect}
                 onOpenCreateDialog={onOpenCreateDialog}
                 onPasteAtTime={onPasteAtTime}
@@ -439,6 +501,8 @@ export function Track({
                 onAddTrackBelow={onAddTrackBelow}
                 onDeleteTrack={onDeleteTrack}
                 canDeleteTrack={canDeleteTrack}
+                onDropSource={onDropSource}
+                acceptSourceType={acceptSourceType}
             >
                 {showEvents && events.map((event) => (
                     <NLEEvent
@@ -455,6 +519,20 @@ export function Track({
                         onDuplicate={onDuplicate ? () => onDuplicate(trackId, event.id) : undefined}
                         onResizeStart={onResizeStart}
                         onResizeEnd={onResizeEnd}
+                    />
+                ))}
+                {showClips && clips.map((clip) => (
+                    <NLEClip
+                        key={clip.id}
+                        clip={clip}
+                        sourceName={sourceNameMap?.get(clip.sourceId) ?? clip.sourceId}
+                        zoom={zoom}
+                        isBeingDragged={draggingClipIds?.has(clip.id) ?? false}
+                        onMouseDown={(e) => {
+                            e.stopPropagation();
+                            onClipMoveStart?.(trackId, clip, e);
+                        }}
+                        onDelete={onDeleteClip ? () => onDeleteClip(trackId, clip.id) : undefined}
                     />
                 ))}
             </TrackContent>

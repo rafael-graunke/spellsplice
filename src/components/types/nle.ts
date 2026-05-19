@@ -1,5 +1,6 @@
 import type { Player } from './player';
 import type { TrackEvent } from './event';
+import type { Clip } from './clip';
 import type { SvgIcon } from '../nle/NLEEventIcon';
 import { User2, Video, Volume2 } from 'lucide-react';
 
@@ -34,6 +35,7 @@ export interface NLETrack {
     id: string;
     type: TrackType;
     events: TrackEvent[];
+    clips?: Clip[];
     player?: Player;
     isBlocked: boolean;
     isHidden?: boolean;

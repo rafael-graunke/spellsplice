@@ -18,6 +18,9 @@ import { useTimelineKeyboard } from './hooks/useTimelineKeyboard';
 import { useNLEEventDrag } from './hooks/useNLEEventDrag';
 import { useNLEMarqueeDrag } from './hooks/useNLEMarqueeDrag';
 import type { NLEMoveResult } from './hooks/useNLEEventDrag';
+import { useNLEClipDrag } from './hooks/useNLEClipDrag';
+import type { ClipMoveResult } from './hooks/useNLEClipDrag';
+import type { MediaSource } from '../types/source';
 import {
     RULER_HEIGHT,
     TRACK_GROUP_LABEL_WIDTH,
@@ -169,6 +172,10 @@ interface NLETimelineProps {
     onResizeEnd?: () => void;
     onAddTrack?: (groupId: string, trackId: string, position: 'above' | 'below') => void;
     onDeleteTrack?: (groupId: string, trackId: string) => void;
+    sources?: MediaSource[];
+    onDropSource?: (trackId: string, sourceId: string, time: number) => void;
+    onMoveClips?: (moves: ClipMoveResult[]) => void;
+    onDeleteClip?: (trackId: string, clipId: string) => void;
 }
 
 export function NLETimeline({
@@ -193,6 +200,10 @@ export function NLETimeline({
     onResizeEnd,
     onAddTrack,
     onDeleteTrack,
+    sources,
+    onDropSource,
+    onMoveClips,
+    onDeleteClip,
 }: NLETimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
@@ -266,6 +277,37 @@ export function NLETimeline({
         getAllEvents,
         handleMoveEvents,
     );
+
+    const videoTracks = useMemo(
+        () => trackGroups.flatMap((g) => g.tracks).filter((t) => t.type === TrackType.Video),
+        [trackGroups],
+    );
+    const audioTracks = useMemo(
+        () => trackGroups.flatMap((g) => g.tracks).filter((t) => t.type === TrackType.Audio),
+        [trackGroups],
+    );
+
+    const handleMoveClips = useCallback(
+        (moves: ClipMoveResult[]) => onMoveClips?.(moves),
+        [onMoveClips],
+    );
+
+    const { clipGhostsByTrack, draggingClipIds, handleClipMoveStart } = useNLEClipDrag(
+        zoomRef,
+        scrollLeftRef,
+        setScroll,
+        trackElsRef,
+        scrollBoundaryRef,
+        videoTracks,
+        audioTracks,
+        handleMoveClips,
+    );
+
+    const sourceNameMap = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const s of sources ?? []) map.set(s.id, s.name);
+        return map;
+    }, [sources]);
 
     const zoomPercent = Math.round(
         ((zoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)) * 100
@@ -535,6 +577,14 @@ export function NLETimeline({
                                             onAddTrackBelow={() => onAddTrack?.(group.id, track.id, 'below')}
                                             onDeleteTrack={() => onDeleteTrack?.(group.id, track.id)}
                                             canDeleteTrack={group.tracks.length > 1}
+                                            clips={track.clips}
+                                            clipGhosts={clipGhostsByTrack.get(track.id)}
+                                            draggingClipIds={draggingClipIds}
+                                            sourceNameMap={sourceNameMap}
+                                            onClipMoveStart={(tId, clip, e) => handleClipMoveStart(tId, clip, e)}
+                                            onDeleteClip={onDeleteClip}
+                                            onDropSource={onDropSource ? (sourceId, time) => onDropSource(track.id, sourceId, time) : undefined}
+                                            acceptSourceType={track.type === TrackType.Video ? 'video' : track.type === TrackType.Audio ? 'audio' : undefined}
                                         />
                                         );
                                     })}

@@ -13,7 +13,17 @@ interface SourceCardProps {
 
 export function SourceCard({ source }: SourceCardProps) {
     return (
-        <div className="flex flex-col rounded overflow-hidden border border-border bg-muted/30 text-xs">
+        <div
+            className="flex flex-col rounded overflow-hidden border border-border bg-muted/30 text-xs cursor-grab active:cursor-grabbing"
+            draggable
+            onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = 'copy';
+                e.dataTransfer.setData(
+                    'application/x-spellsplice-source',
+                    JSON.stringify({ sourceId: source.id, sourceType: source.type }),
+                );
+            }}
+        >
             <div className="relative w-full aspect-video bg-muted flex items-center justify-center">
                 {source.type === 'video' ? (
                     source.thumbnailUrl ? (

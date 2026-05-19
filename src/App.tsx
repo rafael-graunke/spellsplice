@@ -8,6 +8,8 @@ import {
 import { NLETimeline } from './components/nle/NLETimeline';
 import type { DeleteItem, DuplicateItem, PasteItem } from './components/nle/NLETimeline';
 import type { NLEMoveResult } from './components/nle/hooks/useNLEEventDrag';
+import type { Clip } from './components/types/clip';
+import { ClipType } from './components/types/clip';
 import type { NLETrackGroup, NLETrack } from './components/types/nle';
 import { TrackType } from './components/types/nle';
 import type { TrackOverrideRow } from './components/Timeline/hooks/usePlayerTracks';
@@ -56,7 +58,6 @@ function App() {
     const [sources, setSources] = useState<MediaSource[]>([]);
     const [selectedEvents, setSelectedEvents] = useState<TrackEvent[]>([]);
 
-    const [fileToLoad, setFileToLoad] = useState<File | null>(null);
     const [isDirty, setIsDirty] = useState(false);
     const [exportDialogOpen, setExportDialogOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
@@ -73,6 +74,7 @@ function App() {
     const {
         players,
         trackOverrides,
+        clipsByTrack,
         handleCreateEvent,
         handleDeleteEvents,
         handleDuplicateEvents,
@@ -84,6 +86,9 @@ function App() {
         handleUpdateMeta,
         recordTrackOverride,
         handleDeleteTrack,
+        handleAddClips,
+        handleMoveClips,
+        handleDeleteClip,
         resetPlayers,
         undo,
         redo,
@@ -144,7 +149,7 @@ function App() {
     }, []);
 
     const handleImport = useCallback(async (file: File) => {
-        const { manifest, videoFile, config } = await importProject(file);
+        const { manifest, config } = await importProject(file);
         skipDirtyRef.current = true;
         clearAutosaveRef.current = true;
         isFirstConfigRender.current = true;
@@ -155,7 +160,6 @@ function App() {
         setIsPlaying(false);
         setIsDirty(false);
         setProjectConfig(config ? { ...DEFAULT_PROJECT_CONFIG, ...config } : DEFAULT_PROJECT_CONFIG);
-        if (videoFile) setFileToLoad(videoFile);
     }, [resetPlayers]);
 
     const handleNew = useCallback(() => {
@@ -167,7 +171,6 @@ function App() {
         setSelectedEvents([]);
         setCurrentTime(0);
         setIsPlaying(false);
-        setFileToLoad(null);
         setIsDirty(false);
         setProjectConfig(DEFAULT_PROJECT_CONFIG);
     }, [resetPlayers]);
@@ -202,15 +205,15 @@ function App() {
             id: 'video',
             label: 'Video',
             type: TrackType.Video,
-            tracks: (trackOverrides['video'] ?? [{ id: 'video-1', type: TrackType.Video, isBlocked: false }]).map((t) => ({ ...t, events: [] })),
+            tracks: (trackOverrides['video'] ?? [{ id: 'video-1', type: TrackType.Video, isBlocked: false }]).map((t) => ({ ...t, events: [], clips: clipsByTrack[t.id] ?? [] })),
         },
         {
             id: 'audio',
             label: 'Audio',
             type: TrackType.Audio,
-            tracks: (trackOverrides['audio'] ?? [{ id: 'audio-1', type: TrackType.Audio, isBlocked: false }]).map((t) => ({ ...t, events: [] })),
+            tracks: (trackOverrides['audio'] ?? [{ id: 'audio-1', type: TrackType.Audio, isBlocked: false }]).map((t) => ({ ...t, events: [], clips: clipsByTrack[t.id] ?? [] })),
         },
-    ], [players, trackOverrides]);
+    ], [players, trackOverrides, clipsByTrack]);
 
     const trackInfoByTrackId = useMemo(() => {
         const map = new Map<string, { groupId: string; eventLayer: number }>();
@@ -328,6 +331,49 @@ function App() {
         handleUpdateEvent(groupId, eventId, time, duration);
     }, [handleUpdateEvent, trackInfoByTrackId]);
 
+    const sourcesRef = useRef(sources);
+    sourcesRef.current = sources;
+
+    const handleDropSource = useCallback((trackId: string, sourceId: string, time: number) => {
+        const source = sourcesRef.current.find((s) => s.id === sourceId);
+        if (!source) return;
+        const clip: Clip = {
+            id: crypto.randomUUID(),
+            type: source.type === 'video' ? ClipType.Video : ClipType.Audio,
+            time,
+            duration: source.duration,
+            sourceId,
+            sourceOffset: 0,
+        };
+        const entries: Array<{ trackId: string; clip: Clip }> = [{ trackId, clip }];
+        if (source.type === 'video') {
+            const audioTrack = trackGroups.find((g) => g.type === TrackType.Audio)?.tracks.find((t) => !t.isBlocked);
+            if (audioTrack) {
+                entries.push({ trackId: audioTrack.id, clip: { ...clip, id: crypto.randomUUID(), type: ClipType.Audio } });
+            }
+        }
+        handleAddClips(entries);
+    }, [trackGroups, handleAddClips]);
+
+    const videoClips = useMemo(
+        () => trackGroups.find((g) => g.type === TrackType.Video)?.tracks.flatMap((t) => t.clips ?? []) ?? [],
+        [trackGroups],
+    );
+
+    const audioClips = useMemo(
+        () => trackGroups.find((g) => g.type === TrackType.Audio)?.tracks.flatMap((t) => t.clips ?? []) ?? [],
+        [trackGroups],
+    );
+
+    const duration = useMemo(() => {
+        const clipEnd = Math.max(
+            0,
+            ...videoClips.map((c) => c.time + c.duration),
+            ...audioClips.map((c) => c.time + c.duration),
+        );
+        return clipEnd > 0 ? clipEnd : (video?.duration ?? 30);
+    }, [videoClips, audioClips, video]);
+
     const handleNLEMove = useCallback((moves: NLEMoveResult[]) => {
         handleMoveEvents(moves.map((m) => {
             const from = trackInfoByTrackId.get(m.fromTrackId);
@@ -396,14 +442,14 @@ function App() {
                                     isPlaying={isPlaying}
                                     currentTime={currentTime}
                                     currentTimeRef={currentTimeRef}
-                                    video={video}
-                                    setVideo={setVideo}
                                     setCurrentTime={setCurrentTime}
                                     setIsPlaying={setIsPlaying}
                                     players={players}
-                                    fileToLoad={fileToLoad}
                                     overlayStartHidden={projectConfig.overlayStartHidden}
-                                    duration={video?.duration ?? 120}
+                                    duration={duration}
+                                    videoClips={videoClips}
+                                    audioClips={audioClips}
+                                    sources={sources}
                                 />
                             </ResizablePanel>
                             <ResizableHandle />
@@ -415,7 +461,7 @@ function App() {
                     <ResizableHandle />
                     <ResizablePanel minSize="280px" defaultSize="40%">
                         <NLETimeline
-                            duration={video ? video.duration || 120 : 120}
+                            duration={duration}
                             isPlaying={isPlaying}
                             setIsPlaying={setIsPlaying}
                             currentTimeRef={currentTimeRef}
@@ -436,6 +482,10 @@ function App() {
                             onSelectionChange={handleSelectionChange}
                             onAddTrack={handleAddTrack}
                             onDeleteTrack={handleDeleteTrack}
+                            sources={sources}
+                            onDropSource={handleDropSource}
+                            onMoveClips={handleMoveClips}
+                            onDeleteClip={handleDeleteClip}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>

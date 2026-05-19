@@ -2,6 +2,8 @@ import { useCallback, useRef } from 'react';
 import type { Player, Decklist } from '../../types/player';
 import type { TrackEvent, EventMeta } from '../../types/event';
 import type { TrackType } from '../../types/nle';
+import type { Clip } from '../../types/clip';
+import type { ClipMoveResult } from '../../nle/hooks/useNLEClipDrag';
 import { useHistory } from '@/hooks/useHistory';
 
 type PlayerInit = Omit<Player, 'track'>;
@@ -18,6 +20,7 @@ export type TrackOverrideRow = {
 type TracksState = {
     players: Player[];
     trackOverrides: Record<string, TrackOverrideRow[]>;
+    clipsByTrack: Record<string, Clip[]>;
 };
 
 const COLLISION_THRESHOLD = 1.0;
@@ -55,6 +58,7 @@ export function usePlayerTracks(
                 track: { id: p.id, layers: 4, events: [] },
             })),
         trackOverrides: {},
+        clipsByTrack: {},
     };
 
     const {
@@ -72,6 +76,7 @@ export function usePlayerTracks(
 
     const players = state.players;
     const trackOverrides = state.trackOverrides;
+    const clipsByTrack = state.clipsByTrack;
 
     const nextEventId = useRef(
         savedPlayers
@@ -227,8 +232,34 @@ export function usePlayerTracks(
         });
     }, [record]);
 
+    const handleAddClips = useCallback((entries: Array<{ trackId: string; clip: Clip }>) => {
+        record((draft) => {
+            for (const { trackId, clip } of entries) {
+                draft.clipsByTrack[trackId] = [...(draft.clipsByTrack[trackId] ?? []), clip];
+            }
+        });
+    }, [record]);
+
+    const handleMoveClips = useCallback((moves: ClipMoveResult[]) => {
+        record((draft) => {
+            for (const { clipId, fromTrackId, toTrackId, newTime } of moves) {
+                const clip = (draft.clipsByTrack[fromTrackId] ?? []).find((c) => c.id === clipId);
+                if (!clip) continue;
+                draft.clipsByTrack[fromTrackId] = (draft.clipsByTrack[fromTrackId] ?? []).filter((c) => c.id !== clipId);
+                clip.time = newTime;
+                draft.clipsByTrack[toTrackId] = [...(draft.clipsByTrack[toTrackId] ?? []), clip];
+            }
+        });
+    }, [record]);
+
+    const handleDeleteClip = useCallback((trackId: string, clipId: string) => {
+        record((draft) => {
+            draft.clipsByTrack[trackId] = (draft.clipsByTrack[trackId] ?? []).filter((c) => c.id !== clipId);
+        });
+    }, [record]);
+
     const resetPlayers = useCallback((incoming: Player[]) => {
-        setState({ players: incoming, trackOverrides: {} });
+        setState({ players: incoming, trackOverrides: {}, clipsByTrack: {} });
         clearHistory();
         const maxId = Math.max(
             0,
@@ -263,6 +294,7 @@ export function usePlayerTracks(
     return {
         players,
         trackOverrides,
+        clipsByTrack,
         handleCreateEvent,
         handleDeleteEvents,
         handleDuplicateEvents,
@@ -275,6 +307,9 @@ export function usePlayerTracks(
         handleUpdatePlayer,
         recordTrackOverride,
         handleDeleteTrack,
+        handleAddClips,
+        handleMoveClips,
+        handleDeleteClip,
         resetPlayers,
         undo,
         redo,

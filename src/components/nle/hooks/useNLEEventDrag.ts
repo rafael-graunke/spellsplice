@@ -33,6 +33,7 @@ interface MoveDragState {
     primary: EventDragData;
     companions: EventDragData[];
     startX: number;
+    startY: number;
     startScrollLeft: number;
     primaryTrackIndex: number; // index into eventTracks at drag start
 }
@@ -77,6 +78,8 @@ export function useNLEEventDrag(
     onMoveEvents: (moves: NLEMoveResult[]) => void,
 ) {
     const [ghostsByTrack, setGhostsByTrack] = useState<Map<string, NLEGhostPos[]>>(new Map());
+    const ghostsByTrackRef = useRef(ghostsByTrack);
+    ghostsByTrackRef.current = ghostsByTrack;
     const [draggingIds, setDraggingIds] = useState<Set<number>>(new Set());
     const moveDragRef = useRef<MoveDragState | null>(null);
     // Sync selectedIds to a ref so handleMoveStart always reads the latest value
@@ -151,35 +154,39 @@ export function useNLEEventDrag(
             primary,
             companions,
             startX: e.clientX,
+            startY: e.clientY,
             startScrollLeft: scrollLeftRef.current,
             primaryTrackIndex: trackIndex,
         };
         targetTrackIndexRef.current = trackIndex;
-
-        const zoom = zoomRef.current;
-        const initialGhosts = new Map<string, NLEGhostPos[]>();
-        initialGhosts.set(fromTrackId, [makeGhost(primary, time, zoom)]);
-        for (const c of companions) {
-            const existing = initialGhosts.get(c.fromTrackId) ?? [];
-            existing.push(makeGhost(c, c.startTime, zoom));
-            initialGhosts.set(c.fromTrackId, existing);
-        }
-        setGhostsByTrack(initialGhosts);
-        setDraggingIds(new Set([primary.eventId, ...companions.map((c) => c.eventId)]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [eventTracks]);
 
     useEffect(() => {
-        if (ghostsByTrack.size === 0) return;
+        const DRAG_THRESHOLD = 4;
 
         const onMouseMove = (e: MouseEvent) => {
             const drag = moveDragRef.current;
             if (!drag) return;
 
-            const zoom = zoomRef.current;
             const scrollDelta = scrollLeftRef.current - drag.startScrollLeft;
-            const deltaX = (e.clientX - drag.startX) + scrollDelta;
-            const deltaTime = deltaX / zoom;
+            const rawDeltaX = (e.clientX - drag.startX) + scrollDelta;
+            const rawDeltaY = e.clientY - drag.startY;
+
+            // Don't activate until mouse moves past threshold (prevents ghost on plain click)
+            if (
+                ghostsByTrackRef.current.size === 0 &&
+                Math.abs(rawDeltaX) < DRAG_THRESHOLD &&
+                Math.abs(rawDeltaY) < DRAG_THRESHOLD
+            ) return;
+
+            const zoom = zoomRef.current;
+            const deltaTime = rawDeltaX / zoom;
+
+            // First move past threshold: initialize ghost + dragging state
+            if (ghostsByTrackRef.current.size === 0) {
+                setDraggingIds(new Set([drag.primary.eventId, ...drag.companions.map((c) => c.eventId)]));
+            }
 
             const newPrimaryIndex = findTargetTrackIndex(eventTracks, trackElsRef.current, e.clientY);
             targetTrackIndexRef.current = newPrimaryIndex;
@@ -242,51 +249,51 @@ export function useNLEEventDrag(
             stopAutoScroll();
 
             const drag = moveDragRef.current;
-            if (!drag) {
-                setGhostsByTrack(new Map());
-                setDraggingIds(new Set());
-                return;
+            if (!drag) return;
+
+            // Only commit moves if a real drag occurred (ghosts were shown)
+            if (ghostsByTrackRef.current.size > 0) {
+                const zoom = zoomRef.current;
+                const scrollDelta = scrollLeftRef.current - drag.startScrollLeft;
+                const deltaX = (e.clientX - drag.startX) + scrollDelta;
+                const deltaTime = deltaX / zoom;
+
+                const newPrimaryIndex = targetTrackIndexRef.current;
+                const indexDelta = newPrimaryIndex - drag.primaryTrackIndex;
+                const primaryTrack = eventTracks[newPrimaryIndex];
+
+                const moves: NLEMoveResult[] = [];
+
+                if (primaryTrack) {
+                    moves.push({
+                        fromTrackId: drag.primary.fromTrackId,
+                        toTrackId: primaryTrack.id,
+                        eventId: drag.primary.eventId,
+                        newTime: Math.max(0, drag.primary.startTime + deltaTime),
+                    });
+                }
+
+                for (const c of drag.companions) {
+                    const cTrackIndex = Math.max(
+                        0,
+                        Math.min(
+                            eventTracks.length - 1,
+                            eventTracks.findIndex((t) => t.id === c.fromTrackId) + indexDelta,
+                        ),
+                    );
+                    const cTrack = eventTracks[cTrackIndex];
+                    if (!cTrack) continue;
+                    moves.push({
+                        fromTrackId: c.fromTrackId,
+                        toTrackId: cTrack.id,
+                        eventId: c.eventId,
+                        newTime: Math.max(0, c.startTime + deltaTime),
+                    });
+                }
+
+                onMoveEvents(moves);
             }
 
-            const zoom = zoomRef.current;
-            const scrollDelta = scrollLeftRef.current - drag.startScrollLeft;
-            const deltaX = (e.clientX - drag.startX) + scrollDelta;
-            const deltaTime = deltaX / zoom;
-
-            const newPrimaryIndex = targetTrackIndexRef.current;
-            const indexDelta = newPrimaryIndex - drag.primaryTrackIndex;
-            const primaryTrack = eventTracks[newPrimaryIndex];
-
-            const moves: NLEMoveResult[] = [];
-
-            if (primaryTrack) {
-                moves.push({
-                    fromTrackId: drag.primary.fromTrackId,
-                    toTrackId: primaryTrack.id,
-                    eventId: drag.primary.eventId,
-                    newTime: Math.max(0, drag.primary.startTime + deltaTime),
-                });
-            }
-
-            for (const c of drag.companions) {
-                const cTrackIndex = Math.max(
-                    0,
-                    Math.min(
-                        eventTracks.length - 1,
-                        eventTracks.findIndex((t) => t.id === c.fromTrackId) + indexDelta,
-                    ),
-                );
-                const cTrack = eventTracks[cTrackIndex];
-                if (!cTrack) continue;
-                moves.push({
-                    fromTrackId: c.fromTrackId,
-                    toTrackId: cTrack.id,
-                    eventId: c.eventId,
-                    newTime: Math.max(0, c.startTime + deltaTime),
-                });
-            }
-
-            onMoveEvents(moves);
             moveDragRef.current = null;
             setGhostsByTrack(new Map());
             setDraggingIds(new Set());
@@ -299,10 +306,9 @@ export function useNLEEventDrag(
             window.removeEventListener('mouseup', onMouseUp);
             stopAutoScroll();
         };
-    // eventTracks identity changes when trackGroups changes — primitive dependency not possible here,
-    // so we depend on the array ref. The effect re-registers listeners when drag begins (ghostsByTrack.size > 0).
+    // eventTracks identity changes when trackGroups changes; always keep listeners active
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [ghostsByTrack.size, eventTracks]);
+    }, [eventTracks]);
 
     return { ghostsByTrack, draggingIds, handleMoveStart };
 }

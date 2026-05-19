@@ -193,6 +193,8 @@ interface TrackContentProps {
     canUndo?: boolean;
     onRedo?: () => void;
     canRedo?: boolean;
+    onAddTrackAbove?: () => void;
+    onAddTrackBelow?: () => void;
 }
 
 export function TrackContent({
@@ -211,6 +213,8 @@ export function TrackContent({
     canUndo,
     onRedo,
     canRedo,
+    onAddTrackAbove,
+    onAddTrackBelow,
 }: TrackContentProps) {
     const innerRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -303,6 +307,9 @@ export function TrackContent({
                     Redo
                     <ContextMenuShortcut>{modKey}+Shift+Z</ContextMenuShortcut>
                 </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem onClick={onAddTrackAbove}>Add track above</ContextMenuItem>
+                <ContextMenuItem onClick={onAddTrackBelow}>Add track below</ContextMenuItem>
             </ContextMenuContent>
         </ContextMenu>
     );
@@ -342,6 +349,8 @@ interface TrackProps {
     canUndo?: boolean;
     onRedo?: () => void;
     canRedo?: boolean;
+    onAddTrackAbove?: () => void;
+    onAddTrackBelow?: () => void;
 }
 
 export function Track({
@@ -377,6 +386,8 @@ export function Track({
     canUndo,
     onRedo,
     canRedo,
+    onAddTrackAbove,
+    onAddTrackBelow,
 }: TrackProps) {
     const isEventTrack = track.type === TrackType.Event;
     const showEvents = isEventTrack && !track.isBlocked && !track.isHidden && events && events.length > 0;
@@ -408,6 +419,8 @@ export function Track({
                 canUndo={canUndo}
                 onRedo={onRedo}
                 canRedo={canRedo}
+                onAddTrackAbove={onAddTrackAbove}
+                onAddTrackBelow={onAddTrackBelow}
             >
                 {showEvents && events.map((event) => (
                     <NLEEvent

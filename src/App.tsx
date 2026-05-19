@@ -8,7 +8,7 @@ import {
 import { NLETimeline } from './components/nle/NLETimeline';
 import type { DeleteItem, DuplicateItem, PasteItem } from './components/nle/NLETimeline';
 import type { NLEMoveResult } from './components/nle/hooks/useNLEEventDrag';
-import type { NLETrackGroup } from './components/types/nle';
+import type { NLETrackGroup, NLETrack } from './components/types/nle';
 import { TrackType } from './components/types/nle';
 import type { Player } from './components/types/player';
 import type { TrackEvent, EventMeta } from './components/types/event';
@@ -61,6 +61,7 @@ function App() {
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [projectConfig, setProjectConfig] = useState<ProjectConfig>(DEFAULT_PROJECT_CONFIG);
     const [newEventId, setNewEventId] = useState<number | null>(null);
+    const [groupTrackOverrides, setGroupTrackOverrides] = useState<Map<string, NLETrack[]>>(new Map());
     const isFirstPlayersRender = useRef(true);
     const skipDirtyRef = useRef(false);
     const clearAutosaveRef = useRef(false);
@@ -183,31 +184,58 @@ function App() {
     videoRef.current = video;
 
     const trackGroups = useMemo((): NLETrackGroup[] => [
-        ...players.map((p) => ({
-            id: p.id,
-            label: p.name,
-            type: TrackType.Event,
-            tracks: [{
-                id: p.id,
-                type: TrackType.Event,
-                events: p.track.events,
-                player: p,
-                isBlocked: false,
-            }],
-        })),
+        ...players.map((p) => {
+            const override = groupTrackOverrides.get(p.id);
+            const tracks: NLETrack[] = override
+                ? override.map((t) => ({
+                    ...t,
+                    events: p.track.events.filter((e) => e.layer === (t.eventLayer ?? 0)),
+                    player: p,
+                }))
+                : [{ id: p.id, type: TrackType.Event, events: p.track.events, player: p, isBlocked: false, eventLayer: 0 }];
+            return { id: p.id, label: p.name, type: TrackType.Event, tracks };
+        }),
         {
             id: 'video',
             label: 'Video',
             type: TrackType.Video,
-            tracks: [{ id: 'video-1', type: TrackType.Video, events: [], isBlocked: false }],
+            tracks: groupTrackOverrides.get('video') ?? [{ id: 'video-1', type: TrackType.Video, events: [], isBlocked: false }],
         },
         {
             id: 'audio',
             label: 'Audio',
             type: TrackType.Audio,
-            tracks: [{ id: 'audio-1', type: TrackType.Audio, events: [], isBlocked: false }],
+            tracks: groupTrackOverrides.get('audio') ?? [{ id: 'audio-1', type: TrackType.Audio, events: [], isBlocked: false }],
         },
-    ], [players]);
+    ], [players, groupTrackOverrides]);
+
+    const trackInfoByTrackId = useMemo(() => {
+        const map = new Map<string, { groupId: string; eventLayer: number }>();
+        for (const group of trackGroups) {
+            for (const track of group.tracks) {
+                map.set(track.id, { groupId: group.id, eventLayer: track.eventLayer ?? 0 });
+            }
+        }
+        return map;
+    }, [trackGroups]);
+
+    const handleAddTrack = useCallback((groupId: string, trackId: string, position: 'above' | 'below') => {
+        const group = trackGroups.find((g) => g.id === groupId);
+        if (!group) return;
+        const maxLayer = Math.max(...group.tracks.map((t) => t.eventLayer ?? 0));
+        const newTrack: NLETrack = {
+            id: crypto.randomUUID(),
+            type: group.type,
+            events: [],
+            isBlocked: false,
+            eventLayer: maxLayer + 1,
+        };
+        const idx = group.tracks.findIndex((t) => t.id === trackId);
+        if (idx === -1) return;
+        const newTracks = [...group.tracks];
+        newTracks.splice(position === 'above' ? idx + 1 : idx, 0, newTrack);
+        setGroupTrackOverrides((prev) => new Map(prev).set(groupId, newTracks));
+    }, [trackGroups]);
 
     const handleSelectionChange = useCallback((ids: Set<number>) => {
         if (ids.size === 0) {
@@ -228,34 +256,39 @@ function App() {
         partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>,
         onCreated?: (id: number) => void,
     ) => {
-        const event = handleCreateEvent(partial, trackId);
+        const resolved = trackInfoByTrackId.get(trackId);
+        const playerId = resolved?.groupId ?? trackId;
+        const layer = resolved?.eventLayer ?? 0;
+        const event = handleCreateEvent({ layer, ...partial }, playerId);
         if (event) {
             setNewEventId(event.id);
             onCreated?.(event.id);
         }
-    }, [handleCreateEvent]);
+    }, [handleCreateEvent, trackInfoByTrackId]);
 
     const handleNLEDelete = useCallback((items: DeleteItem[]) => {
         const byPlayer = new Map<string, number[]>();
         for (const { trackId, eventId } of items) {
-            const arr = byPlayer.get(trackId) ?? [];
+            const groupId = trackInfoByTrackId.get(trackId)?.groupId ?? trackId;
+            const arr = byPlayer.get(groupId) ?? [];
             arr.push(eventId);
-            byPlayer.set(trackId, arr);
+            byPlayer.set(groupId, arr);
         }
         for (const [playerId, eventIds] of byPlayer) {
             handleDeleteEvents(playerId, eventIds);
         }
-    }, [handleDeleteEvents]);
+    }, [handleDeleteEvents, trackInfoByTrackId]);
 
     const handleNLEDuplicate = useCallback((items: DuplicateItem[], onCreated: (newIds: number[]) => void) => {
         const byPlayer = new Map<string, TrackEvent[]>();
         for (const { trackId, eventId } of items) {
-            const player = playersRef.current.find((p) => p.id === trackId);
+            const groupId = trackInfoByTrackId.get(trackId)?.groupId ?? trackId;
+            const player = playersRef.current.find((p) => p.id === groupId);
             const ev = player?.track.events.find((e) => e.id === eventId);
             if (!ev) continue;
-            const arr = byPlayer.get(trackId) ?? [];
+            const arr = byPlayer.get(groupId) ?? [];
             arr.push(ev);
-            byPlayer.set(trackId, arr);
+            byPlayer.set(groupId, arr);
         }
         const allNewIds: number[] = [];
         for (const [playerId, events] of byPlayer) {
@@ -263,14 +296,15 @@ function App() {
             allNewIds.push(...newEvents.map((e) => e.id));
         }
         onCreated(allNewIds);
-    }, [handleDuplicateEvents]);
+    }, [handleDuplicateEvents, trackInfoByTrackId]);
 
     const handleNLEPaste = useCallback((items: PasteItem[], pasteTime: number, onCreated: (newIds: number[]) => void) => {
         const byPlayer = new Map<string, TrackEvent[]>();
         for (const { trackId, event } of items) {
-            const arr = byPlayer.get(trackId) ?? [];
+            const groupId = trackInfoByTrackId.get(trackId)?.groupId ?? trackId;
+            const arr = byPlayer.get(groupId) ?? [];
             arr.push(event);
-            byPlayer.set(trackId, arr);
+            byPlayer.set(groupId, arr);
         }
         const allNewIds: number[] = [];
         for (const [playerId, events] of byPlayer) {
@@ -278,17 +312,26 @@ function App() {
             allNewIds.push(...newEvents.map((e) => e.id));
         }
         onCreated(allNewIds);
-    }, [handlePasteEvents]);
+    }, [handlePasteEvents, trackInfoByTrackId]);
+
+    const handleNLEUpdateEvent = useCallback((trackId: string, eventId: number, time: number, duration: number) => {
+        const groupId = trackInfoByTrackId.get(trackId)?.groupId ?? trackId;
+        handleUpdateEvent(groupId, eventId, time, duration);
+    }, [handleUpdateEvent, trackInfoByTrackId]);
 
     const handleNLEMove = useCallback((moves: NLEMoveResult[]) => {
-        handleMoveEvents(moves.map((m) => ({
-            fromPlayerId: m.fromTrackId,
-            toPlayerId: m.toTrackId,
-            eventId: m.eventId,
-            newTime: m.newTime,
-            newLayer: 0,
-        })));
-    }, [handleMoveEvents]);
+        handleMoveEvents(moves.map((m) => {
+            const from = trackInfoByTrackId.get(m.fromTrackId);
+            const to = trackInfoByTrackId.get(m.toTrackId);
+            return {
+                fromPlayerId: from?.groupId ?? m.fromTrackId,
+                toPlayerId: to?.groupId ?? m.toTrackId,
+                eventId: m.eventId,
+                newTime: m.newTime,
+                newLayer: to?.eventLayer ?? 0,
+            };
+        }));
+    }, [handleMoveEvents, trackInfoByTrackId]);
 
     useEffect(() => {
         if (newEventId !== null && selectedEvents[0]?.id !== newEventId) {
@@ -377,11 +420,12 @@ function App() {
                             onDeleteEvents={handleNLEDelete}
                             onDuplicateEvents={handleNLEDuplicate}
                             onPasteEvents={handleNLEPaste}
-                            onUpdateEvent={handleUpdateEvent}
+                            onUpdateEvent={handleNLEUpdateEvent}
                             onMoveEvent={handleNLEMove}
                             onResizeStart={handleBeginResize}
                             onResizeEnd={handleCommitResize}
                             onSelectionChange={handleSelectionChange}
+                            onAddTrack={handleAddTrack}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>

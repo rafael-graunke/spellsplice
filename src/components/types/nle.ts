@@ -38,4 +38,7 @@ export interface NLETrack {
     isBlocked: boolean;
     isHidden?: boolean;
     isMuted?: boolean;
+    // Stable layer index for Event-type tracks — does not change when tracks are inserted/removed.
+    // Used to filter player events (event.layer === eventLayer) and set newLayer on moves.
+    eventLayer?: number;
 }

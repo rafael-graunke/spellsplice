@@ -15,11 +15,9 @@ import { useTimelineViewport } from './hooks/useTimelineViewport';
 import { usePlayhead } from './hooks/usePlayhead';
 import { useTimelineSelection } from './hooks/useTimelineSelection';
 import { useTimelineKeyboard } from './hooks/useTimelineKeyboard';
-import { useNLEEventDrag } from './hooks/useNLEEventDrag';
+import { useNLEElementDrag } from './hooks/useNLEElementDrag';
 import { useNLEMarqueeDrag } from './hooks/useNLEMarqueeDrag';
-import type { NLEMoveResult } from './hooks/useNLEEventDrag';
-import { useNLEClipDrag } from './hooks/useNLEClipDrag';
-import type { ClipMoveResult } from './hooks/useNLEClipDrag';
+import type { NLEMoveResult, ClipMoveResult } from './hooks/nleHookTypes';
 import type { MediaSource } from '../types/source';
 import {
     RULER_HEIGHT,
@@ -168,6 +166,8 @@ interface NLETimelineProps {
     onPasteEvents?: (items: PasteItem[], pasteTime: number, onCreated: (newIds: number[]) => void) => void;
     onCreateEvent?: (trackId: string, partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>, onCreated?: (id: number) => void) => void;
     onSelectionChange?: (ids: Set<number>) => void;
+    onDeleteClips?: (items: { trackId: string; clipId: string }[]) => void;
+    onDeleteSelection?: (eventItems: DeleteItem[], clipItems: { trackId: string; clipId: string }[]) => void;
     onResizeStart?: () => void;
     onResizeEnd?: () => void;
     onAddTrack?: (groupId: string, trackId: string, position: 'above' | 'below') => void;
@@ -204,6 +204,8 @@ export function NLETimeline({
     onDropSource,
     onMoveClips,
     onDeleteClip,
+    onDeleteClips,
+    onDeleteSelection,
 }: NLETimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
@@ -217,22 +219,29 @@ export function NLETimeline({
         useTimelineScroll();
     const { zoom, zoomRef, setZoom } = useTimelineZoom();
     useTimelineViewport(scrollLeftRef, zoomRef, containerWidthRef);
-    const { selectedIds, select, selectMany, clearSelection } = useTimelineSelection();
-    // Refs so that callbacks passed through NLEEvent.memo always read fresh values
+    const { selectedIds, selectedClipIds, select, selectClip, selectMany, clearSelection } = useTimelineSelection();
+    // Refs so that callbacks passed through NLEEvent/NLEClip.memo always read fresh values
     // without recreating on every selection/trackGroups change.
     const selectedIdsRef = useRef(selectedIds);
     selectedIdsRef.current = selectedIds;
+    const selectedClipIdsRef = useRef(selectedClipIds);
+    selectedClipIdsRef.current = selectedClipIds;
 
     useEffect(() => {
         onSelectionChange?.(selectedIds);
     }, [selectedIds, onSelectionChange]);
 
-    // Collect all EVENT tracks in DOM order (top→bottom within each group)
+    // Collect tracks by type in DOM order
     const eventTracks = useMemo(
-        () =>
-            trackGroups
-                .flatMap((g) => g.tracks)
-                .filter((t) => t.type === TrackType.Event),
+        () => trackGroups.flatMap((g) => g.tracks).filter((t) => t.type === TrackType.Event),
+        [trackGroups],
+    );
+    const videoTracks = useMemo(
+        () => trackGroups.flatMap((g) => g.tracks).filter((t) => t.type === TrackType.Video),
+        [trackGroups],
+    );
+    const audioTracks = useMemo(
+        () => trackGroups.flatMap((g) => g.tracks).filter((t) => t.type === TrackType.Audio),
         [trackGroups],
     );
 
@@ -251,40 +260,22 @@ export function NLETimeline({
     const eventTracksRef = useRef(eventTracks);
     eventTracksRef.current = eventTracks;
 
-    const getAllEvents = useCallback((): Map<string, TrackEvent[]> => {
-        const map = new Map<string, TrackEvent[]>();
-        for (const track of eventTracks) {
-            map.set(track.id, track.events);
+    // Map clipId → trackId for fast lookup during delete
+    const clipTrackByClipId = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const track of [...videoTracks, ...audioTracks]) {
+            for (const clip of track.clips ?? []) {
+                map.set(clip.id, track.id);
+            }
         }
         return map;
-    }, [eventTracks]);
+    }, [videoTracks, audioTracks]);
+    const clipTrackByClipIdRef = useRef(clipTrackByClipId);
+    clipTrackByClipIdRef.current = clipTrackByClipId;
 
     const handleMoveEvents = useCallback(
-        (moves: NLEMoveResult[]) => {
-            onMoveEvent?.(moves);
-        },
+        (moves: NLEMoveResult[]) => { onMoveEvent?.(moves); },
         [onMoveEvent],
-    );
-
-    const { ghostsByTrack, draggingIds, handleMoveStart } = useNLEEventDrag(
-        zoomRef,
-        scrollLeftRef,
-        setScroll,
-        trackElsRef,
-        scrollBoundaryRef,
-        eventTracks,
-        selectedIds,
-        getAllEvents,
-        handleMoveEvents,
-    );
-
-    const videoTracks = useMemo(
-        () => trackGroups.flatMap((g) => g.tracks).filter((t) => t.type === TrackType.Video),
-        [trackGroups],
-    );
-    const audioTracks = useMemo(
-        () => trackGroups.flatMap((g) => g.tracks).filter((t) => t.type === TrackType.Audio),
-        [trackGroups],
     );
 
     const handleMoveClips = useCallback(
@@ -292,14 +283,25 @@ export function NLETimeline({
         [onMoveClips],
     );
 
-    const { clipGhostsByTrack, draggingClipIds, handleClipMoveStart } = useNLEClipDrag(
+    const {
+        eventGhostsByTrack,
+        clipGhostsByTrack,
+        draggingEventIds,
+        draggingClipIds,
+        handleEventDragStart,
+        handleClipDragStart,
+    } = useNLEElementDrag(
         zoomRef,
         scrollLeftRef,
         setScroll,
         trackElsRef,
         scrollBoundaryRef,
+        eventTracks,
         videoTracks,
         audioTracks,
+        selectedIds,
+        selectedClipIds,
+        handleMoveEvents,
         handleMoveClips,
     );
 
@@ -360,19 +362,32 @@ export function NLETimeline({
         if (pendingSelectRef.current.length === 0) return;
         const toSelect = pendingSelectRef.current.filter((id) => trackByEventId.has(id));
         pendingSelectRef.current = [];
-        if (toSelect.length > 0) selectMany(toSelect);
+        if (toSelect.length > 0) selectMany(toSelect, []);
     }, [trackByEventId, selectMany]);
 
     const handleDelete = useCallback(() => {
-        const items: DeleteItem[] = [];
+        const eventItems: DeleteItem[] = [];
         for (const id of selectedIdsRef.current) {
             const trackId = trackByEventIdRef.current.get(id);
-            if (trackId) items.push({ trackId, eventId: id });
+            if (trackId) eventItems.push({ trackId, eventId: id });
         }
-        if (items.length === 0) return;
-        onDeleteEvents(items);
+
+        const clipItems: { trackId: string; clipId: string }[] = [];
+        for (const clipId of selectedClipIdsRef.current) {
+            const trackId = clipTrackByClipIdRef.current.get(clipId);
+            if (trackId) clipItems.push({ trackId, clipId });
+        }
+
+        if (eventItems.length === 0 && clipItems.length === 0) return;
+
+        if (onDeleteSelection) {
+            onDeleteSelection(eventItems, clipItems);
+        } else {
+            if (eventItems.length > 0) onDeleteEvents(eventItems);
+            if (clipItems.length > 0) onDeleteClips?.(clipItems);
+        }
         clearSelection();
-    }, [onDeleteEvents, clearSelection]);
+    }, [onDeleteSelection, onDeleteEvents, onDeleteClips, clearSelection]);
 
     const handleCopy = useCallback(() => {
         if (selectedIdsRef.current.size === 0) return;
@@ -442,6 +457,7 @@ export function NLETimeline({
         scrollBoundaryRef,
         trackElsRef,
         eventTracks,
+        [...videoTracks, ...audioTracks],
         zoomRef,
         scrollLeftRef,
         selectMany,
@@ -551,12 +567,12 @@ export function NLETimeline({
                                             onToggleMuted={() => {}}
                                             events={track.events}
                                             selectedIds={selectedIds}
-                                            draggingIds={draggingIds}
-                                            ghosts={ghostsByTrack.get(track.id)}
+                                            draggingIds={draggingEventIds}
+                                            ghosts={eventGhostsByTrack.get(track.id)}
                                             onSelect={(id, additive) => select(id, additive)}
                                             onDeselect={clearSelection}
                                             onMoveStart={(tId, eventId, e, time, dur) =>
-                                                handleMoveStart(tId, eventId, e, time, dur)
+                                                handleEventDragStart(tId, eventId, e, time, dur)
                                             }
                                             onUpdate={onUpdateEvent}
                                             onResizeStart={onResizeStart}
@@ -580,8 +596,10 @@ export function NLETimeline({
                                             clips={track.clips}
                                             clipGhosts={clipGhostsByTrack.get(track.id)}
                                             draggingClipIds={draggingClipIds}
+                                            selectedClipIds={selectedClipIds}
                                             sourceNameMap={sourceNameMap}
-                                            onClipMoveStart={(tId, clip, e) => handleClipMoveStart(tId, clip, e)}
+                                            onClipMoveStart={(tId, clip, e) => handleClipDragStart(tId, clip, e)}
+                                            onSelectClip={(_tId, clipId, additive) => selectClip(clipId, additive)}
                                             onDeleteClip={onDeleteClip}
                                             onDropSource={onDropSource ? (sourceId, time) => onDropSource(track.id, sourceId, time) : undefined}
                                             acceptSourceType={track.type === TrackType.Video ? 'video' : track.type === TrackType.Audio ? 'audio' : undefined}

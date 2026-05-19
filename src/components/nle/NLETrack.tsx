@@ -5,8 +5,7 @@ import type { NLETrack as NLETrackType } from '../types/nle';
 import { TrackType, TrackTypeColorMap } from '../types/nle';
 import type { TrackEvent } from '../types/event';
 import type { Clip } from '../types/clip';
-import type { NLEGhostPos } from './hooks/useNLEEventDrag';
-import type { NLEClipGhostPos } from './hooks/useNLEClipDrag';
+import type { NLEGhostPos, NLEClipGhostPos } from './hooks/nleHookTypes';
 import NLEEvent from './NLEEvent';
 import { NLEClip } from './NLEClip';
 import NLEEventIcon, { type SvgIcon } from './NLEEventIcon';
@@ -412,8 +411,10 @@ interface TrackProps {
     clips?: Clip[];
     clipGhosts?: NLEClipGhostPos[];
     draggingClipIds?: Set<string>;
+    selectedClipIds?: Set<string>;
     sourceNameMap?: Map<string, string>;
     onClipMoveStart?: (trackId: string, clip: Clip, e: React.MouseEvent) => void;
+    onSelectClip?: (trackId: string, clipId: string, additive: boolean) => void;
     onDeleteClip?: (trackId: string, clipId: string) => void;
     onDropSource?: (sourceId: string, time: number) => void;
     acceptSourceType?: 'video' | 'audio';
@@ -459,8 +460,10 @@ export function Track({
     clips,
     clipGhosts,
     draggingClipIds,
+    selectedClipIds,
     sourceNameMap,
     onClipMoveStart,
+    onSelectClip,
     onDeleteClip,
     onDropSource,
     acceptSourceType,
@@ -527,11 +530,13 @@ export function Track({
                         clip={clip}
                         sourceName={sourceNameMap?.get(clip.sourceId) ?? clip.sourceId}
                         zoom={zoom}
+                        isSelected={selectedClipIds?.has(clip.id) ?? false}
                         isBeingDragged={draggingClipIds?.has(clip.id) ?? false}
                         onMouseDown={(e) => {
                             e.stopPropagation();
                             onClipMoveStart?.(trackId, clip, e);
                         }}
+                        onSelect={onSelectClip ? (additive) => onSelectClip(trackId, clip.id, additive) : undefined}
                         onDelete={onDeleteClip ? () => onDeleteClip(trackId, clip.id) : undefined}
                     />
                 ))}

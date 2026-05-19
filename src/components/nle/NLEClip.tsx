@@ -9,16 +9,20 @@ import {
     ContextMenuTrigger,
 } from '../ui/context-menu';
 
+const CLICK_THRESHOLD = 4;
+
 interface NLEClipProps {
     clip: Clip;
     sourceName: string;
     zoom: number;
+    isSelected: boolean;
     isBeingDragged: boolean;
     onMouseDown: (e: React.MouseEvent) => void;
+    onSelect?: (additive: boolean) => void;
     onDelete?: () => void;
 }
 
-export function NLEClip({ clip, sourceName, zoom, isBeingDragged, onMouseDown, onDelete }: NLEClipProps) {
+export function NLEClip({ clip, sourceName, zoom, isSelected, isBeingDragged, onMouseDown, onSelect, onDelete }: NLEClipProps) {
     return (
         <ContextMenu>
             <ContextMenuTrigger asChild>
@@ -27,9 +31,21 @@ export function NLEClip({ clip, sourceName, zoom, isBeingDragged, onMouseDown, o
                         'absolute cursor-grab active:cursor-grabbing overflow-hidden h-[calc(100%-6px)] top-1/2 -translate-y-1/2 rounded-sm select-none',
                         ClipColorMap[clip.type],
                         isBeingDragged && 'opacity-0',
+                        isSelected && 'ring-2 ring-white ring-inset',
                     )}
                     style={{ left: clip.time * zoom, width: clip.duration * zoom }}
-                    onMouseDown={onMouseDown}
+                    onMouseDown={(e) => {
+                        const startX = e.clientX;
+                        const startY = e.clientY;
+                        const handleUp = (ev: MouseEvent) => {
+                            window.removeEventListener('mouseup', handleUp);
+                            if (Math.abs(ev.clientX - startX) < CLICK_THRESHOLD && Math.abs(ev.clientY - startY) < CLICK_THRESHOLD) {
+                                onSelect?.(ev.ctrlKey || ev.metaKey);
+                            }
+                        };
+                        window.addEventListener('mouseup', handleUp);
+                        onMouseDown(e);
+                    }}
                 >
                     <span className="absolute inset-0 flex items-center px-2 text-xs text-white/90 truncate pointer-events-none">
                         {sourceName}

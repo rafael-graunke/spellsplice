@@ -4,7 +4,7 @@ import { expect, userEvent, fireEvent, within, screen } from 'storybook/test';
 import { NLETimeline } from './NLETimeline';
 import type { PasteItem, DuplicateItem, DeleteItem } from './NLETimeline';
 import type { NLETrackGroup } from '../types/nle';
-import type { NLEMoveResult } from './hooks/useNLEEventDrag';
+import type { NLEMoveResult } from './hooks/nleHookTypes';
 import { useHistory } from '@/hooks/useHistory';
 
 const meta: Meta<typeof NLETimeline> = {

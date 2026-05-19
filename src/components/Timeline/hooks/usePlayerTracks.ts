@@ -3,7 +3,7 @@ import type { Player, Decklist } from '../../types/player';
 import type { TrackEvent, EventMeta } from '../../types/event';
 import type { TrackType } from '../../types/nle';
 import type { Clip } from '../../types/clip';
-import type { ClipMoveResult } from '../../nle/hooks/useNLEClipDrag';
+import type { ClipMoveResult } from '../../nle/hooks/nleHookTypes';
 import { useHistory } from '@/hooks/useHistory';
 
 type PlayerInit = Omit<Player, 'track'>;
@@ -258,6 +258,31 @@ export function usePlayerTracks(
         });
     }, [record]);
 
+    const handleDeleteClips = useCallback((items: { trackId: string; clipId: string }[]) => {
+        record((draft) => {
+            for (const { trackId, clipId } of items) {
+                draft.clipsByTrack[trackId] = (draft.clipsByTrack[trackId] ?? []).filter((c) => c.id !== clipId);
+            }
+        });
+    }, [record]);
+
+    const handleDeleteAll = useCallback((
+        playerEventDeletions: { playerId: string; eventIds: number[] }[],
+        clipDeletions: { trackId: string; clipId: string }[],
+    ) => {
+        record((draft) => {
+            for (const { playerId, eventIds } of playerEventDeletions) {
+                const player = draft.players.find((p) => p.id === playerId);
+                if (!player) continue;
+                const idSet = new Set(eventIds);
+                player.track.events = player.track.events.filter((e) => !idSet.has(e.id));
+            }
+            for (const { trackId, clipId } of clipDeletions) {
+                draft.clipsByTrack[trackId] = (draft.clipsByTrack[trackId] ?? []).filter((c) => c.id !== clipId);
+            }
+        });
+    }, [record]);
+
     const resetPlayers = useCallback((incoming: Player[]) => {
         setState({ players: incoming, trackOverrides: {}, clipsByTrack: {} });
         clearHistory();
@@ -310,6 +335,8 @@ export function usePlayerTracks(
         handleAddClips,
         handleMoveClips,
         handleDeleteClip,
+        handleDeleteClips,
+        handleDeleteAll,
         resetPlayers,
         undo,
         redo,

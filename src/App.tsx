@@ -7,7 +7,7 @@ import {
 } from './components/ui/resizable';
 import { NLETimeline } from './components/nle/NLETimeline';
 import type { DeleteItem, DuplicateItem, PasteItem } from './components/nle/NLETimeline';
-import type { NLEMoveResult } from './components/nle/hooks/useNLEEventDrag';
+import type { NLEMoveResult } from './components/nle/hooks/nleHookTypes';
 import type { Clip } from './components/types/clip';
 import { ClipType } from './components/types/clip';
 import type { NLETrackGroup, NLETrack } from './components/types/nle';
@@ -89,6 +89,8 @@ function App() {
         handleAddClips,
         handleMoveClips,
         handleDeleteClip,
+        handleDeleteClips,
+        handleDeleteAll,
         resetPlayers,
         undo,
         redo,
@@ -291,6 +293,23 @@ function App() {
         }
     }, [handleDeleteEvents, trackInfoByTrackId]);
 
+    const handleNLEDeleteSelection = useCallback((
+        eventItems: DeleteItem[],
+        clipItems: { trackId: string; clipId: string }[],
+    ) => {
+        const byPlayer = new Map<string, number[]>();
+        for (const { trackId, eventId } of eventItems) {
+            const groupId = trackInfoByTrackId.get(trackId)?.groupId ?? trackId;
+            const arr = byPlayer.get(groupId) ?? [];
+            arr.push(eventId);
+            byPlayer.set(groupId, arr);
+        }
+        handleDeleteAll(
+            Array.from(byPlayer, ([playerId, eventIds]) => ({ playerId, eventIds })),
+            clipItems,
+        );
+    }, [handleDeleteAll, trackInfoByTrackId]);
+
     const handleNLEDuplicate = useCallback((items: DuplicateItem[], onCreated: (newIds: number[]) => void) => {
         const byPlayer = new Map<string, TrackEvent[]>();
         for (const { trackId, eventId } of items) {
@@ -486,6 +505,8 @@ function App() {
                             onDropSource={handleDropSource}
                             onMoveClips={handleMoveClips}
                             onDeleteClip={handleDeleteClip}
+                            onDeleteClips={handleDeleteClips}
+                            onDeleteSelection={handleNLEDeleteSelection}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>

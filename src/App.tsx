@@ -23,6 +23,8 @@ import { ExportDialog } from './components/ExportDialog';
 import SettingsDialog from './components/Settings/SettingsDialog';
 import type { ProjectConfig } from './components/types/config';
 import { DEFAULT_PROJECT_CONFIG } from './components/types/config';
+import { Sources } from './components/Sources';
+import type { MediaSource } from './components/types/source';
 
 type PlayerInit = Omit<Player, 'track'>;
 
@@ -50,10 +52,9 @@ function App() {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [video, setVideo] = useState<VideoState | null>(null);
+    const [sources, setSources] = useState<MediaSource[]>([]);
     const [selectedEvents, setSelectedEvents] = useState<TrackEvent[]>([]);
-    const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(
-        () => initialPlayers[0]?.id ?? null
-    );
+
     const [fileToLoad, setFileToLoad] = useState<File | null>(null);
     const [isDirty, setIsDirty] = useState(false);
     const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -144,7 +145,7 @@ function App() {
         clearAutosaveRef.current = true;
         isFirstConfigRender.current = true;
         resetPlayers(manifest.players);
-        setSelectedPlayerId(manifest.players[0]?.id ?? null);
+
         setSelectedEvents([]);
         setCurrentTime(0);
         setIsPlaying(false);
@@ -171,10 +172,9 @@ function App() {
     const handleCloseExportDialog = useCallback(() => setExportDialogOpen(false), []);
     const handleOpenSettings = useCallback(() => setSettingsOpen(true), []);
 
-    const rawSelectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? players[0];
-
-    const rawSelectedPlayerRef = useRef(rawSelectedPlayer);
-    rawSelectedPlayerRef.current = rawSelectedPlayer;
+    const inspectorPlayer = selectedEvents[0]
+        ? players.find((p) => p.track.events.some((e) => e.id === selectedEvents[0].id)) ?? null
+        : null;
 
     const playersRef = useRef(players);
     playersRef.current = players;
@@ -215,17 +215,12 @@ function App() {
             return;
         }
         const events: TrackEvent[] = [];
-        let firstPlayerId: string | null = null;
         for (const player of playersRef.current) {
             for (const ev of player.track.events) {
-                if (ids.has(ev.id)) {
-                    events.push(ev);
-                    if (!firstPlayerId) firstPlayerId = player.id;
-                }
+                if (ids.has(ev.id)) events.push(ev);
             }
         }
         setSelectedEvents(events);
-        if (firstPlayerId) setSelectedPlayerId(firstPlayerId);
     }, []);
 
     const handleNLECreate = useCallback((
@@ -302,7 +297,7 @@ function App() {
     }, [selectedEvents, newEventId]);
 
     const handleInspectorUpdate = useCallback((eventId: number, meta: EventMeta) => {
-        const player = rawSelectedPlayerRef.current;
+        const player = playersRef.current.find((p) => p.track.events.some((e) => e.id === eventId));
         if (!player) return;
         handleUpdateMeta(player.id, eventId, meta);
         setSelectedEvents((prev) =>
@@ -336,9 +331,13 @@ function App() {
                 <ResizablePanelGroup orientation="vertical" className="flex-1">
                     <ResizablePanel minSize={100} defaultSize="60%">
                         <ResizablePanelGroup orientation="horizontal">
+                            <ResizablePanel minSize="150px" defaultSize="15%">
+                                <Sources sources={sources} setSources={setSources} />
+                            </ResizablePanel>
+                            <ResizableHandle />
                             <ResizablePanel
                                 minSize={100}
-                                defaultSize="85%"
+                                defaultSize="70%"
                                 className="bg-muted/20"
                             >
                                 <VideoPreview
@@ -352,11 +351,12 @@ function App() {
                                     players={players}
                                     fileToLoad={fileToLoad}
                                     overlayStartHidden={projectConfig.overlayStartHidden}
+                                    duration={video?.duration ?? 120}
                                 />
                             </ResizablePanel>
                             <ResizableHandle />
                             <ResizablePanel minSize="400px" defaultSize="15%">
-                                <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} player={rawSelectedPlayer} autoFocus={selectedEvents[0]?.id === newEventId} />
+                                <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} player={inspectorPlayer} autoFocus={selectedEvents[0]?.id === newEventId} />
                             </ResizablePanel>
                         </ResizablePanelGroup>
                     </ResizablePanel>

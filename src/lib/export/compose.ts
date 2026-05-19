@@ -110,6 +110,13 @@ export class Compositor {
         );
     }
 
+    uploadBlackFrame(): void {
+        const { gl } = this;
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.videoTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
+    }
+
     uploadVideoElement(videoEl: HTMLVideoElement): void {
         const { gl } = this;
         gl.activeTexture(gl.TEXTURE0);

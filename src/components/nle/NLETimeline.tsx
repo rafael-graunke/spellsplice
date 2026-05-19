@@ -168,6 +168,7 @@ interface NLETimelineProps {
     onResizeStart?: () => void;
     onResizeEnd?: () => void;
     onAddTrack?: (groupId: string, trackId: string, position: 'above' | 'below') => void;
+    onDeleteTrack?: (groupId: string, trackId: string) => void;
 }
 
 export function NLETimeline({
@@ -191,6 +192,7 @@ export function NLETimeline({
     onResizeStart,
     onResizeEnd,
     onAddTrack,
+    onDeleteTrack,
 }: NLETimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
@@ -531,6 +533,8 @@ export function NLETimeline({
                                             canRedo={canRedo}
                                             onAddTrackAbove={() => onAddTrack?.(group.id, track.id, 'above')}
                                             onAddTrackBelow={() => onAddTrack?.(group.id, track.id, 'below')}
+                                            onDeleteTrack={() => onDeleteTrack?.(group.id, track.id)}
+                                            canDeleteTrack={group.tracks.length > 1}
                                         />
                                         );
                                     })}

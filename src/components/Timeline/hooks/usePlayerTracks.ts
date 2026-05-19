@@ -1,9 +1,24 @@
 import { useCallback, useRef } from 'react';
 import type { Player, Decklist } from '../../types/player';
 import type { TrackEvent, EventMeta } from '../../types/event';
+import type { TrackType } from '../../types/nle';
 import { useHistory } from '@/hooks/useHistory';
 
 type PlayerInit = Omit<Player, 'track'>;
+
+export type TrackOverrideRow = {
+    id: string;
+    type: TrackType;
+    eventLayer?: number;
+    isBlocked: boolean;
+    isHidden?: boolean;
+    isMuted?: boolean;
+};
+
+type TracksState = {
+    players: Player[];
+    trackOverrides: Record<string, TrackOverrideRow[]>;
+};
 
 const COLLISION_THRESHOLD = 1.0;
 
@@ -33,14 +48,17 @@ export function usePlayerTracks(
     setSelectedEvents: React.Dispatch<React.SetStateAction<TrackEvent[]>>,
     savedPlayers?: Player[]
 ) {
-    const initialState: Player[] = savedPlayers ??
-        initialPlayers.map((p) => ({
-            ...p,
-            track: { id: p.id, layers: 4, events: [] },
-        }));
+    const initialState: TracksState = {
+        players: savedPlayers ??
+            initialPlayers.map((p) => ({
+                ...p,
+                track: { id: p.id, layers: 4, events: [] },
+            })),
+        trackOverrides: {},
+    };
 
     const {
-        state: players,
+        state,
         setState,
         record,
         mutate,
@@ -50,7 +68,10 @@ export function usePlayerTracks(
         canUndo,
         canRedo,
         clearHistory,
-    } = useHistory<Player[]>(initialState);
+    } = useHistory<TracksState>(initialState);
+
+    const players = state.players;
+    const trackOverrides = state.trackOverrides;
 
     const nextEventId = useRef(
         savedPlayers
@@ -60,7 +81,7 @@ export function usePlayerTracks(
     const playersRef = useRef(players);
     playersRef.current = players;
 
-    const resizeBaselineRef = useRef<Player[] | null>(null);
+    const resizeBaselineRef = useRef<TracksState | null>(null);
     const lastMetaRef = useRef<{ key: string; timestamp: number } | null>(null);
 
     const handleCreateEvent = useCallback((
@@ -85,7 +106,7 @@ export function usePlayerTracks(
             ...partial,
         };
         record((draft) => {
-            const player = draft.find((p) => p.id === targetId);
+            const player = draft.players.find((p) => p.id === targetId);
             if (player) player.track.events.push(newEvent as any);
         });
         setSelectedEvents([newEvent]);
@@ -95,7 +116,7 @@ export function usePlayerTracks(
     const handleDeleteEvents = useCallback((playerId: string, eventIds: number[]) => {
         const idSet = new Set(eventIds);
         record((draft) => {
-            const player = draft.find((p) => p.id === playerId);
+            const player = draft.players.find((p) => p.id === playerId);
             if (player) player.track.events = player.track.events.filter((e) => !idSet.has(e.id));
         });
     }, [record]);
@@ -107,7 +128,7 @@ export function usePlayerTracks(
             time: e.time + 0.5,
         }));
         record((draft) => {
-            const player = draft.find((p) => p.id === playerId);
+            const player = draft.players.find((p) => p.id === playerId);
             if (player) player.track.events.push(...(newEvents as any[]));
         });
         setSelectedEvents(newEvents);
@@ -122,7 +143,7 @@ export function usePlayerTracks(
             time: pasteTime + (e.time - minTime),
         }));
         record((draft) => {
-            const player = draft.find((p) => p.id === playerId);
+            const player = draft.players.find((p) => p.id === playerId);
             if (player) player.track.events.push(...(newEvents as any[]));
         });
         setSelectedEvents(newEvents);
@@ -137,15 +158,15 @@ export function usePlayerTracks(
         duration: number
     ) => {
         mutate((draft) => {
-            const player = draft.find((p) => p.id === playerId);
+            const player = draft.players.find((p) => p.id === playerId);
             const event = player?.track.events.find((e) => e.id === eventId);
             if (event) { event.time = time; event.duration = duration; }
         });
     }, [mutate]);
 
     const handleBeginResize = useCallback(() => {
-        resizeBaselineRef.current = playersRef.current;
-    }, []);
+        resizeBaselineRef.current = state;
+    }, [state]);
 
     const handleCommitResize = useCallback(() => {
         const baseline = resizeBaselineRef.current;
@@ -158,8 +179,8 @@ export function usePlayerTracks(
     ) => {
         record((draft) => {
             for (const { fromPlayerId, toPlayerId, eventId, newTime, newLayer } of moves) {
-                const fromPlayer = draft.find((p) => p.id === fromPlayerId);
-                const toPlayer = draft.find((p) => p.id === toPlayerId);
+                const fromPlayer = draft.players.find((p) => p.id === fromPlayerId);
+                const toPlayer = draft.players.find((p) => p.id === toPlayerId);
                 if (!fromPlayer || !toPlayer) continue;
                 const idx = fromPlayer.track.events.findIndex((e) => e.id === eventId);
                 if (idx === -1) continue;
@@ -182,8 +203,8 @@ export function usePlayerTracks(
             lastMetaRef.current?.key === coalesceKey &&
             now - lastMetaRef.current.timestamp < 1000;
 
-        const recipe = (draft: any[]) => {
-            const player = draft.find((p: Player) => p.id === playerId);
+        const recipe = (draft: TracksState) => {
+            const player = draft.players.find((p: Player) => p.id === playerId);
             const event = player?.track.events.find((e: TrackEvent) => e.id === eventId);
             if (event) event.meta = meta;
         };
@@ -201,13 +222,13 @@ export function usePlayerTracks(
         updates: { name?: string; deckName?: string; decklist?: Decklist }
     ) => {
         record((draft) => {
-            const player = draft.find((p) => p.id === playerId);
+            const player = draft.players.find((p) => p.id === playerId);
             if (player) Object.assign(player, updates);
         });
     }, [record]);
 
     const resetPlayers = useCallback((incoming: Player[]) => {
-        setState(incoming);
+        setState({ players: incoming, trackOverrides: {} });
         clearHistory();
         const maxId = Math.max(
             0,
@@ -216,8 +237,32 @@ export function usePlayerTracks(
         nextEventId.current = maxId + 1;
     }, [setState, clearHistory]);
 
+    const recordTrackOverride = useCallback((groupId: string, rows: TrackOverrideRow[]) => {
+        record((draft) => {
+            draft.trackOverrides[groupId] = rows;
+        });
+    }, [record]);
+
+    const handleDeleteTrack = useCallback((groupId: string, trackId: string) => {
+        record((draft) => {
+            const rows = draft.trackOverrides[groupId];
+            if (!rows || rows.length <= 1) return;
+            const deleted = rows.find((r) => r.id === trackId);
+            draft.trackOverrides[groupId] = rows.filter((r) => r.id !== trackId);
+            if (deleted?.eventLayer !== undefined) {
+                const player = draft.players.find((p) => p.id === groupId);
+                if (player) {
+                    player.track.events = player.track.events.filter(
+                        (e) => e.layer !== deleted.eventLayer
+                    );
+                }
+            }
+        });
+    }, [record]);
+
     return {
         players,
+        trackOverrides,
         handleCreateEvent,
         handleDeleteEvents,
         handleDuplicateEvents,
@@ -228,6 +273,8 @@ export function usePlayerTracks(
         handleMoveEvents,
         handleUpdateMeta,
         handleUpdatePlayer,
+        recordTrackOverride,
+        handleDeleteTrack,
         resetPlayers,
         undo,
         redo,

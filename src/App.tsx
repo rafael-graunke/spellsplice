@@ -10,6 +10,7 @@ import type { DeleteItem, DuplicateItem, PasteItem } from './components/nle/NLET
 import type { NLEMoveResult } from './components/nle/hooks/useNLEEventDrag';
 import type { NLETrackGroup, NLETrack } from './components/types/nle';
 import { TrackType } from './components/types/nle';
+import type { TrackOverrideRow } from './components/Timeline/hooks/usePlayerTracks';
 import type { Player } from './components/types/player';
 import type { TrackEvent, EventMeta } from './components/types/event';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -61,7 +62,6 @@ function App() {
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [projectConfig, setProjectConfig] = useState<ProjectConfig>(DEFAULT_PROJECT_CONFIG);
     const [newEventId, setNewEventId] = useState<number | null>(null);
-    const [groupTrackOverrides, setGroupTrackOverrides] = useState<Map<string, NLETrack[]>>(new Map());
     const isFirstPlayersRender = useRef(true);
     const skipDirtyRef = useRef(false);
     const clearAutosaveRef = useRef(false);
@@ -72,6 +72,7 @@ function App() {
 
     const {
         players,
+        trackOverrides,
         handleCreateEvent,
         handleDeleteEvents,
         handleDuplicateEvents,
@@ -81,6 +82,8 @@ function App() {
         handleCommitResize,
         handleMoveEvents,
         handleUpdateMeta,
+        recordTrackOverride,
+        handleDeleteTrack,
         resetPlayers,
         undo,
         redo,
@@ -185,7 +188,7 @@ function App() {
 
     const trackGroups = useMemo((): NLETrackGroup[] => [
         ...players.map((p) => {
-            const override = groupTrackOverrides.get(p.id);
+            const override = trackOverrides[p.id];
             const tracks: NLETrack[] = override
                 ? override.map((t) => ({
                     ...t,
@@ -199,15 +202,15 @@ function App() {
             id: 'video',
             label: 'Video',
             type: TrackType.Video,
-            tracks: groupTrackOverrides.get('video') ?? [{ id: 'video-1', type: TrackType.Video, events: [], isBlocked: false }],
+            tracks: (trackOverrides['video'] ?? [{ id: 'video-1', type: TrackType.Video, isBlocked: false }]).map((t) => ({ ...t, events: [] })),
         },
         {
             id: 'audio',
             label: 'Audio',
             type: TrackType.Audio,
-            tracks: groupTrackOverrides.get('audio') ?? [{ id: 'audio-1', type: TrackType.Audio, events: [], isBlocked: false }],
+            tracks: (trackOverrides['audio'] ?? [{ id: 'audio-1', type: TrackType.Audio, isBlocked: false }]).map((t) => ({ ...t, events: [] })),
         },
-    ], [players, groupTrackOverrides]);
+    ], [players, trackOverrides]);
 
     const trackInfoByTrackId = useMemo(() => {
         const map = new Map<string, { groupId: string; eventLayer: number }>();
@@ -223,19 +226,25 @@ function App() {
         const group = trackGroups.find((g) => g.id === groupId);
         if (!group) return;
         const maxLayer = Math.max(...group.tracks.map((t) => t.eventLayer ?? 0));
-        const newTrack: NLETrack = {
+        const newRow: TrackOverrideRow = {
             id: crypto.randomUUID(),
             type: group.type,
-            events: [],
             isBlocked: false,
             eventLayer: maxLayer + 1,
         };
         const idx = group.tracks.findIndex((t) => t.id === trackId);
         if (idx === -1) return;
-        const newTracks = [...group.tracks];
-        newTracks.splice(position === 'above' ? idx + 1 : idx, 0, newTrack);
-        setGroupTrackOverrides((prev) => new Map(prev).set(groupId, newTracks));
-    }, [trackGroups]);
+        const currentRows: TrackOverrideRow[] = group.tracks.map((t) => ({
+            id: t.id,
+            type: t.type,
+            isBlocked: t.isBlocked,
+            eventLayer: t.eventLayer,
+            isHidden: t.isHidden,
+            isMuted: t.isMuted,
+        }));
+        currentRows.splice(position === 'above' ? idx + 1 : idx, 0, newRow);
+        recordTrackOverride(groupId, currentRows);
+    }, [trackGroups, recordTrackOverride]);
 
     const handleSelectionChange = useCallback((ids: Set<number>) => {
         if (ids.size === 0) {
@@ -426,6 +435,7 @@ function App() {
                             onResizeEnd={handleCommitResize}
                             onSelectionChange={handleSelectionChange}
                             onAddTrack={handleAddTrack}
+                            onDeleteTrack={handleDeleteTrack}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>

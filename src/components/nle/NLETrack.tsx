@@ -59,7 +59,7 @@ export function TrackGroup({ children, label, icon}: TrackGroupProps) {
                     style={{ width: TRACK_GROUP_LABEL_WIDTH }}
                     className={cn(
                         "bg-zinc-800 text-zinc-300 relative flex items-center justify-center text-sm py-2",
-                        "rounded-l-md border-l border-y border-zinc-700"
+                        "rounded-l-md border-l border-y border-zinc-600"
                     )}
                 >
                     {/* measurement element — outside overflow:hidden so clientHeight is unclamped */}
@@ -86,7 +86,7 @@ export function TrackGroup({ children, label, icon}: TrackGroupProps) {
                         )}
                     </div>
                 </div>
-                <div className="flex flex-col-reverse flex-1 bg-zinc-800 overflow-y-auto scrollbar-thin border-y border-l border-zinc-700">
+                <div className="flex flex-col-reverse flex-1 bg-zinc-800 overflow-y-auto scrollbar-thin border-y border-l border-zinc-600">
                     {children}
                 </div>
             </div>
@@ -136,7 +136,7 @@ export function TrackInfo({
             >
                 {`${TRACK_TYPE_PREFIX[type] ?? '?'}${index}`}
             </span>
-            <div className="h-full w-full border-t border-zinc-700 flex items-center justify-end">
+            <div className="h-full w-full border-t border-zinc-600 flex items-center justify-end">
                 <div className="flex items-center gap-1 px-2">
                     {showVisibility && (
                         <button
@@ -195,6 +195,8 @@ interface TrackContentProps {
     canRedo?: boolean;
     onAddTrackAbove?: () => void;
     onAddTrackBelow?: () => void;
+    onDeleteTrack?: () => void;
+    canDeleteTrack?: boolean;
 }
 
 export function TrackContent({
@@ -215,6 +217,8 @@ export function TrackContent({
     canRedo,
     onAddTrackAbove,
     onAddTrackBelow,
+    onDeleteTrack,
+    canDeleteTrack,
 }: TrackContentProps) {
     const innerRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -236,7 +240,7 @@ export function TrackContent({
             <ContextMenuTrigger asChild>
                 <div
                     ref={containerRef}
-                    className="flex-1 overflow-hidden border-t border-zinc-700 relative"
+                    className="flex-1 overflow-hidden border-t border-zinc-600 relative"
                     style={{ height: TRACK_HEIGHT }}
                     onMouseDown={onDeselect ? (e) => { bgDownRef.current = { x: e.clientX, y: e.clientY }; } : undefined}
                     onClick={onDeselect ? (e) => {
@@ -310,6 +314,14 @@ export function TrackContent({
                 <ContextMenuSeparator />
                 <ContextMenuItem onClick={onAddTrackAbove}>Add track above</ContextMenuItem>
                 <ContextMenuItem onClick={onAddTrackBelow}>Add track below</ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                    disabled={!canDeleteTrack}
+                    onClick={onDeleteTrack}
+                    className="text-destructive focus:text-destructive"
+                >
+                    Delete track
+                </ContextMenuItem>
             </ContextMenuContent>
         </ContextMenu>
     );
@@ -351,6 +363,8 @@ interface TrackProps {
     canRedo?: boolean;
     onAddTrackAbove?: () => void;
     onAddTrackBelow?: () => void;
+    onDeleteTrack?: () => void;
+    canDeleteTrack?: boolean;
 }
 
 export function Track({
@@ -388,6 +402,8 @@ export function Track({
     canRedo,
     onAddTrackAbove,
     onAddTrackBelow,
+    onDeleteTrack,
+    canDeleteTrack,
 }: TrackProps) {
     const isEventTrack = track.type === TrackType.Event;
     const showEvents = isEventTrack && !track.isBlocked && !track.isHidden && events && events.length > 0;
@@ -421,6 +437,8 @@ export function Track({
                 canRedo={canRedo}
                 onAddTrackAbove={onAddTrackAbove}
                 onAddTrackBelow={onAddTrackBelow}
+                onDeleteTrack={onDeleteTrack}
+                canDeleteTrack={canDeleteTrack}
             >
                 {showEvents && events.map((event) => (
                     <NLEEvent

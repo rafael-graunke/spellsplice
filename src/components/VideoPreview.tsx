@@ -94,7 +94,7 @@ function VideoPreview({
         const targetTime = clip.sourceOffset + (t - clip.time);
         el.currentTime = targetTime;
         if (play) {
-            el.play();
+            el.play()?.catch((e: Error) => { if (e.name !== 'AbortError') throw e; });
         } else {
             el.pause();
             if (el instanceof HTMLVideoElement) {
@@ -271,6 +271,12 @@ function VideoPreview({
     useEffect(() => {
         if (!isPlaying) return;
 
+        // If playback starts at end of timeline (e.g. after reaching duration), restart from 0.
+        if (currentTimeRef.current >= durationRef.current) {
+            currentTimeRef.current = 0;
+            setCurrentTime(0);
+        }
+
         let handle: number;
         let lastTs = performance.now();
         let lastSetTime = 0;
@@ -314,6 +320,24 @@ function VideoPreview({
                         outputTimeAtStart: t,
                         sourceTimeAtStart: activeVideoClip.sourceOffset + (t - activeVideoClip.time),
                     };
+                    // Forward seeks leave videoEl.currentTime briefly at the old position,
+                    // causing a transient clock dip that can push audio out of sync. Resync
+                    // audio to the current output time so any drift is corrected immediately.
+                    const syncAudioClip = getActiveAudioClip(t);
+                    const syncAudioEl = syncAudioClip
+                        ? sourceAudioEls.current.get(syncAudioClip.sourceId)
+                        : null;
+                    if (syncAudioClip && syncAudioEl) {
+                        seekSourceEl(syncAudioEl, syncAudioClip, t, true);
+                        audioPlaybackSnapshotRef.current = {
+                            clipId: syncAudioClip.id,
+                            clipTimeAtStart: syncAudioClip.time,
+                            outputTimeAtStart: t,
+                            sourceTimeAtStart: syncAudioClip.sourceOffset + (t - syncAudioClip.time),
+                        };
+                        activeAudioClipIdRef.current = syncAudioClip.id;
+                        activeAudioSourceIdRef.current = syncAudioClip.sourceId;
+                    }
                 }
             }
 
@@ -359,7 +383,12 @@ function VideoPreview({
             let next: number;
             const snap = clipPlaybackSnapshotRef.current;
             if (videoEl && !videoEl.paused && snap) {
-                next = snap.outputTimeAtStart + (videoEl.currentTime - snap.sourceTimeAtStart);
+                const snapNext = snap.outputTimeAtStart + (videoEl.currentTime - snap.sourceTimeAtStart);
+                // If video element hasn't finished seeking yet, currentTime is still at the old
+                // position, making snapNext go backward. Fall back to wall clock until it catches up.
+                next = snapNext >= t
+                    ? Math.min(snapNext, durationRef.current)
+                    : Math.min(t + (ts - lastTs) / 1000, durationRef.current);
             } else {
                 next = Math.min(t + (ts - lastTs) / 1000, durationRef.current);
             }

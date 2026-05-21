@@ -133,6 +133,11 @@ export function useNLEElementDrag(
     const audioTracksRef = useRef(audioTracks);
     audioTracksRef.current = audioTracks;
 
+    const onMoveEventsRef = useRef(onMoveEvents);
+    onMoveEventsRef.current = onMoveEvents;
+    const onMoveClipsRef = useRef(onMoveClips);
+    onMoveClipsRef.current = onMoveClips;
+
     const stopAutoScroll = () => {
         scrollSpeedXRef.current = 0;
         if (scrollRafRef.current) {
@@ -307,6 +312,9 @@ export function useNLEElementDrag(
 
             const zoom = zoomRef.current;
             const deltaTime = rawDeltaX / zoom;
+            const allElements = [drag.primary, ...drag.companions];
+            const minStartTime = Math.min(...allElements.map((el) => el.startTime));
+            const clampedDeltaTime = Math.max(deltaTime, -minStartTime);
 
             if (!isDragging()) {
                 const eventIds = new Set<number>();
@@ -321,30 +329,44 @@ export function useNLEElementDrag(
                 setDraggingClipIds(clipIds);
             }
 
-            let newPrimaryIndex = drag.primaryTrackIndex;
+            let newPrimaryIndex: number;
             let primaryTargetTrack: NLETrack | undefined;
+            let indexDelta: number;
 
             if (drag.primary.kind === 'event') {
-                newPrimaryIndex = findTargetTrackIndex(eventTracksRef.current, trackElsRef.current, e.clientY);
+                const desiredIndex = findTargetTrackIndex(eventTracksRef.current, trackElsRef.current, e.clientY);
+                const rawDelta = desiredIndex - drag.primaryTrackIndex;
+                const companionEventIndices = drag.companions
+                    .filter((c) => c.kind === 'event')
+                    .map((c) => eventTracksRef.current.findIndex((t) => t.id === c.fromTrackId))
+                    .filter((i) => i !== -1);
+                const allIndices = [drag.primaryTrackIndex, ...companionEventIndices];
+                const minIdx = Math.min(...allIndices);
+                const maxIdx = Math.max(...allIndices);
+                const trackCount = eventTracksRef.current.length;
+                indexDelta = Math.max(Math.min(rawDelta, trackCount - 1 - maxIdx), -minIdx);
+                newPrimaryIndex = drag.primaryTrackIndex + indexDelta;
                 primaryTargetTrack = eventTracksRef.current[newPrimaryIndex];
             } else {
-                const tracks = drag.primary.clipType === 'VIDEO' ? videoTracksRef.current : audioTracksRef.current;
-                newPrimaryIndex = findTargetTrackIndex(tracks, trackElsRef.current, e.clientY);
-                primaryTargetTrack = tracks[newPrimaryIndex];
+                newPrimaryIndex = findTargetTrackIndex(
+                    drag.primary.clipType === 'VIDEO' ? videoTracksRef.current : audioTracksRef.current,
+                    trackElsRef.current,
+                    e.clientY,
+                );
+                indexDelta = newPrimaryIndex - drag.primaryTrackIndex;
+                primaryTargetTrack = (drag.primary.clipType === 'VIDEO' ? videoTracksRef.current : audioTracksRef.current)[newPrimaryIndex];
             }
             targetTrackIndexRef.current = newPrimaryIndex;
-
-            const indexDelta = newPrimaryIndex - drag.primaryTrackIndex;
 
             const nextEventGhosts = new Map<string, NLEGhostPos[]>();
             const nextClipGhosts = new Map<string, NLEClipGhostPos[]>();
 
             if (primaryTargetTrack) {
                 if (drag.primary.kind === 'event') {
-                    const newTime = Math.max(0, drag.primary.startTime + deltaTime);
+                    const newTime = drag.primary.startTime + clampedDeltaTime;
                     nextEventGhosts.set(primaryTargetTrack.id, [makeEventGhost(drag.primary, newTime, zoom)]);
                 } else {
-                    const rawTime = Math.max(0, drag.primary.startTime + deltaTime);
+                    const rawTime = Math.max(0, drag.primary.startTime + clampedDeltaTime);
                     const othersOnTarget = (primaryTargetTrack.clips ?? []).filter((c) => c.id !== (drag.primary as ClipElement).id);
                     const clampedTime = clampClipTime(rawTime, drag.primary.duration, othersOnTarget);
                     nextClipGhosts.set(primaryTargetTrack.id, [makeClipGhost(drag.primary, clampedTime, zoom)]);
@@ -356,17 +378,16 @@ export function useNLEElementDrag(
                     let targetTrackId = c.fromTrackId;
                     if (drag.primary.kind === 'event') {
                         const cIdx = eventTracksRef.current.findIndex((t) => t.id === c.fromTrackId);
-                        const newIdx = Math.max(0, Math.min(eventTracksRef.current.length - 1, cIdx + indexDelta));
-                        const cTrack = eventTracksRef.current[newIdx];
+                        const cTrack = eventTracksRef.current[cIdx + indexDelta];
                         if (!cTrack) continue;
                         targetTrackId = cTrack.id;
                     }
-                    const cTime = Math.max(0, c.startTime + deltaTime);
+                    const cTime = c.startTime + clampedDeltaTime;
                     const existing = nextEventGhosts.get(targetTrackId) ?? [];
                     existing.push(makeEventGhost(c, cTime, zoom));
                     nextEventGhosts.set(targetTrackId, existing);
                 } else {
-                    const cTime = Math.max(0, c.startTime + deltaTime);
+                    const cTime = Math.max(0, c.startTime + clampedDeltaTime);
                     const existing = nextClipGhosts.get(c.fromTrackId) ?? [];
                     existing.push(makeClipGhost(c, cTime, zoom));
                     nextClipGhosts.set(c.fromTrackId, existing);
@@ -414,9 +435,24 @@ export function useNLEElementDrag(
                 const scrollDelta = scrollLeftRef.current - drag.startScrollLeft;
                 const deltaX = (e.clientX - drag.startX) + scrollDelta;
                 const deltaTime = deltaX / zoom;
+                const allElements = [drag.primary, ...drag.companions];
+                const minStartTime = Math.min(...allElements.map((el) => el.startTime));
+                const clampedDeltaTime = Math.max(deltaTime, -minStartTime);
 
                 const newPrimaryIndex = targetTrackIndexRef.current;
-                const indexDelta = newPrimaryIndex - drag.primaryTrackIndex;
+                let indexDelta = newPrimaryIndex - drag.primaryTrackIndex;
+
+                if (drag.primary.kind === 'event') {
+                    const companionEventIndices = drag.companions
+                        .filter((c) => c.kind === 'event')
+                        .map((c) => eventTracksRef.current.findIndex((t) => t.id === c.fromTrackId))
+                        .filter((i) => i !== -1);
+                    const allIndices = [drag.primaryTrackIndex, ...companionEventIndices];
+                    const minIdx = Math.min(...allIndices);
+                    const maxIdx = Math.max(...allIndices);
+                    const trackCount = eventTracksRef.current.length;
+                    indexDelta = Math.max(Math.min(indexDelta, trackCount - 1 - maxIdx), -minIdx);
+                }
 
                 const eventMoves: NLEMoveResult[] = [];
                 const clipMoves: ClipMoveResult[] = [];
@@ -428,14 +464,14 @@ export function useNLEElementDrag(
                             fromTrackId: drag.primary.fromTrackId,
                             toTrackId: primaryTrack.id,
                             eventId: drag.primary.id,
-                            newTime: Math.max(0, drag.primary.startTime + deltaTime),
+                            newTime: drag.primary.startTime + clampedDeltaTime,
                         });
                     }
                 } else {
                     const tracks = drag.primary.clipType === 'VIDEO' ? videoTracksRef.current : audioTracksRef.current;
                     const primaryTrack = tracks[newPrimaryIndex];
                     if (primaryTrack) {
-                        const rawTime = Math.max(0, drag.primary.startTime + deltaTime);
+                        const rawTime = Math.max(0, drag.primary.startTime + clampedDeltaTime);
                         const othersOnTarget = (primaryTrack.clips ?? []).filter((c) => c.id !== (drag.primary as ClipElement).id);
                         const clampedTime = clampClipTime(rawTime, drag.primary.duration, othersOnTarget);
                         clipMoves.push({
@@ -452,8 +488,7 @@ export function useNLEElementDrag(
                         let toTrackId = c.fromTrackId;
                         if (drag.primary.kind === 'event') {
                             const cIdx = eventTracksRef.current.findIndex((t) => t.id === c.fromTrackId);
-                            const newIdx = Math.max(0, Math.min(eventTracksRef.current.length - 1, cIdx + indexDelta));
-                            const cTrack = eventTracksRef.current[newIdx];
+                            const cTrack = eventTracksRef.current[cIdx + indexDelta];
                             if (!cTrack) continue;
                             toTrackId = cTrack.id;
                         }
@@ -461,20 +496,20 @@ export function useNLEElementDrag(
                             fromTrackId: c.fromTrackId,
                             toTrackId,
                             eventId: c.id,
-                            newTime: Math.max(0, c.startTime + deltaTime),
+                            newTime: c.startTime + clampedDeltaTime,
                         });
                     } else {
                         clipMoves.push({
                             clipId: c.id,
                             fromTrackId: c.fromTrackId,
                             toTrackId: c.fromTrackId,
-                            newTime: Math.max(0, c.startTime + deltaTime),
+                            newTime: Math.max(0, c.startTime + clampedDeltaTime),
                         });
                     }
                 }
 
-                if (eventMoves.length > 0) onMoveEvents(eventMoves);
-                if (clipMoves.length > 0) onMoveClips(clipMoves);
+                if (eventMoves.length > 0) onMoveEventsRef.current(eventMoves);
+                if (clipMoves.length > 0) onMoveClipsRef.current(clipMoves);
             }
 
             moveDragRef.current = null;

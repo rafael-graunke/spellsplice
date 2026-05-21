@@ -32,6 +32,7 @@ import type { MediaSource } from './components/types/source';
 type PlayerInit = Omit<Player, 'track'>;
 
 const AUTOSAVE_KEY = 'spellsplice-autosave';
+const DEFAULT_DURATION = 120;
 
 const initialPlayers: PlayerInit[] = [
     { id: 'player1', name: 'Player 1', handSize: 0, lifeTotal: 20, wins: 0, cards: [], topStack: []},
@@ -41,11 +42,19 @@ const initialPlayers: PlayerInit[] = [
 const makeFreshPlayers = (): Player[] =>
     initialPlayers.map((p) => ({ ...p, track: { id: p.id, layers: 4, events: [] } }));
 
-function loadSavedPlayers(): Player[] | undefined {
+type SavedState = {
+    players: Player[];
+    clipsByTrack: Record<string, import('./components/types/clip').Clip[]>;
+    trackOverrides: Record<string, TrackOverrideRow[]>;
+};
+
+function loadSavedState(): SavedState | undefined {
     try {
         const raw = localStorage.getItem(AUTOSAVE_KEY);
         if (!raw) return undefined;
-        return JSON.parse(raw) as Player[];
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return { players: parsed, clipsByTrack: {}, trackOverrides: {} };
+        return parsed as SavedState;
     } catch {
         return undefined;
     }
@@ -69,7 +78,7 @@ function App() {
     const currentTimeRef = useRef(0);
 
     useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
-    const [savedPlayersInit] = useState(loadSavedPlayers);
+    const [savedStateInit] = useState(loadSavedState);
 
     const {
         players,
@@ -96,7 +105,7 @@ function App() {
         redo,
         canUndo,
         canRedo,
-    } = usePlayerTracks(initialPlayers, currentTimeRef, setSelectedEvents, savedPlayersInit);
+    } = usePlayerTracks(initialPlayers, currentTimeRef, setSelectedEvents, savedStateInit?.players, savedStateInit?.clipsByTrack, savedStateInit?.trackOverrides);
 
     useEffect(() => {
         const handler = (e: BeforeUnloadEvent) => {
@@ -117,12 +126,12 @@ function App() {
             clearAutosaveRef.current = false;
             localStorage.removeItem(AUTOSAVE_KEY);
         } else {
-            localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(players));
+            localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ players, clipsByTrack, trackOverrides }));
         }
         if (isDirty) return;
         if (skipDirtyRef.current) { skipDirtyRef.current = false; return; }
         setIsDirty(true);
-    }, [players]);
+    }, [players, clipsByTrack, trackOverrides]);
 
     const isFirstConfigRender = useRef(true);
     useEffect(() => {
@@ -145,8 +154,13 @@ function App() {
     const projectConfigRef = useRef(projectConfig);
     projectConfigRef.current = projectConfig;
 
+    const clipsByTrackRef = useRef(clipsByTrack);
+    clipsByTrackRef.current = clipsByTrack;
+    const trackOverridesRef = useRef(trackOverrides);
+    trackOverridesRef.current = trackOverrides;
+
     const handleExport = useCallback(async () => {
-        await exportProject(playersRef.current, videoRef.current, projectConfigRef.current);
+        await exportProject(playersRef.current, videoRef.current, projectConfigRef.current, clipsByTrackRef.current, trackOverridesRef.current);
         setIsDirty(false);
     }, []);
 
@@ -155,7 +169,7 @@ function App() {
         skipDirtyRef.current = true;
         clearAutosaveRef.current = true;
         isFirstConfigRender.current = true;
-        resetPlayers(manifest.players);
+        resetPlayers(manifest.players, manifest.clipsByTrack ?? {}, manifest.trackOverrides ?? {});
 
         setSelectedEvents([]);
         setCurrentTime(0);
@@ -390,7 +404,7 @@ function App() {
             ...videoClips.map((c) => c.time + c.duration),
             ...audioClips.map((c) => c.time + c.duration),
         );
-        return clipEnd > 0 ? clipEnd : (video?.duration ?? 30);
+        return clipEnd > 0 ? clipEnd : (video?.duration ?? DEFAULT_DURATION);
     }, [videoClips, audioClips, video]);
 
     const handleNLEMove = useCallback((moves: NLEMoveResult[]) => {

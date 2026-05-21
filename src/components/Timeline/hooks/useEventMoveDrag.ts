@@ -31,6 +31,7 @@ interface MoveDragState {
     startX: number;
     startLayer: number;
     startScrollLeft: number;
+    totalLayers: number;
 }
 
 type MoveResult = {
@@ -131,6 +132,7 @@ export function useEventMoveDrag(
             startX: e.clientX,
             startLayer: sourceLayer,
             startScrollLeft: scrollContainerRef.current?.scrollLeft ?? 0,
+            totalLayers: selectedPlayer?.track.layers ?? 4,
         };
 
         const zoom = zoomRef.current!;
@@ -157,16 +159,28 @@ export function useEventMoveDrag(
             const deltaTime = deltaX / zoom;
 
             const yInInner = e.clientY - rect.top;
-            const primaryLayer = Math.max(0, Math.floor(yInInner / TRACK_HEIGHT));
-            const layerDelta = primaryLayer - drag.startLayer;
+            const rawLayerDelta = Math.floor(yInInner / TRACK_HEIGHT) - drag.startLayer;
 
-            const newTime = Math.max(0, drag.primary.startTime + deltaTime);
+            const allElements = [drag.primary, ...drag.companions];
+            const minStartTime = Math.min(...allElements.map((e) => e.startTime));
+            const clampedDeltaTime = Math.max(deltaTime, -minStartTime);
+
+            const allSourceLayers = allElements.map((e) => e.sourceLayer);
+            const minSourceLayer = Math.min(...allSourceLayers);
+            const maxSourceLayer = Math.max(...allSourceLayers);
+            const clampedLayerDelta = Math.max(
+                Math.min(rawLayerDelta, drag.totalLayers - 1 - maxSourceLayer),
+                -minSourceLayer,
+            );
+
+            const primaryLayer = drag.primary.sourceLayer + clampedLayerDelta;
+            const newTime = drag.primary.startTime + clampedDeltaTime;
 
             const ghosts = [
                 makeGhost(drag.primary, newTime, primaryLayer, zoom),
                 ...drag.companions.map((c) => {
-                    const cLayer = Math.max(0, c.sourceLayer + layerDelta);
-                    return makeGhost(c, Math.max(0, c.startTime + deltaTime), cLayer, zoom);
+                    const cLayer = c.sourceLayer + clampedLayerDelta;
+                    return makeGhost(c, c.startTime + clampedDeltaTime, cLayer, zoom);
                 }),
             ];
             setGhostPositions(ghosts);
@@ -230,21 +244,34 @@ export function useEventMoveDrag(
             const deltaTime = deltaX / zoom;
 
             const yInInner = e.clientY - rect.top;
-            const primaryLayer = Math.max(0, Math.floor(yInInner / TRACK_HEIGHT));
-            const layerDelta = primaryLayer - drag.startLayer;
+            const rawLayerDelta = Math.floor(yInInner / TRACK_HEIGHT) - drag.startLayer;
+
+            const allElements = [drag.primary, ...drag.companions];
+            const minStartTime = Math.min(...allElements.map((e) => e.startTime));
+            const clampedDeltaTime = Math.max(deltaTime, -minStartTime);
+
+            const allSourceLayers = allElements.map((e) => e.sourceLayer);
+            const minSourceLayer = Math.min(...allSourceLayers);
+            const maxSourceLayer = Math.max(...allSourceLayers);
+            const clampedLayerDelta = Math.max(
+                Math.min(rawLayerDelta, drag.totalLayers - 1 - maxSourceLayer),
+                -minSourceLayer,
+            );
+
+            const primaryLayer = drag.primary.sourceLayer + clampedLayerDelta;
 
             onMoveEvents([
                 {
                     playerId: drag.primary.sourcePlayerId,
                     eventId: drag.primary.eventId,
-                    newTime: Math.max(0, drag.primary.startTime + deltaTime),
+                    newTime: drag.primary.startTime + clampedDeltaTime,
                     newLayer: primaryLayer,
                 },
                 ...drag.companions.map((c) => ({
                     playerId: c.sourcePlayerId,
                     eventId: c.eventId,
-                    newTime: Math.max(0, c.startTime + deltaTime),
-                    newLayer: Math.max(0, c.sourceLayer + layerDelta),
+                    newTime: c.startTime + clampedDeltaTime,
+                    newLayer: c.sourceLayer + clampedLayerDelta,
                 })),
             ]);
 

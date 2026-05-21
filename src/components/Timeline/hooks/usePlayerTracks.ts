@@ -49,7 +49,9 @@ export function usePlayerTracks(
     initialPlayers: PlayerInit[],
     currentTimeRef: React.RefObject<number>,
     setSelectedEvents: React.Dispatch<React.SetStateAction<TrackEvent[]>>,
-    savedPlayers?: Player[]
+    savedPlayers?: Player[],
+    savedClipsByTrack?: Record<string, Clip[]>,
+    savedTrackOverrides?: Record<string, TrackOverrideRow[]>,
 ) {
     const initialState: TracksState = {
         players: savedPlayers ??
@@ -57,8 +59,8 @@ export function usePlayerTracks(
                 ...p,
                 track: { id: p.id, layers: 4, events: [] },
             })),
-        trackOverrides: {},
-        clipsByTrack: {},
+        trackOverrides: savedTrackOverrides ?? {},
+        clipsByTrack: savedClipsByTrack ?? {},
     };
 
     const {
@@ -283,8 +285,12 @@ export function usePlayerTracks(
         });
     }, [record]);
 
-    const resetPlayers = useCallback((incoming: Player[]) => {
-        setState({ players: incoming, trackOverrides: {}, clipsByTrack: {} });
+    const resetPlayers = useCallback((
+        incoming: Player[],
+        clipsByTrack: Record<string, Clip[]> = {},
+        trackOverrides: Record<string, TrackOverrideRow[]> = {},
+    ) => {
+        setState({ players: incoming, trackOverrides, clipsByTrack });
         clearHistory();
         const maxId = Math.max(
             0,

@@ -529,6 +529,7 @@ export function Track({
                         key={clip.id}
                         clip={clip}
                         sourceName={sourceNameMap?.get(clip.sourceId) ?? clip.sourceId}
+                        sourceMissing={sourceNameMap !== undefined && !sourceNameMap.has(clip.sourceId)}
                         zoom={zoom}
                         isSelected={selectedClipIds?.has(clip.id) ?? false}
                         isBeingDragged={draggingClipIds?.has(clip.id) ?? false}

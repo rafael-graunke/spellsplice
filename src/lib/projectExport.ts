@@ -2,6 +2,8 @@ import JSZip from 'jszip';
 import type { Player } from '@/components/types/player';
 import type { VideoState } from '@/components/types/video';
 import type { ProjectConfig } from '@/components/types/config';
+import type { Clip } from '@/components/types/clip';
+import type { TrackOverrideRow } from '@/components/Timeline/hooks/usePlayerTracks';
 import { cardDataCache, restoreCardDataCache } from './cardCache';
 
 export interface ProjectExport {
@@ -13,9 +15,17 @@ export interface ProjectExport {
     };
     players: Player[];
     config?: ProjectConfig;
+    clipsByTrack?: Record<string, Clip[]>;
+    trackOverrides?: Record<string, TrackOverrideRow[]>;
 }
 
-export async function exportProject(players: Player[], video: VideoState | null, config: ProjectConfig) {
+export async function exportProject(
+    players: Player[],
+    video: VideoState | null,
+    config: ProjectConfig,
+    clipsByTrack: Record<string, Clip[]>,
+    trackOverrides: Record<string, TrackOverrideRow[]>,
+) {
     const zip = new JSZip();
 
     const manifest: ProjectExport = {
@@ -23,6 +33,8 @@ export async function exportProject(players: Player[], video: VideoState | null,
         createdAt: new Date().toISOString(),
         players,
         config,
+        clipsByTrack,
+        trackOverrides,
         ...(video && { video: { filename: video.file.name, duration: video.duration } }),
     };
 

@@ -14,6 +14,7 @@ const CLICK_THRESHOLD = 4;
 interface NLEClipProps {
     clip: Clip;
     sourceName: string;
+    sourceMissing?: boolean;
     zoom: number;
     isSelected: boolean;
     isBeingDragged: boolean;
@@ -22,16 +23,18 @@ interface NLEClipProps {
     onDelete?: () => void;
 }
 
-export function NLEClip({ clip, sourceName, zoom, isSelected, isBeingDragged, onMouseDown, onSelect, onDelete }: NLEClipProps) {
+export function NLEClip({ clip, sourceName, sourceMissing, zoom, isSelected, isBeingDragged, onMouseDown, onSelect, onDelete }: NLEClipProps) {
     return (
         <ContextMenu>
             <ContextMenuTrigger asChild>
                 <div
                     className={cn(
                         'absolute cursor-grab active:cursor-grabbing overflow-hidden h-[calc(100%-6px)] top-1/2 -translate-y-1/2 rounded-sm select-none',
-                        ClipColorMap[clip.type],
+                        sourceMissing
+                            ? 'bg-red-950/80 border border-red-500'
+                            : ClipColorMap[clip.type],
                         isBeingDragged && 'opacity-0',
-                        isSelected && 'ring-2 ring-white ring-inset',
+                        isSelected && (sourceMissing ? 'ring-2 ring-red-400 ring-inset' : 'ring-2 ring-white ring-inset'),
                     )}
                     style={{ left: clip.time * zoom, width: clip.duration * zoom }}
                     onMouseDown={(e) => {
@@ -47,8 +50,11 @@ export function NLEClip({ clip, sourceName, zoom, isSelected, isBeingDragged, on
                         onMouseDown(e);
                     }}
                 >
-                    <span className="absolute inset-0 flex items-center px-2 text-xs text-white/90 truncate pointer-events-none">
-                        {sourceName}
+                    <span className={cn(
+                        'absolute inset-0 flex items-center px-2 text-xs truncate pointer-events-none',
+                        sourceMissing ? 'text-red-300' : 'text-white/90',
+                    )}>
+                        {sourceMissing ? 'Source for clip not found. Please relink the source.' : sourceName}
                     </span>
                 </div>
             </ContextMenuTrigger>

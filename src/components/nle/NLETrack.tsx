@@ -35,9 +35,11 @@ interface TrackGroupProps {
     children: ReactNode;
     label: string;
     icon?: SvgIcon;
+    isTarget?: boolean;
+    onSelect?: () => void;
 }
 
-export function TrackGroup({ children, label, icon}: TrackGroupProps) {
+export function TrackGroup({ children, label, icon, isTarget, onSelect }: TrackGroupProps) {
     const innerRef = useRef<HTMLDivElement>(null);
     const measureRef = useRef<HTMLParagraphElement>(null);
     const [overflows, setOverflows] = useState(false);
@@ -61,11 +63,19 @@ export function TrackGroup({ children, label, icon}: TrackGroupProps) {
                     style={{ width: TRACK_GROUP_LABEL_WIDTH }}
                     className={cn(
                         "bg-zinc-800 text-zinc-300 relative flex items-center justify-center text-sm py-2",
-                        "rounded-l-md border-l border-y border-zinc-600"
+                        "rounded-l-md border",
+                        isTarget ? "border-zinc-200 border-2" : "border-zinc-600",
+                        onSelect && "cursor-pointer",
                     )}
+                    onClick={onSelect}
                 >
                     {/* measurement element — outside overflow:hidden so clientHeight is unclamped */}
-                    <p ref={measureRef} aria-hidden className="absolute invisible whitespace-nowrap [writing-mode:sideways-lr]">{label}</p>
+                    <p ref={measureRef} aria-hidden className={
+                        cn(
+                            "absolute invisible whitespace-nowrap [writing-mode:sideways-lr]",
+                            isTarget ? "font-bold" : "font-thin"
+                        )}
+                    >{label}</p>
                     {/* inner wrapper lives inside the padding area; clientHeight = usable space */}
                     <div ref={innerRef} className="h-full w-full overflow-hidden flex items-center justify-center">
                         {overflows ? (
@@ -74,7 +84,7 @@ export function TrackGroup({ children, label, icon}: TrackGroupProps) {
                                     <Tooltip>
                                         <TooltipTrigger asChild>
                                             <span className="flex items-center justify-center">
-                                                <Icon className="size-4" />
+                                                <Icon className={cn("size-4", isTarget ? "stroke-3" : "")} />
                                             </span>
                                         </TooltipTrigger>
                                         <TooltipContent side="right">{label}</TooltipContent>
@@ -84,11 +94,16 @@ export function TrackGroup({ children, label, icon}: TrackGroupProps) {
                                 <></>
                             )
                         ) : (
-                            <p className="whitespace-nowrap [writing-mode:sideways-lr] h-full text-center">{label}</p>
+                            <p className={
+                                cn(
+                            "whitespace-nowrap [writing-mode:sideways-lr]",
+                            isTarget ? "font-bold" : ""
+                        )
+                            }>{label}</p>
                         )}
                     </div>
                 </div>
-                <div className="flex flex-col-reverse flex-1 bg-zinc-800 overflow-y-auto scrollbar-thin border-y border-l border-zinc-600">
+                <div className="flex flex-col-reverse flex-1 bg-zinc-800 overflow-y-auto scrollbar-thin border-y border-zinc-600">
                     {children}
                 </div>
             </div>

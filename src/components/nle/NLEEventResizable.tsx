@@ -54,7 +54,7 @@ export function NLEEventResizable({
             onClick={onClick}
             data-testid={dataTestId}
         >
-            {Icon && <Icon className="absolute fill-white size-7 left-3 top-1/2 -translate-y-1/2" />}
+            {Icon && <Icon className="absolute fill-white size-5 left-3 top-1/2 -translate-y-1/2" />}
             <div
                 className="absolute cursor-col-resize h-full w-2 bg-white/30 left-0"
                 onMouseDown={onResizeLeftDown}

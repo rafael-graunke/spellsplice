@@ -28,6 +28,7 @@ import {
     TRACK_HEIGHT,
 } from '../Timeline/constants';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../ui/resizable';
+import type { PanelImperativeHandle } from 'react-resizable-panels';
 import {
     Command,
     CommandDialog,
@@ -74,6 +75,9 @@ function NLECreateDialog({ open, onOpenChange, setIsPlaying, onCreateEvent }: NL
                     <CommandGroup heading="Player Actions">
                         <CommandItem onSelect={() => handleSelect({ type: EventType.AddToHand, duration: 1 })}>
                             Draw
+                        </CommandItem>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.RemoveFromHand })}>
+                            Play
                         </CommandItem>
                         <CommandItem onSelect={() => handleSelect({ type: EventType.RemoveFromHand })}>
                             Discard
@@ -348,6 +352,43 @@ export function NLETimeline({
 
     useEffect(() => { updateCursorPosition(); }, [updateCursorPosition]);
 
+    // Target player state — which Event group receives Ctrl+K events
+    const [targetGroupId, setTargetGroupId] = useState<string | undefined>(undefined);
+    useEffect(() => {
+        const first = trackGroups.find((g) => g.type === TrackType.Event);
+        if (first && !targetGroupId) setTargetGroupId(first.id);
+    }, [trackGroups, targetGroupId]);
+
+    const targetGroupIdRef = useRef(targetGroupId);
+    targetGroupIdRef.current = targetGroupId;
+    const trackGroupsRef = useRef(trackGroups);
+    trackGroupsRef.current = trackGroups;
+    const panelHandlesRef = useRef<Map<string, PanelImperativeHandle>>(new Map());
+
+    // Target gets 70% of event-panel space; non-targets share 30% equally.
+    // Uses per-panel resize() so no `id` prop needed on panels (avoids library handle mapping bugs).
+    const applyFocusLayout = useCallback((newTargetId: string) => {
+        const groups = trackGroupsRef.current;
+        const handles = panelHandlesRef.current;
+        const eventGroups = groups.filter((g) => g.type === TrackType.Event);
+        const nonEventGroups = groups.filter((g) => g.type !== TrackType.Event);
+
+        // Measure current non-event sizes to compute remaining event space
+        const nonEventTotal = nonEventGroups.reduce((sum, g) => {
+            const pct = handles.get(g.id)?.getSize().asPercentage ?? (100 / groups.length);
+            return sum + pct;
+        }, 0);
+
+        const eventSpace = 100 - nonEventTotal;
+        const nonTargetCount = eventGroups.length - 1;
+        const targetPct = eventSpace * 0.7;
+        const otherPct = nonTargetCount > 0 ? (eventSpace * 0.3) / nonTargetCount : 0;
+
+        for (const g of eventGroups) {
+            handles.get(g.id)?.resize(`${g.id === newTargetId ? targetPct : otherPct}%`);
+        }
+    }, []);
+
     // Copy / paste state
     const [copiedItems, setCopiedItems] = useState<PasteItem[]>([]);
 
@@ -356,6 +397,24 @@ export function NLETimeline({
     const [createTrackId, setCreateTrackId] = useState<string | undefined>(undefined);
     const createTimeRef = useRef<number | undefined>(undefined);
     const pendingSelectRef = useRef<number[]>([]);
+
+    // TAB cycles target player forward; Shift+TAB backward
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (e.key !== 'Tab' || createOpen) return;
+            const active = document.activeElement;
+            if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || (active instanceof HTMLElement && active.isContentEditable)) return;
+            e.preventDefault();
+            const eventGroups = trackGroups.filter((g) => g.type === TrackType.Event);
+            if (eventGroups.length === 0) return;
+            const cur = eventGroups.findIndex((g) => g.id === targetGroupId);
+            const next = eventGroups[(cur + (e.shiftKey ? eventGroups.length - 1 : 1)) % eventGroups.length];
+            setTargetGroupId(next.id);
+            applyFocusLayout(next.id);
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [trackGroups, targetGroupId, createOpen]);
 
     // After a duplicate/paste render, select the newly created events before paint
     useLayoutEffect(() => {
@@ -421,13 +480,16 @@ export function NLETimeline({
     const handleCreateOpenChange = useCallback((open: boolean) => {
         if (open) {
             createTimeRef.current = undefined;
-            if (!createTrackId) setCreateTrackId(eventTracks[0]?.id);
+            if (!createTrackId) {
+                const targetGroup = trackGroupsRef.current.find((g) => g.id === targetGroupIdRef.current);
+                setCreateTrackId(targetGroup?.tracks[0]?.id ?? eventTracksRef.current[0]?.id);
+            }
         } else {
             createTimeRef.current = undefined;
             setCreateTrackId(undefined);
         }
         setCreateOpen(open);
-    }, [createTrackId, eventTracks]);
+    }, [createTrackId]);
 
     const handleOpenCreateDialog = useCallback((trackId: string, time: number) => {
         setCreateTrackId(trackId);
@@ -541,10 +603,22 @@ export function NLETimeline({
                                 key={group.id}
                                 defaultSize={100 / trackGroups.length}
                                 className="overflow-y-auto"
-                                minSize={TRACK_HEIGHT + 1}
+                                minSize={TRACK_HEIGHT + 2}
                                 groupResizeBehavior={group.type === TrackType.Event ? 'preserve-relative-size' : 'preserve-pixel-size'}
+                                panelRef={(h) => {
+                                    if (h) panelHandlesRef.current.set(group.id, h);
+                                    else panelHandlesRef.current.delete(group.id);
+                                }}
                             >
-                                <TrackGroup icon={TrackTypeIconMap[group.type]} label={group.label} >
+                                <TrackGroup
+                                    icon={TrackTypeIconMap[group.type]}
+                                    label={group.label}
+                                    isTarget={group.id === targetGroupId}
+                                    onSelect={group.type === TrackType.Event ? () => {
+                                        setTargetGroupId(group.id);
+                                        applyFocusLayout(group.id);
+                                    } : undefined}
+                                >
                                     {group.tracks.map((track, i) => {
                                         const index = group.tracks.slice(0, i + 1).length;
                                         return (

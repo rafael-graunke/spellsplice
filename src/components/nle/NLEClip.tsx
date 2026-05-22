@@ -40,32 +40,36 @@ export function NLEClip({ clip, sourceName, sourceMissing, zoom, isSelected, isB
         const { peaks, duration: srcDuration } = waveformData;
         if (srcDuration <= 0 || peaks.length === 0) return;
 
-        const w = Math.max(1, Math.floor(clip.duration * zoom));
-        const h = CLIP_CANVAS_HEIGHT;
-        canvas.width = w;
-        canvas.height = h;
+        const timer = setTimeout(() => {
+            const w = Math.max(1, Math.floor(clip.duration * zoom));
+            const h = CLIP_CANVAS_HEIGHT;
+            canvas.width = w;
+            canvas.height = h;
 
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        ctx.clearRect(0, 0, w, h);
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+            ctx.clearRect(0, 0, w, h);
 
-        const peaksPerSec = peaks.length / srcDuration;
-        const startIdx = clip.sourceOffset * peaksPerSec;
-        const totalPeaks = clip.duration * peaksPerSec;
+            const peaksPerSec = peaks.length / srcDuration;
+            const startIdx = clip.sourceOffset * peaksPerSec;
+            const totalPeaks = clip.duration * peaksPerSec;
 
-        ctx.fillStyle = 'rgba(255,255,255,0.55)';
-        ctx.beginPath();
-        const centerY = h / 2;
-        for (let x = 0; x < w; x++) {
-            const peakIdx = Math.min(
-                Math.floor(startIdx + (x / w) * totalPeaks),
-                peaks.length - 1,
-            );
-            const peak = peaks[peakIdx] ?? 0;
-            const barH = Math.max(2, peak * h - 4);
-            ctx.rect(x, centerY - barH / 2, 1, barH);
-        }
-        ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,0.55)';
+            ctx.beginPath();
+            const centerY = h / 2;
+            for (let x = 0; x < w; x++) {
+                const peakIdx = Math.min(
+                    Math.floor(startIdx + (x / w) * totalPeaks),
+                    peaks.length - 1,
+                );
+                const peak = peaks[peakIdx] ?? 0;
+                const barH = Math.max(2, peak * h - 4);
+                ctx.rect(x, centerY - barH / 2, 1, barH);
+            }
+            ctx.fill();
+        }, 80);
+
+        return () => clearTimeout(timer);
     }, [waveformData, clip.sourceOffset, clip.duration, zoom]);
 
     return (

@@ -5,4 +5,5 @@ export interface MediaSource {
     duration: number;
     file: File;
     thumbnailUrl?: string;
+    loading?: boolean;
 }

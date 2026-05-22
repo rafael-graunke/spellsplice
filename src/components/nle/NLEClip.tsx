@@ -1,15 +1,21 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { ClipColorMap } from '../types/clip';
+import { ClipColorMap, ClipType } from '../types/clip';
 import type { Clip } from '../types/clip';
+import type { WaveformData } from '@/hooks/useWaveformPeaks';
+import type { ClipThumbnails } from '@/hooks/useVideoThumbnails';
 import {
     ContextMenu,
     ContextMenuContent,
     ContextMenuItem,
     ContextMenuTrigger,
 } from '../ui/context-menu';
+import { TRACK_HEIGHT } from '../Timeline/constants';
 
 const CLICK_THRESHOLD = 4;
+const CLIP_CANVAS_HEIGHT = TRACK_HEIGHT - 6;
+const THUMB_H = CLIP_CANVAS_HEIGHT - 10;
+const THUMB_W = Math.round(THUMB_H * (16 / 9));
 
 interface NLEClipProps {
     clip: Clip;
@@ -21,20 +27,58 @@ interface NLEClipProps {
     onMouseDown: (e: React.MouseEvent) => void;
     onSelect?: (additive: boolean) => void;
     onDelete?: () => void;
+    waveformData?: WaveformData;
+    thumbnails?: ClipThumbnails;
 }
 
-export function NLEClip({ clip, sourceName, sourceMissing, zoom, isSelected, isBeingDragged, onMouseDown, onSelect, onDelete }: NLEClipProps) {
+export function NLEClip({ clip, sourceName, sourceMissing, zoom, isSelected, isBeingDragged, onMouseDown, onSelect, onDelete, waveformData, thumbnails }: NLEClipProps) {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas || !waveformData || clip.type !== ClipType.Audio) return;
+        const { peaks, duration: srcDuration } = waveformData;
+        if (srcDuration <= 0 || peaks.length === 0) return;
+
+        const w = Math.max(1, Math.floor(clip.duration * zoom));
+        const h = CLIP_CANVAS_HEIGHT;
+        canvas.width = w;
+        canvas.height = h;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.clearRect(0, 0, w, h);
+
+        const peaksPerSec = peaks.length / srcDuration;
+        const startIdx = clip.sourceOffset * peaksPerSec;
+        const totalPeaks = clip.duration * peaksPerSec;
+
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.beginPath();
+        const centerY = h / 2;
+        for (let x = 0; x < w; x++) {
+            const peakIdx = Math.min(
+                Math.floor(startIdx + (x / w) * totalPeaks),
+                peaks.length - 1,
+            );
+            const peak = peaks[peakIdx] ?? 0;
+            const barH = Math.max(2, peak * h - 4);
+            ctx.rect(x, centerY - barH / 2, 1, barH);
+        }
+        ctx.fill();
+    }, [waveformData, clip.sourceOffset, clip.duration, zoom]);
+
     return (
         <ContextMenu>
             <ContextMenuTrigger asChild>
                 <div
                     className={cn(
-                        'absolute cursor-grab active:cursor-grabbing overflow-hidden h-[calc(100%-6px)] top-1/2 -translate-y-1/2 rounded-sm select-none',
+                        'absolute cursor-grab border ring-2 ring-inset active:cursor-grabbing overflow-hidden h-[calc(100%-6px)] top-1/2 -translate-y-1/2 rounded-sm select-none',
                         sourceMissing
-                            ? 'bg-red-950/80 border border-red-500'
-                            : ClipColorMap[clip.type],
+                            ? 'bg-red-950/80 border-red-500'
+                            : cn(ClipColorMap[clip.type].bg, ClipColorMap[clip.type].ring),
                         isBeingDragged && 'opacity-0',
-                        isSelected && (sourceMissing ? 'ring-2 ring-red-400 ring-inset' : 'ring-2 ring-white ring-inset'),
+                        isSelected && (sourceMissing ? 'ring-red-400 ring-inset' : 'ring-white '),
                     )}
                     style={{ left: clip.time * zoom, width: clip.duration * zoom }}
                     onMouseDown={(e) => {
@@ -50,6 +94,36 @@ export function NLEClip({ clip, sourceName, sourceMissing, zoom, isSelected, isB
                         onMouseDown(e);
                     }}
                 >
+                    {clip.type === ClipType.Video && (() => {
+                        const clipPx = clip.duration * zoom;
+                        const showStart = clipPx >= THUMB_W;
+                        const showEnd = clipPx >= 2 * THUMB_W;
+                        if (!showStart) return null;
+                        const thumbStyle = { width: THUMB_W - 1, height: THUMB_H };
+                        return (
+                            <>
+                                <div className="absolute left-1 top-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none overflow-hidden" style={thumbStyle}>
+                                    {thumbnails?.start
+                                        ? <img src={thumbnails.start} draggable={false} className="rounded-xs object-cover w-full h-full" />
+                                        : <div className="rounded-xs bg-black/25 w-full h-full" />}
+                                </div>
+                                {showEnd && (
+                                    <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none overflow-hidden" style={thumbStyle}>
+                                        {thumbnails?.end
+                                            ? <img src={thumbnails.end} draggable={false} className="rounded-xs object-cover w-full h-full" />
+                                            : <div className="rounded-xs bg-black/25 w-full h-full" />}
+                                    </div>
+                                )}
+                            </>
+                        );
+                    })()}
+                    {waveformData && clip.type === ClipType.Audio && (
+                        <canvas
+                            ref={canvasRef}
+                            className="absolute inset-0 pointer-events-none"
+                            style={{ width: '100%', height: '100%' }}
+                        />
+                    )}
                     <span className={cn(
                         'absolute inset-0 flex items-center px-2 text-xs truncate pointer-events-none',
                         sourceMissing ? 'text-red-300' : 'text-white/90',

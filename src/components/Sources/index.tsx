@@ -24,6 +24,7 @@ export function Sources({ sources, setSources }: SourcesProps) {
                     type,
                     duration: 0,
                     file,
+                    loading: true,
                 };
                 setSources((prev) => [...prev, source]);
 
@@ -32,7 +33,7 @@ export function Sources({ sources, setSources }: SourcesProps) {
                     type === 'video' ? await generateThumbnail(file).catch(() => undefined) : undefined;
 
                 setSources((prev) =>
-                    prev.map((s) => (s.id === source.id ? { ...s, duration, thumbnailUrl } : s)),
+                    prev.map((s) => (s.id === source.id ? { ...s, duration, thumbnailUrl, loading: false } : s)),
                 );
             }
         },

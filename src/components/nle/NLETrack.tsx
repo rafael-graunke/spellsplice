@@ -1,5 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
+import type { WaveformData } from '@/hooks/useWaveformPeaks';
+import type { ClipThumbnails } from '@/hooks/useVideoThumbnails';
 import { Eye, EyeOff, Lock, Volume2, VolumeOff } from 'lucide-react';
 import type { NLETrack as NLETrackType } from '../types/nle';
 import { TrackType, TrackTypeColorMap } from '../types/nle';
@@ -433,6 +435,8 @@ interface TrackProps {
     onDeleteClip?: (trackId: string, clipId: string) => void;
     onDropSource?: (sourceId: string, time: number) => void;
     acceptSourceType?: 'video' | 'audio';
+    waveformMap?: Map<string, WaveformData>;
+    thumbnailMap?: Map<string, ClipThumbnails>;
 }
 
 export function Track({
@@ -482,6 +486,8 @@ export function Track({
     onDeleteClip,
     onDropSource,
     acceptSourceType,
+    waveformMap,
+    thumbnailMap,
 }: TrackProps) {
     const isEventTrack = track.type === TrackType.Event;
     const showEvents = isEventTrack && !track.isBlocked && !track.isHidden && events && events.length > 0;
@@ -554,6 +560,8 @@ export function Track({
                         }}
                         onSelect={onSelectClip ? (additive) => onSelectClip(trackId, clip.id, additive) : undefined}
                         onDelete={onDeleteClip ? () => onDeleteClip(trackId, clip.id) : undefined}
+                        waveformData={waveformMap?.get(clip.sourceId)}
+                        thumbnails={thumbnailMap?.get(clip.id)}
                     />
                 ))}
             </TrackContent>

@@ -19,6 +19,9 @@ import { useNLEElementDrag } from './hooks/useNLEElementDrag';
 import { useNLEMarqueeDrag } from './hooks/useNLEMarqueeDrag';
 import type { NLEMoveResult, ClipMoveResult } from './hooks/nleHookTypes';
 import type { MediaSource } from '../types/source';
+import { useWaveformPeaks } from '@/hooks/useWaveformPeaks';
+import { useVideoThumbnails } from '@/hooks/useVideoThumbnails';
+import type { ClipInfo } from '@/hooks/useVideoThumbnails';
 import {
     RULER_HEIGHT,
     TRACK_GROUP_LABEL_WIDTH,
@@ -314,6 +317,21 @@ export function NLETimeline({
         for (const s of sources ?? []) map.set(s.id, s.name);
         return map;
     }, [sources]);
+
+    const waveformMap = useWaveformPeaks(sources ?? []);
+
+    const allClips = useMemo<ClipInfo[]>(
+        () => [...videoTracks, ...audioTracks].flatMap((t) =>
+            (t.clips ?? []).map((c) => ({
+                id: c.id,
+                sourceId: c.sourceId,
+                sourceOffset: c.sourceOffset,
+                duration: c.duration,
+            })),
+        ),
+        [videoTracks, audioTracks],
+    );
+    const thumbnailMap = useVideoThumbnails(sources ?? [], allClips);
 
     const zoomPercent = Math.round(
         ((zoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)) * 100
@@ -677,6 +695,8 @@ export function NLETimeline({
                                             onDeleteClip={onDeleteClip}
                                             onDropSource={onDropSource ? (sourceId, time) => onDropSource(track.id, sourceId, time) : undefined}
                                             acceptSourceType={track.type === TrackType.Video ? 'video' : track.type === TrackType.Audio ? 'audio' : undefined}
+                                            waveformMap={waveformMap}
+                                            thumbnailMap={thumbnailMap}
                                         />
                                         );
                                     })}

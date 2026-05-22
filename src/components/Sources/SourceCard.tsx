@@ -12,11 +12,12 @@ interface SourceCardProps {
 }
 
 export function SourceCard({ source }: SourceCardProps) {
+    const loading = source.loading;
     return (
         <div
-            className="flex flex-col rounded overflow-hidden border border-border bg-muted/30 text-xs cursor-grab active:cursor-grabbing"
-            draggable
-            onDragStart={(e) => {
+            className={`flex flex-col rounded overflow-hidden border border-border bg-muted/30 text-xs ${loading ? 'cursor-not-allowed opacity-60' : 'cursor-grab active:cursor-grabbing'}`}
+            draggable={!loading}
+            onDragStart={loading ? undefined : (e) => {
                 e.dataTransfer.effectAllowed = 'copy';
                 e.dataTransfer.setData(
                     'application/x-spellsplice-source',

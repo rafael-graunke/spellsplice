@@ -54,7 +54,7 @@ function makeClipGhost(el: ClipElement, newTime: number, zoom: number): NLEClipG
     return {
         left: newTime * zoom,
         width: el.duration * zoom,
-        color: ClipColorMap[el.clipType],
+        color: ClipColorMap[el.clipType].bg,
     };
 }
 

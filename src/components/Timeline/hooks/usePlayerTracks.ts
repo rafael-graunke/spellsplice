@@ -193,7 +193,7 @@ export function usePlayerTracks(
                 if (idx === -1) continue;
                 const [event] = fromPlayer.track.events.splice(idx, 1);
                 event.time = newTime;
-                event.layer = Math.max(0, newLayer);
+                event.layer = newLayer;
                 toPlayer.track.events.push(event);
             }
         });

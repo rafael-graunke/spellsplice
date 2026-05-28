@@ -7,6 +7,7 @@ export interface NLEGhostPos {
     isWaypoint: boolean;
 }
 
+
 export interface NLEClipGhostPos {
     left: number;
     width: number;

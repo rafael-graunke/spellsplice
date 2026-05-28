@@ -165,7 +165,7 @@ interface NLETimelineProps {
     onRedo: () => void;
     canUndo: boolean;
     canRedo: boolean;
-    onMoveEvent?: (moves: NLEMoveResult[]) => void;
+    onMoveEvent?: (moves: NLEMoveResult[], newTracksInfo?: Map<string, { groupId: string; eventLayer: number; targetLocalIndex: number }>) => void;
     onUpdateEvent?: (trackId: string, eventId: number, time: number, duration: number) => void;
     onDeleteEvents: (items: DeleteItem[]) => void;
     onCopyEvent?: (trackId: string, eventId: number) => void;
@@ -243,6 +243,12 @@ export function NLETimeline({
         () => trackGroups.flatMap((g) => g.tracks).filter((t) => t.type === TrackType.Event),
         [trackGroups],
     );
+    const eventTrackGroups = useMemo(
+        () => trackGroups
+            .filter((g) => g.tracks.some((t) => t.type === TrackType.Event))
+            .map((g) => ({ id: g.id, tracks: g.tracks.filter((t) => t.type === TrackType.Event) })),
+        [trackGroups],
+    );
     const videoTracks = useMemo(
         () => trackGroups.flatMap((g) => g.tracks).filter((t) => t.type === TrackType.Video),
         [trackGroups],
@@ -281,7 +287,9 @@ export function NLETimeline({
     clipTrackByClipIdRef.current = clipTrackByClipId;
 
     const handleMoveEvents = useCallback(
-        (moves: NLEMoveResult[]) => { onMoveEvent?.(moves); },
+        (moves: NLEMoveResult[], newTracksInfo?: Map<string, { groupId: string; eventLayer: number; targetLocalIndex: number }>) => {
+            onMoveEvent?.(moves, newTracksInfo);
+        },
         [onMoveEvent],
     );
 
@@ -306,6 +314,7 @@ export function NLETimeline({
         eventTracks,
         videoTracks,
         audioTracks,
+        eventTrackGroups,
         selectedIds,
         selectedClipIds,
         handleMoveEvents,

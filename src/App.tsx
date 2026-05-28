@@ -109,9 +109,11 @@ function App() {
 
     useEffect(() => {
         const handler = (e: BeforeUnloadEvent) => {
-            if (!isDirty) return;
-            e.preventDefault();
-            localStorage.removeItem(AUTOSAVE_KEY);
+            if (isDirty) {
+                e.preventDefault();
+            } else {
+                localStorage.removeItem(AUTOSAVE_KEY);
+            }
         };
         window.addEventListener('beforeunload', handler);
         return () => window.removeEventListener('beforeunload', handler);
@@ -407,10 +409,59 @@ function App() {
         return clipEnd > 0 ? clipEnd : (video?.duration ?? DEFAULT_DURATION);
     }, [videoClips, audioClips, video]);
 
-    const handleNLEMove = useCallback((moves: NLEMoveResult[]) => {
+    const handleNLEMove = useCallback((
+        moves: NLEMoveResult[],
+        newTracksInfo?: Map<string, { groupId: string; eventLayer: number; targetLocalIndex: number }>,
+    ) => {
+        if (newTracksInfo && newTracksInfo.size > 0) {
+            const newByGroup = new Map<string, Array<{ id: string; eventLayer: number; targetLocalIndex: number }>>();
+            for (const [trackId, info] of newTracksInfo) {
+                const list = newByGroup.get(info.groupId) ?? [];
+                list.push({ id: trackId, eventLayer: info.eventLayer, targetLocalIndex: info.targetLocalIndex });
+                newByGroup.set(info.groupId, list);
+            }
+            for (const [groupId, newTracks] of newByGroup) {
+                const group = trackGroups.find((g) => g.id === groupId);
+                if (!group) continue;
+                const currentRows: TrackOverrideRow[] = group.tracks.map((t) => ({
+                    id: t.id,
+                    type: t.type,
+                    isBlocked: t.isBlocked,
+                    eventLayer: t.eventLayer,
+                    isHidden: t.isHidden,
+                    isMuted: t.isMuted,
+                }));
+                const prepends = newTracks
+                    .filter(({ targetLocalIndex }) => targetLocalIndex < 0)
+                    .sort((a, b) => a.targetLocalIndex - b.targetLocalIndex);
+                const appends = newTracks
+                    .filter(({ targetLocalIndex }) => targetLocalIndex >= group.tracks.length)
+                    .sort((a, b) => a.targetLocalIndex - b.targetLocalIndex);
+                for (let i = 0; i < prepends.length; i++) {
+                    currentRows.splice(i, 0, {
+                        id: prepends[i].id,
+                        type: TrackType.Event,
+                        isBlocked: false,
+                        eventLayer: prepends[i].eventLayer,
+                    });
+                }
+                for (const { id, eventLayer } of appends) {
+                    currentRows.push({ id, type: TrackType.Event, isBlocked: false, eventLayer });
+                }
+                recordTrackOverride(groupId, currentRows);
+            }
+        }
+
+        const extendedInfo = new Map(trackInfoByTrackId);
+        if (newTracksInfo) {
+            for (const [trackId, info] of newTracksInfo) {
+                extendedInfo.set(trackId, info);
+            }
+        }
+
         handleMoveEvents(moves.map((m) => {
-            const from = trackInfoByTrackId.get(m.fromTrackId);
-            const to = trackInfoByTrackId.get(m.toTrackId);
+            const from = extendedInfo.get(m.fromTrackId);
+            const to = extendedInfo.get(m.toTrackId);
             return {
                 fromPlayerId: from?.groupId ?? m.fromTrackId,
                 toPlayerId: to?.groupId ?? m.toTrackId,
@@ -419,7 +470,7 @@ function App() {
                 newLayer: to?.eventLayer ?? 0,
             };
         }));
-    }, [handleMoveEvents, trackInfoByTrackId]);
+    }, [handleMoveEvents, trackGroups, trackInfoByTrackId, recordTrackOverride]);
 
     useEffect(() => {
         if (newEventId !== null && selectedEvents[0]?.id !== newEventId) {

@@ -513,7 +513,7 @@ function App() {
                 <ResizablePanelGroup orientation="vertical" className="flex-1">
                     <ResizablePanel minSize={100} defaultSize="60%">
                         <ResizablePanelGroup orientation="horizontal">
-                            <ResizablePanel minSize="150px" defaultSize="15%">
+                            <ResizablePanel minSize="250px" defaultSize="15%">
                                 <Sources sources={sources} setSources={setSources} />
                             </ResizablePanel>
                             <ResizableHandle />
@@ -537,7 +537,7 @@ function App() {
                                 />
                             </ResizablePanel>
                             <ResizableHandle />
-                            <ResizablePanel minSize="400px" defaultSize="15%">
+                            <ResizablePanel minSize="250px" defaultSize="15%">
                                 <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} player={inspectorPlayer} autoFocus={selectedEvents[0]?.id === newEventId} />
                             </ResizablePanel>
                         </ResizablePanelGroup>

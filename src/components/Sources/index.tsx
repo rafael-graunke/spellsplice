@@ -63,7 +63,7 @@ export function Sources({ sources, setSources }: SourcesProps) {
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
         >
-            <div className="flex items-center justify-between px-3 py-1.5 border-b border-border shrink-0">
+            <div className="flex items-center justify-between px-3 h-8 border-b border-border shrink-0">
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                     Sources
                 </span>
@@ -85,7 +85,7 @@ export function Sources({ sources, setSources }: SourcesProps) {
             </div>
 
             {sources.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground text-center px-4">
+                <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground text-center px-4">
                     Drop video or audio files
                 </div>
             ) : (

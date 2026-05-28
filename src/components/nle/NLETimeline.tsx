@@ -408,7 +408,7 @@ export function NLETimeline({
 
         const eventSpace = 100 - nonEventTotal;
         const nonTargetCount = eventGroups.length - 1;
-        const targetPct = eventSpace * 0.7;
+        const targetPct = eventSpace * 1;
         const otherPct = nonTargetCount > 0 ? (eventSpace * 0.3) / nonTargetCount : 0;
 
         for (const g of eventGroups) {

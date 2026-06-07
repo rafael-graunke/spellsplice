@@ -26,9 +26,10 @@ interface FileDropdownProps {
     onImport: (file: File) => void;
     onExportVideo: () => void;
     onOpenSettings: () => void;
+    onRelinkMedia: () => void;
 }
 
-function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo, onOpenSettings }: FileDropdownProps) {
+function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo, onOpenSettings, onRelinkMedia }: FileDropdownProps) {
     const importRef = useRef<HTMLInputElement>(null);
     const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
@@ -116,6 +117,7 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo, onOpe
                         <DropdownMenuItem onClick={onOpenSettings}>
                             Settings<DropdownMenuShortcut>{modKey}+,</DropdownMenuShortcut>
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={onRelinkMedia}>Relink Media...</DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={onExportVideo}>Export...</DropdownMenuItem>
                     </DropdownMenuGroup>

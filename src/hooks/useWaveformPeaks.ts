@@ -9,6 +9,7 @@ export interface WaveformData {
 }
 
 async function extractPeaks(source: MediaSource): Promise<WaveformData> {
+    if (!source.file) throw new Error('Source has no file');
     const buf = await source.file.arrayBuffer();
     const audioCtx = new AudioContext();
     let audioBuffer: AudioBuffer;
@@ -46,6 +47,7 @@ export function useWaveformPeaks(sources: MediaSource[]): Map<string, WaveformDa
 
     useEffect(() => {
         for (const source of sources) {
+            if (!source.file) continue;
             if (mapRef.current.has(source.id)) continue;
             if (pendingRef.current.has(source.id)) continue;
 

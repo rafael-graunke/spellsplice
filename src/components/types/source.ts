@@ -3,7 +3,7 @@ export interface MediaSource {
     name: string;
     type: 'video' | 'audio';
     duration: number;
-    file: File;
+    file?: File;
     thumbnailUrl?: string;
     loading?: boolean;
 }

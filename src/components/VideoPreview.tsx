@@ -122,6 +122,7 @@ function VideoPreview({
         const activeIds = new Set(sources.map((s) => s.id));
 
         for (const src of sources) {
+            if (!src.file) continue;
             if (src.type === 'video' && !videoPool.has(src.id)) {
                 const el = document.createElement('video');
                 el.src = URL.createObjectURL(src.file);

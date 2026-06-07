@@ -17,6 +17,8 @@ import type { Player } from './components/types/player';
 import type { TrackEvent, EventMeta } from './components/types/event';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { exportProject, importProject } from '@/lib/projectExport';
+import { RelinkDialog } from './components/Sources/RelinkDialog';
+import { getFileDuration, generateThumbnail } from '@/lib/generateThumbnail';
 import VideoPreview from './components/VideoPreview';
 import type { VideoState } from './components/types/video';
 import { Inspector } from './components/Inspector';
@@ -70,6 +72,7 @@ function App() {
     const [isDirty, setIsDirty] = useState(false);
     const [exportDialogOpen, setExportDialogOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [relinkDialogOpen, setRelinkDialogOpen] = useState(false);
     const [projectConfig, setProjectConfig] = useState<ProjectConfig>(DEFAULT_PROJECT_CONFIG);
     const [newEventId, setNewEventId] = useState<number | null>(null);
     const isFirstPlayersRender = useRef(true);
@@ -162,22 +165,24 @@ function App() {
     trackOverridesRef.current = trackOverrides;
 
     const handleExport = useCallback(async () => {
-        await exportProject(playersRef.current, videoRef.current, projectConfigRef.current, clipsByTrackRef.current, trackOverridesRef.current);
+        await exportProject(playersRef.current, videoRef.current, projectConfigRef.current, clipsByTrackRef.current, trackOverridesRef.current, sourcesRef.current);
         setIsDirty(false);
     }, []);
 
     const handleImport = useCallback(async (file: File) => {
-        const { manifest, config } = await importProject(file);
+        const { manifest, config, offlineSources } = await importProject(file);
         skipDirtyRef.current = true;
         clearAutosaveRef.current = true;
         isFirstConfigRender.current = true;
         resetPlayers(manifest.players, manifest.clipsByTrack ?? {}, manifest.trackOverrides ?? {});
 
+        setSources(offlineSources);
         setSelectedEvents([]);
         setCurrentTime(0);
         setIsPlaying(false);
         setIsDirty(false);
         setProjectConfig(config ? { ...DEFAULT_PROJECT_CONFIG, ...config } : DEFAULT_PROJECT_CONFIG);
+        if (offlineSources.length > 0) setRelinkDialogOpen(true);
     }, [resetPlayers]);
 
     const handleNew = useCallback(() => {
@@ -186,12 +191,35 @@ function App() {
         resetPlayers(makeFreshPlayers());
         localStorage.removeItem(AUTOSAVE_KEY);
         setVideo(null);
+        setSources([]);
         setSelectedEvents([]);
         setCurrentTime(0);
         setIsPlaying(false);
         setIsDirty(false);
         setProjectConfig(DEFAULT_PROJECT_CONFIG);
     }, [resetPlayers]);
+
+    const handleRelinkSource = useCallback(async (sourceId: string, file: File) => {
+        setSources((prev) =>
+            prev.map((s) => (s.id === sourceId ? { ...s, file, loading: true, thumbnailUrl: undefined } : s)),
+        );
+        const duration = await getFileDuration(file).catch(() => 0);
+        const thumbnailUrl =
+            file.type.startsWith('video') ? await generateThumbnail(file).catch(() => undefined) : undefined;
+        setSources((prev) =>
+            prev.map((s) =>
+                s.id === sourceId ? { ...s, file, duration, thumbnailUrl, loading: false } : s,
+            ),
+        );
+    }, []);
+
+    const handleDeleteSource = useCallback((sourceId: string) => {
+        setSources((prev) => prev.filter((s) => s.id !== sourceId));
+        const clipsToDelete = Object.entries(clipsByTrackRef.current).flatMap(([trackId, clips]) =>
+            clips.filter((c) => c.sourceId === sourceId).map((c) => ({ trackId, clipId: c.id })),
+        );
+        if (clipsToDelete.length > 0) handleDeleteClips(clipsToDelete);
+    }, [handleDeleteClips]);
 
     const handleOpenExportDialog = useCallback(() => setExportDialogOpen(true), []);
     const handleCloseExportDialog = useCallback(() => setExportDialogOpen(false), []);
@@ -497,6 +525,7 @@ function App() {
                     onImport={handleImport}
                     onExportVideo={handleOpenExportDialog}
                     onOpenSettings={handleOpenSettings}
+                    onRelinkMedia={() => setRelinkDialogOpen(true)}
                 />
                 <SettingsDialog
                     open={settingsOpen}
@@ -510,11 +539,24 @@ function App() {
                     video={video}
                     players={players}
                 />
+                <RelinkDialog
+                    open={relinkDialogOpen}
+                    onOpenChange={setRelinkDialogOpen}
+                    sources={sources}
+                    clipsByTrack={clipsByTrack}
+                    onRelink={handleRelinkSource}
+                    onDelete={handleDeleteSource}
+                />
                 <ResizablePanelGroup orientation="vertical" className="flex-1">
                     <ResizablePanel minSize={100} defaultSize="60%">
                         <ResizablePanelGroup orientation="horizontal">
                             <ResizablePanel minSize="250px" defaultSize="15%">
-                                <Sources sources={sources} setSources={setSources} />
+                                <Sources
+                                    sources={sources}
+                                    setSources={setSources}
+                                    clipsByTrack={clipsByTrack}
+                                    onOpenRelinkDialog={() => setRelinkDialogOpen(true)}
+                                />
                             </ResizablePanel>
                             <ResizableHandle />
                             <ResizablePanel

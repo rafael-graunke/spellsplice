@@ -1,15 +1,18 @@
-import React, { useRef, useCallback } from 'react';
-import { FolderOpen } from 'lucide-react';
+import React, { useRef, useCallback, useMemo } from 'react';
+import { FolderOpen, Link2 } from 'lucide-react';
 import type { MediaSource } from '../types/source';
+import type { Clip } from '../types/clip';
 import { SourceCard } from './SourceCard';
 import { getFileDuration, generateThumbnail } from '../../lib/generateThumbnail';
 
 interface SourcesProps {
     sources: MediaSource[];
     setSources: React.Dispatch<React.SetStateAction<MediaSource[]>>;
+    clipsByTrack: Record<string, Clip[]>;
+    onOpenRelinkDialog: () => void;
 }
 
-export function Sources({ sources, setSources }: SourcesProps) {
+export function Sources({ sources, setSources, clipsByTrack, onOpenRelinkDialog }: SourcesProps) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [isDragOver, setIsDragOver] = React.useState(false);
 
@@ -56,6 +59,18 @@ export function Sources({ sources, setSources }: SourcesProps) {
 
     const onDragLeave = () => setIsDragOver(false);
 
+    const clipCountBySource = useMemo(() => {
+        const counts = new Map<string, number>();
+        for (const clips of Object.values(clipsByTrack)) {
+            for (const clip of clips) {
+                counts.set(clip.sourceId, (counts.get(clip.sourceId) ?? 0) + 1);
+            }
+        }
+        return counts;
+    }, [clipsByTrack]);
+
+    const hasOffline = sources.some((s) => !s.file && !s.loading);
+
     return (
         <div
             className={`h-full flex flex-col transition-colors ${isDragOver ? 'bg-primary/10' : ''}`}
@@ -64,16 +79,28 @@ export function Sources({ sources, setSources }: SourcesProps) {
             onDragLeave={onDragLeave}
         >
             <div className="flex items-center justify-between px-3 h-8 border-b border-border shrink-0">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
                     Sources
+                    {hasOffline && (
+                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-destructive" />
+                    )}
                 </span>
-                <button
-                    className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                    title="Add files"
-                    onClick={() => inputRef.current?.click()}
-                >
-                    <FolderOpen className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center gap-0.5">
+                    <button
+                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        title="Manage sources"
+                        onClick={onOpenRelinkDialog}
+                    >
+                        <Link2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        title="Add files"
+                        onClick={() => inputRef.current?.click()}
+                    >
+                        <FolderOpen className="w-3.5 h-3.5" />
+                    </button>
+                </div>
                 <input
                     ref={inputRef}
                     type="file"
@@ -91,7 +118,11 @@ export function Sources({ sources, setSources }: SourcesProps) {
             ) : (
                 <div className="flex-1 overflow-y-auto p-2 grid grid-cols-2 gap-2 content-start">
                     {sources.map((source) => (
-                        <SourceCard key={source.id} source={source} />
+                        <SourceCard
+                            key={source.id}
+                            source={source}
+                            clipCount={clipCountBySource.get(source.id)}
+                        />
                     ))}
                 </div>
             )}

@@ -70,6 +70,7 @@ export function useNLEMarqueeDrag(
             const matchedClips: string[] = [];
 
             for (const track of eventTracks) {
+                if (track.isBlocked) continue;
                 const trackEl = trackElsRef.current.get(track.id);
                 if (!trackEl) continue;
                 const tr = trackEl.getBoundingClientRect();
@@ -92,6 +93,7 @@ export function useNLEMarqueeDrag(
             }
 
             for (const track of clipTracks) {
+                if (track.isBlocked) continue;
                 const trackEl = trackElsRef.current.get(track.id);
                 if (!trackEl) continue;
                 const tr = trackEl.getBoundingClientRect();

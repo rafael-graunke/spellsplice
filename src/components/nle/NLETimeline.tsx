@@ -179,6 +179,7 @@ interface NLETimelineProps {
     onResizeEnd?: () => void;
     onAddTrack?: (groupId: string, trackId: string, position: 'above' | 'below') => void;
     onDeleteTrack?: (groupId: string, trackId: string) => void;
+    onUpdateTrack?: (trackId: string, field: 'isHidden' | 'isMuted' | 'isBlocked') => void;
     sources?: MediaSource[];
     onDropSource?: (trackId: string, sourceId: string, time: number) => void;
     onMoveClips?: (moves: ClipMoveResult[]) => void;
@@ -207,6 +208,7 @@ export function NLETimeline({
     onResizeEnd,
     onAddTrack,
     onDeleteTrack,
+    onUpdateTrack,
     sources,
     onDropSource,
     onMoveClips,
@@ -285,6 +287,17 @@ export function NLETimeline({
     }, [videoTracks, audioTracks]);
     const clipTrackByClipIdRef = useRef(clipTrackByClipId);
     clipTrackByClipIdRef.current = clipTrackByClipId;
+
+    const blockedTrackIds = useMemo(
+        () => new Set(trackGroups.flatMap((g) => g.tracks).filter((t) => t.isBlocked).map((t) => t.id)),
+        [trackGroups],
+    );
+    const blockedTrackIdsRef = useRef(blockedTrackIds);
+    blockedTrackIdsRef.current = blockedTrackIds;
+
+    useEffect(() => {
+        clearSelection();
+    }, [blockedTrackIds, clearSelection]);
 
     const handleMoveEvents = useCallback(
         (moves: NLEMoveResult[], newTracksInfo?: Map<string, { groupId: string; eventLayer: number; targetLocalIndex: number }>) => {
@@ -455,13 +468,13 @@ export function NLETimeline({
         const eventItems: DeleteItem[] = [];
         for (const id of selectedIdsRef.current) {
             const trackId = trackByEventIdRef.current.get(id);
-            if (trackId) eventItems.push({ trackId, eventId: id });
+            if (trackId && !blockedTrackIdsRef.current.has(trackId)) eventItems.push({ trackId, eventId: id });
         }
 
         const clipItems: { trackId: string; clipId: string }[] = [];
         for (const clipId of selectedClipIdsRef.current) {
             const trackId = clipTrackByClipIdRef.current.get(clipId);
-            if (trackId) clipItems.push({ trackId, clipId });
+            if (trackId && !blockedTrackIdsRef.current.has(trackId)) clipItems.push({ trackId, clipId });
         }
 
         if (eventItems.length === 0 && clipItems.length === 0) return;
@@ -663,9 +676,9 @@ export function NLETimeline({
                                             paddingX={TIMELINE_PADDING_X}
                                             scrollLeftRef={scrollLeftRef}
                                             subscribe={subscribe}
-                                            onToggleBlocked={() => {}}
-                                            onToggleHidden={() => {}}
-                                            onToggleMuted={() => {}}
+                                            onToggleBlocked={() => onUpdateTrack?.(track.id, 'isBlocked')}
+                                            onToggleHidden={() => onUpdateTrack?.(track.id, 'isHidden')}
+                                            onToggleMuted={() => onUpdateTrack?.(track.id, 'isMuted')}
                                             events={track.events}
                                             selectedIds={selectedIds}
                                             draggingIds={draggingEventIds}

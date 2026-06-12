@@ -420,14 +420,42 @@ function App() {
     }, [trackGroups, handleAddClips]);
 
     const videoClips = useMemo(
-        () => trackGroups.find((g) => g.type === TrackType.Video)?.tracks.flatMap((t) => t.clips ?? []) ?? [],
+        () => trackGroups.find((g) => g.type === TrackType.Video)?.tracks.flatMap((t) => (t.clips ?? []).map((c) => ({ ...c, trackId: t.id }))) ?? [],
         [trackGroups],
     );
 
     const audioClips = useMemo(
-        () => trackGroups.find((g) => g.type === TrackType.Audio)?.tracks.flatMap((t) => t.clips ?? []) ?? [],
+        () => trackGroups.find((g) => g.type === TrackType.Audio)?.tracks.flatMap((t) => (t.clips ?? []).map((c) => ({ ...c, trackId: t.id }))) ?? [],
         [trackGroups],
     );
+
+    const hiddenVideoTrackIds = useMemo(
+        () => new Set(trackGroups.find((g) => g.type === TrackType.Video)?.tracks.filter((t) => t.isHidden).map((t) => t.id) ?? []),
+        [trackGroups],
+    );
+
+    const mutedAudioTrackIds = useMemo(
+        () => new Set(trackGroups.find((g) => g.type === TrackType.Audio)?.tracks.filter((t) => t.isMuted).map((t) => t.id) ?? []),
+        [trackGroups],
+    );
+
+    const handleToggleTrack = useCallback((trackId: string, field: 'isHidden' | 'isMuted' | 'isBlocked') => {
+        for (const group of trackGroups) {
+            const idx = group.tracks.findIndex((t) => t.id === trackId);
+            if (idx === -1) continue;
+            const rows: TrackOverrideRow[] = group.tracks.map((t) => ({
+                id: t.id,
+                type: t.type,
+                isBlocked: t.isBlocked,
+                eventLayer: t.eventLayer,
+                isHidden: t.isHidden,
+                isMuted: t.isMuted,
+            }));
+            rows[idx] = { ...rows[idx], [field]: !rows[idx][field] };
+            recordTrackOverride(group.id, rows);
+            break;
+        }
+    }, [trackGroups, recordTrackOverride]);
 
     const duration = useMemo(() => {
         const clipEnd = Math.max(
@@ -581,6 +609,8 @@ function App() {
                                     videoClips={videoClips}
                                     audioClips={audioClips}
                                     sources={sources}
+                                    hiddenVideoTrackIds={hiddenVideoTrackIds}
+                                    mutedAudioTrackIds={mutedAudioTrackIds}
                                 />
                             </ResizablePanel>
                             <ResizableHandle />
@@ -619,6 +649,7 @@ function App() {
                             onDeleteClip={handleDeleteClip}
                             onDeleteClips={handleDeleteClips}
                             onDeleteSelection={handleNLEDeleteSelection}
+                            onUpdateTrack={handleToggleTrack}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>

@@ -44,4 +44,6 @@ export interface Clip {
     sourceId: string;
     /** Start offset within the source (seconds). Clip plays source[sourceOffset … sourceOffset+duration]. */
     sourceOffset: number;
+    /** Track this clip belongs to — set when flattening per-track clips for playback. */
+    trackId?: string;
 }

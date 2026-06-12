@@ -139,7 +139,7 @@ export function TrackInfo({
     onToggleHidden,
     onToggleMuted,
 }: TrackInfoProps) {
-    const showVisibility = type === TrackType.Event || type === TrackType.Video;
+    const showVisibility = type === TrackType.Video;
     const showMute = type === TrackType.Audio;
 
     return (
@@ -205,6 +205,7 @@ interface TrackContentProps {
     subscribe: (fn: (x: number) => void) => () => void;
     ghosts?: NLEGhostPos[];
     clipGhosts?: NLEClipGhostPos[];
+    isBlocked?: boolean;
     onDeselect?: () => void;
     onOpenCreateDialog?: (time: number) => void;
     onPasteAtTime?: (time: number) => void;
@@ -230,6 +231,7 @@ export function TrackContent({
     subscribe,
     ghosts,
     clipGhosts,
+    isBlocked,
     onDeselect,
     onOpenCreateDialog,
     onPasteAtTime,
@@ -291,15 +293,15 @@ export function TrackContent({
                     onContextMenu={(e) => {
                         clickTimeRef.current = getTimeFromClientX(e.clientX);
                     }}
-                    onDragOver={onDropSource && acceptSourceType ? (e) => {
+                    onDragOver={onDropSource && acceptSourceType && !isBlocked ? (e) => {
                         if (e.dataTransfer.types.includes('application/x-spellsplice-source')) {
                             e.preventDefault();
                             e.dataTransfer.dropEffect = 'copy';
                             setIsDragOver(true);
                         }
                     } : undefined}
-                    onDragLeave={onDropSource ? () => setIsDragOver(false) : undefined}
-                    onDrop={onDropSource && acceptSourceType ? (e) => {
+                    onDragLeave={onDropSource && !isBlocked ? () => setIsDragOver(false) : undefined}
+                    onDrop={onDropSource && acceptSourceType && !isBlocked ? (e) => {
                         e.preventDefault();
                         setIsDragOver(false);
                         try {
@@ -345,10 +347,13 @@ export function TrackContent({
                             />
                         ))}
                     </div>
+                    {isBlocked && (
+                        <div className="absolute inset-0 z-10 cursor-not-allowed" />
+                    )}
                 </div>
             </ContextMenuTrigger>
             <ContextMenuContent>
-                {onOpenCreateDialog && (
+                {onOpenCreateDialog && !isBlocked && (
                     <>
                         <ContextMenuItem onClick={() => onOpenCreateDialog(clickTimeRef.current)}>
                             Create event
@@ -357,7 +362,7 @@ export function TrackContent({
                         <ContextMenuSeparator />
                     </>
                 )}
-                <ContextMenuItem disabled={!canPaste} onClick={() => onPasteAtTime?.(clickTimeRef.current)}>
+                <ContextMenuItem disabled={!canPaste || isBlocked} onClick={() => onPasteAtTime?.(clickTimeRef.current)}>
                     Paste
                     <ContextMenuShortcut>{modKey}+V</ContextMenuShortcut>
                 </ContextMenuItem>
@@ -490,8 +495,8 @@ export function Track({
     thumbnailMap,
 }: TrackProps) {
     const isEventTrack = track.type === TrackType.Event;
-    const showEvents = isEventTrack && !track.isBlocked && !track.isHidden && events && events.length > 0;
-    const showClips = !isEventTrack && !track.isBlocked && clips && clips.length > 0;
+    const showEvents = isEventTrack && !track.isHidden && events && events.length > 0;
+    const showClips = !isEventTrack && clips && clips.length > 0;
 
     return (
         <div ref={onMount} className="flex flex-row w-full">
@@ -513,6 +518,7 @@ export function Track({
                 subscribe={subscribe}
                 ghosts={ghosts}
                 clipGhosts={clipGhosts}
+                isBlocked={track.isBlocked}
                 onDeselect={onDeselect}
                 onOpenCreateDialog={onOpenCreateDialog}
                 onPasteAtTime={onPasteAtTime}

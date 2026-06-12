@@ -19,6 +19,8 @@ interface VideoPreviewProps {
     videoClips?: Clip[];
     audioClips?: Clip[];
     sources?: MediaSource[];
+    hiddenVideoTrackIds?: Set<string>;
+    mutedAudioTrackIds?: Set<string>;
 }
 
 function VideoPreview({
@@ -33,6 +35,8 @@ function VideoPreview({
     videoClips = [],
     audioClips = [],
     sources = [],
+    hiddenVideoTrackIds,
+    mutedAudioTrackIds,
 }: VideoPreviewProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const playersRef = useRef(players);
@@ -75,6 +79,8 @@ function VideoPreview({
     // Last time the render loop pushed to React state — used to distinguish user seeks
     // from the render loop's own throttled setCurrentTime calls.
     const lastLoopSetTimeRef = useRef<number>(0);
+    const hiddenVideoTrackIdsRef = useRef(new Set(hiddenVideoTrackIds ?? []));
+    const mutedAudioTrackIdsRef = useRef(new Set(mutedAudioTrackIds ?? []));
 
     const getActiveVideoClip = (t: number) =>
         videoClipsRef.current.find((c) => c.time <= t && t < c.time + c.duration) ?? null;
@@ -178,7 +184,8 @@ function VideoPreview({
         // and the render loop (playback transitions + clip drag detection).
         const activeVideoClip = getActiveVideoClip(time);
         const frameEl = activeVideoClip ? sourceVideoEls.current.get(activeVideoClip.sourceId) : null;
-        if (frameEl?.videoWidth) {
+        const videoHidden = !!activeVideoClip?.trackId && hiddenVideoTrackIdsRef.current.has(activeVideoClip.trackId);
+        if (!videoHidden && frameEl?.videoWidth) {
             compositor.uploadVideoElement(frameEl);
         } else {
             compositor.uploadBlackFrame();
@@ -252,6 +259,20 @@ function VideoPreview({
             }
         });
     }, []);
+
+    useEffect(() => {
+        hiddenVideoTrackIdsRef.current = new Set(hiddenVideoTrackIds);
+        if (!isPlayingRef.current) renderFrameRef.current();
+    }, [hiddenVideoTrackIds]);
+
+    useEffect(() => {
+        mutedAudioTrackIdsRef.current = new Set(mutedAudioTrackIds);
+        if (!activeAudioSourceIdRef.current) return;
+        const audioEl = sourceAudioEls.current.get(activeAudioSourceIdRef.current);
+        if (!audioEl) return;
+        const clip = audioClipsRef.current.find((c) => c.id === activeAudioClipIdRef.current);
+        audioEl.volume = clip?.trackId && mutedAudioTrackIdsRef.current.has(clip.trackId) ? 0 : 1;
+    }, [mutedAudioTrackIds]);
 
     // Source element play/pause + snapshot reset
     useEffect(() => {
@@ -354,6 +375,7 @@ function VideoPreview({
                 }
                 if (activeAudioClip && audioEl) {
                     seekSourceEl(audioEl, activeAudioClip, t, true);
+                    audioEl.volume = activeAudioClip.trackId && mutedAudioTrackIdsRef.current.has(activeAudioClip.trackId) ? 0 : 1;
                     audioPlaybackSnapshotRef.current = {
                         clipId: activeAudioClip.id,
                         clipTimeAtStart: activeAudioClip.time,

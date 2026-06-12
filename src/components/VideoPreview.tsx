@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import type { Player } from './types/player';
 import type { Clip } from './types/clip';
@@ -6,6 +6,8 @@ import type { MediaSource } from './types/source';
 import { getNextChangeTime } from '@/lib/deriveState';
 import { Compositor } from '@/lib/export/compose';
 import { subscribeImageLoad } from '@/lib/cardCache';
+import { Slider } from '@/components/ui/slider';
+import { Volume2, VolumeX } from 'lucide-react';
 
 interface VideoPreviewProps {
     isPlaying: boolean;
@@ -38,6 +40,10 @@ function VideoPreview({
     hiddenVideoTrackIds,
     mutedAudioTrackIds,
 }: VideoPreviewProps) {
+    const [volume, setVolume] = useState(100);
+    const [isHovered, setIsHovered] = useState(false);
+    const volumeRef = useRef(1);
+
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const playersRef = useRef(players);
     const overlayStartHiddenRef = useRef(overlayStartHidden);
@@ -271,8 +277,19 @@ function VideoPreview({
         const audioEl = sourceAudioEls.current.get(activeAudioSourceIdRef.current);
         if (!audioEl) return;
         const clip = audioClipsRef.current.find((c) => c.id === activeAudioClipIdRef.current);
-        audioEl.volume = clip?.trackId && mutedAudioTrackIdsRef.current.has(clip.trackId) ? 0 : 1;
+        const muted = clip?.trackId && mutedAudioTrackIdsRef.current.has(clip.trackId);
+        audioEl.volume = muted ? 0 : volumeRef.current;
     }, [mutedAudioTrackIds]);
+
+    useEffect(() => {
+        volumeRef.current = volume / 100;
+        if (!activeAudioSourceIdRef.current) return;
+        const audioEl = sourceAudioEls.current.get(activeAudioSourceIdRef.current);
+        if (!audioEl) return;
+        const clip = audioClipsRef.current.find((c) => c.id === activeAudioClipIdRef.current);
+        const muted = clip?.trackId && mutedAudioTrackIdsRef.current.has(clip.trackId);
+        audioEl.volume = muted ? 0 : volumeRef.current;
+    }, [volume]);
 
     // Source element play/pause + snapshot reset
     useEffect(() => {
@@ -375,7 +392,7 @@ function VideoPreview({
                 }
                 if (activeAudioClip && audioEl) {
                     seekSourceEl(audioEl, activeAudioClip, t, true);
-                    audioEl.volume = activeAudioClip.trackId && mutedAudioTrackIdsRef.current.has(activeAudioClip.trackId) ? 0 : 1;
+                    audioEl.volume = activeAudioClip.trackId && mutedAudioTrackIdsRef.current.has(activeAudioClip.trackId) ? 0 : volumeRef.current;
                     audioPlaybackSnapshotRef.current = {
                         clipId: activeAudioClip.id,
                         clipTimeAtStart: activeAudioClip.time,
@@ -471,8 +488,30 @@ function VideoPreview({
     }, [currentTime]);
 
     return (
-        <div className="w-full h-full flex items-center justify-center">
+        <div
+            className="relative w-full h-full flex items-center justify-center"
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+        >
             <canvas ref={canvasRef} className="max-w-full max-h-full" style={{ aspectRatio: '16/9' }} />
+            {isHovered && (
+                <div className="absolute bottom-3 right-3 flex items-center gap-2 rounded-md bg-black/60 px-3 py-2 backdrop-blur-sm">
+                    <button
+                        onClick={() => setVolume((v) => (v === 0 ? 100 : 0))}
+                        className="text-white/80 hover:text-white transition-colors"
+                    >
+                        {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                    </button>
+                    <Slider
+                        value={[volume]}
+                        onValueChange={([v]) => setVolume(v)}
+                        min={0}
+                        max={100}
+                        step={1}
+                        className="w-24"
+                    />
+                </div>
+            )}
         </div>
     );
 }

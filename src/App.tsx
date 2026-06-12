@@ -96,6 +96,7 @@ function App() {
         handleCommitResize,
         handleMoveEvents,
         handleUpdateMeta,
+        handleUpdatePlayer,
         recordTrackOverride,
         handleDeleteTrack,
         handleAddClips,
@@ -532,11 +533,15 @@ function App() {
                     onOpenChange={setSettingsOpen}
                     config={projectConfig}
                     onConfigChange={setProjectConfig}
+                    players={players}
+                    onUpdatePlayer={handleUpdatePlayer}
                 />
                 <ExportDialog
                     open={exportDialogOpen}
                     onClose={handleCloseExportDialog}
-                    video={video}
+                    videoClips={videoClips}
+                    audioClips={audioClips}
+                    sources={sources}
                     players={players}
                 />
                 <RelinkDialog

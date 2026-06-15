@@ -22,6 +22,7 @@ const SHORTCUT_GROUPS = [
             { keys: [`${modKey}+S`], description: 'Save project' },
             { keys: [`${modKey}+O`], description: 'Open project' },
             { keys: [`${modKey}+Alt+N`], description: 'New project' },
+            { keys: [`${modKey}+,`], description: 'Open settings' },
         ],
     },
     {

@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+@source "../.storybook";
+@source "./components";
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/geist';
@@ -138,7 +140,12 @@
 @layer base {
     * {
         @apply border-border outline-ring/50;
+        scrollbar-width: thin;
+        scrollbar-color: var(--border) transparent;
     }
+    *::-webkit-scrollbar { width: 6px; height: 6px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb { background-color: var(--border); border-radius: 9999px; }
 
     body {
         @apply bg-background text-foreground;

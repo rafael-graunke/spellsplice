@@ -110,6 +110,13 @@ export class Compositor {
         );
     }
 
+    uploadBlackFrame(): void {
+        const { gl } = this;
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.videoTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
+    }
+
     uploadVideoElement(videoEl: HTMLVideoElement): void {
         const { gl } = this;
         gl.activeTexture(gl.TEXTURE0);
@@ -130,6 +137,7 @@ export class Compositor {
         time: number,
         d20Img: HTMLImageElement | null,
         eyeImg: HTMLImageElement | null,
+        overlayStartHidden = false,
     ): void {
         const { overlayCtx, overlayCanvas, gl } = this;
         const { drawW, drawH, offsetX, offsetY, outW, outH } = this;
@@ -138,7 +146,7 @@ export class Compositor {
 
         const playerStates = players.map((p) => derivePlayerState(p, p.track.events, time));
         const activeEvents = players.map((p) => getActiveWindowedEvents(p.track.events, time));
-        const uiVisibility = deriveUIVisibility(players, time);
+        const uiVisibility = deriveUIVisibility(players, time, overlayStartHidden);
 
         const ctx2d = overlayCtx as unknown as CanvasRenderingContext2D;
         renderPlayerState(ctx2d, playerStates, offsetX, offsetY, drawW, drawH, d20Img, uiVisibility);

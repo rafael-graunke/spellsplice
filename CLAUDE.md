@@ -12,7 +12,7 @@ npm run preview   # Preview production build
 npx prettier --write .  # Format all files
 ```
 
-There are no tests.
+Interaction tests use Storybook play functions (`storybook/test`). When a UI bug is reported, write a failing play function to reproduce it before fixing. Portal-rendered UI (Radix context menus, dropdowns) requires `screen` not `within(canvasElement)`.
 
 ## What This Is
 

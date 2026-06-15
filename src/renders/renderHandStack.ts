@@ -28,11 +28,6 @@ export function renderHandStack(
         const offscreenX = isLeft ? offsetX - STRIP_W : offsetX + drawW;
 
         const handTS = deriveHandWithTimestamps(player, events, time);
-        if (handTS.length === 0) return;
-
-        const slideX = (isLeft ? -1 : 1) * 500 * (1 - uiVisibility);
-        ctx.save();
-        ctx.translate(slideX, 0);
 
         // Find recent REMOVE_FROM_HAND events still within animation window.
         const recentRemovals = events.filter(
@@ -41,6 +36,12 @@ export function renderHandStack(
                 e.time <= time &&
                 e.time > time - ANIM_DURATION,
         );
+
+        if (handTS.length === 0 && recentRemovals.length === 0) return;
+
+        const slideX = (isLeft ? -1 : 1) * 500 * (1 - uiVisibility);
+        ctx.save();
+        ctx.translate(slideX, 0);
 
         // Build per-card y offsets for reflow caused by each active removal.
         // Cards at current index j_new >= j_removed shift down during animation.

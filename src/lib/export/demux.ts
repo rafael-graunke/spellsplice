@@ -177,6 +177,104 @@ export async function* streamVideoChunks(
     }
 }
 
+// Decode any browser-supported audio file (MP3, WAV, OGG, FLAC, M4A, etc.) via the Web Audio API
+// and encode the requested clip regions to AAC. This is used for audio-only MediaSources where
+// mp4box cannot parse the container.
+export async function extractAudioFromFile(
+    file: File,
+    clips: ReadonlyArray<{ sourceOffset: number; duration: number; time: number }>,
+    signal: AbortSignal,
+    targetCodec: 'mp4a.40.2' | 'opus' = 'mp4a.40.2',
+): Promise<{ chunks: EncodedAudioChunk[]; meta: AudioTrackMeta } | null> {
+    let arrayBuffer: ArrayBuffer;
+    try {
+        arrayBuffer = await file.arrayBuffer();
+    } catch {
+        return null;
+    }
+    if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+
+    const audioCtx = new AudioContext();
+    let audioBuffer: AudioBuffer;
+    try {
+        audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    } catch {
+        return null; // Unsupported format
+    } finally {
+        audioCtx.close();
+    }
+    if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+
+    const { sampleRate, numberOfChannels } = audioBuffer;
+
+    const encoderConfig = targetCodec === 'opus'
+        ? { codec: 'opus' as const, sampleRate, numberOfChannels, bitrate: 128000 }
+        : { codec: 'mp4a.40.2' as const, sampleRate, numberOfChannels, bitrate: 128000 };
+    const support = await AudioEncoder.isConfigSupported(encoderConfig);
+    if (!support.supported) {
+        throw new Error(
+            `${targetCodec === 'mp4a.40.2' ? 'AAC' : 'Opus'} audio encoding is not supported in this browser. ` +
+            (targetCodec === 'mp4a.40.2'
+                ? 'Try exporting as WebM, or use a video file with built-in audio instead of a separate audio file.'
+                : 'Opus encoding should be available in all Chromium-based browsers.'),
+        );
+    }
+
+    const outputChunks: EncodedAudioChunk[] = [];
+    let description = new Uint8Array(0);
+    let firstOutput = true;
+    let encoderError: unknown = null;
+
+    const encoder = new AudioEncoder({
+        output: (chunk, meta) => {
+            if (firstOutput) {
+                firstOutput = false;
+                const desc = meta?.decoderConfig?.description;
+                if (desc instanceof ArrayBuffer) {
+                    description = new Uint8Array(desc);
+                } else if (ArrayBuffer.isView(desc)) {
+                    description = new Uint8Array(desc.buffer as ArrayBuffer, desc.byteOffset, desc.byteLength);
+                }
+            }
+            outputChunks.push(chunk);
+        },
+        error: (e) => { encoderError = e; },
+    });
+    encoder.configure(encoderConfig);
+
+    const FRAME_SIZE = 1024; // AAC frame size
+    for (const clip of clips) {
+        if (signal.aborted) break;
+        const startFrame = Math.floor(clip.sourceOffset * sampleRate);
+        const endFrame = Math.min(Math.ceil((clip.sourceOffset + clip.duration) * sampleRate), audioBuffer.length);
+        for (let offset = startFrame; offset < endFrame; offset += FRAME_SIZE) {
+            if (signal.aborted) break;
+            const frames = Math.min(FRAME_SIZE, endFrame - offset);
+            const timestamp = Math.round((clip.time + (offset - startFrame) / sampleRate) * 1e6);
+            const data = new Float32Array(numberOfChannels * frames);
+            for (let c = 0; c < numberOfChannels; c++) {
+                data.set(audioBuffer.getChannelData(c).subarray(offset, offset + frames), c * frames);
+            }
+            const audioData = new AudioData({ format: 'f32-planar', sampleRate, numberOfChannels, numberOfFrames: frames, timestamp, data });
+            encoder.encode(audioData);
+            audioData.close();
+        }
+    }
+
+    try {
+        await encoder.flush();
+    } catch {
+        // encoder may have closed due to error; throw that instead
+    }
+    encoder.close();
+    if (encoderError) throw encoderError;
+
+    return {
+        chunks: outputChunks,
+        meta: { codec: targetCodec, sampleRate, numberOfChannels, description },
+    };
+}
+
 export async function* streamAudioChunks(
     file: File,
     signal: AbortSignal,

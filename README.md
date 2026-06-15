@@ -1,6 +1,5 @@
 <div align="center">
-  <img src="assets/logo.png" alt="logo" width="auto" height="auto" />
-  <p>Unofficial Magic: The Gathering video overlay editor.</p>
+  <img src="assets/og.png" alt="Spellsplice — Magic: The Gathering Video Overlay Editor" width="100%" />
 </div>
 
 
@@ -40,7 +39,12 @@ Load a video file, then use the timeline editor to mark in-game events — life 
 ## Screenshots
 
 <div align="center">
-  <img src="https://placehold.co/600x400?text=Screenshot" alt="screenshot" />
+  <img src="assets/screenshots/app.png" alt="Full app view" width="100%" />
+  <img src="assets/screenshots/timeline.png" alt="Timeline editor" width="100%" />
+  <img src="assets/screenshots/overlay.png" alt="Canvas overlay" width="100%" />
+  <img src="assets/screenshots/decklist.png" alt="Decklist import" width="100%" />
+  <img src="assets/screenshots/autocomplete.png" alt="Card autocomplete" width="100%" />
+  <img src="assets/screenshots/export.png" alt="Video export" width="100%" />
 </div>
 
 
@@ -79,7 +83,7 @@ npx prettier --write .  # Format all files
 
 ## Roadmap
 
-### v1 - Export Ready `[in progress]`
+### v1 - Export Ready `[waiting release]`
 
 Everything needed to produce a complete, finished video.
 

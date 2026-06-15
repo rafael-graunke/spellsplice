@@ -5,21 +5,36 @@ import {
     ResizablePanel,
     ResizablePanelGroup,
 } from './components/ui/resizable';
-import { Timeline } from './components/Timeline';
+import { NLETimeline } from './components/nle/NLETimeline';
+import type { DeleteItem, DuplicateItem, PasteItem } from './components/nle/NLETimeline';
+import type { NLEMoveResult } from './components/nle/hooks/nleHookTypes';
+import type { Clip } from './components/types/clip';
+import { ClipType } from './components/types/clip';
+import type { NLETrackGroup, NLETrack } from './components/types/nle';
+import { TrackType } from './components/types/nle';
+import type { TrackOverrideRow } from './components/Timeline/hooks/usePlayerTracks';
 import type { Player } from './components/types/player';
 import type { TrackEvent, EventMeta } from './components/types/event';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { exportProject, importProject } from '@/lib/projectExport';
+import { RelinkDialog } from './components/Sources/RelinkDialog';
+import { getFileDuration, generateThumbnail } from '@/lib/generateThumbnail';
 import VideoPreview from './components/VideoPreview';
 import type { VideoState } from './components/types/video';
 import { Inspector } from './components/Inspector';
 import { usePlayerTracks } from './components/Timeline/hooks/usePlayerTracks';
 import AppBar from './components/AppBar';
 import { ExportDialog } from './components/ExportDialog';
+import SettingsDialog from './components/Settings/SettingsDialog';
+import type { ProjectConfig } from './components/types/config';
+import { DEFAULT_PROJECT_CONFIG } from './components/types/config';
+import { Sources } from './components/Sources';
+import type { MediaSource } from './components/types/source';
 
 type PlayerInit = Omit<Player, 'track'>;
 
 const AUTOSAVE_KEY = 'spellsplice-autosave';
+const DEFAULT_DURATION = 120;
 
 const initialPlayers: PlayerInit[] = [
     { id: 'player1', name: 'Player 1', handSize: 0, lifeTotal: 20, wins: 0, cards: [], topStack: []},
@@ -29,11 +44,19 @@ const initialPlayers: PlayerInit[] = [
 const makeFreshPlayers = (): Player[] =>
     initialPlayers.map((p) => ({ ...p, track: { id: p.id, layers: 4, events: [] } }));
 
-function loadSavedPlayers(): Player[] | undefined {
+type SavedState = {
+    players: Player[];
+    clipsByTrack: Record<string, import('./components/types/clip').Clip[]>;
+    trackOverrides: Record<string, TrackOverrideRow[]>;
+};
+
+function loadSavedState(): SavedState | undefined {
     try {
         const raw = localStorage.getItem(AUTOSAVE_KEY);
         if (!raw) return undefined;
-        return JSON.parse(raw) as Player[];
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return { players: parsed, clipsByTrack: {}, trackOverrides: {} };
+        return parsed as SavedState;
     } catch {
         return undefined;
     }
@@ -43,23 +66,27 @@ function App() {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [video, setVideo] = useState<VideoState | null>(null);
+    const [sources, setSources] = useState<MediaSource[]>([]);
     const [selectedEvents, setSelectedEvents] = useState<TrackEvent[]>([]);
-    const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(
-        () => initialPlayers[0]?.id ?? null
-    );
-    const [fileToLoad, setFileToLoad] = useState<File | null>(null);
+
     const [isDirty, setIsDirty] = useState(false);
     const [exportDialogOpen, setExportDialogOpen] = useState(false);
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    const [relinkDialogOpen, setRelinkDialogOpen] = useState(false);
+    const [projectConfig, setProjectConfig] = useState<ProjectConfig>(DEFAULT_PROJECT_CONFIG);
     const [newEventId, setNewEventId] = useState<number | null>(null);
     const isFirstPlayersRender = useRef(true);
     const skipDirtyRef = useRef(false);
+    const clearAutosaveRef = useRef(false);
     const currentTimeRef = useRef(0);
 
     useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
-    const [savedPlayersInit] = useState(loadSavedPlayers);
+    const [savedStateInit] = useState(loadSavedState);
 
     const {
         players,
+        trackOverrides,
+        clipsByTrack,
         handleCreateEvent,
         handleDeleteEvents,
         handleDuplicateEvents,
@@ -70,18 +97,27 @@ function App() {
         handleMoveEvents,
         handleUpdateMeta,
         handleUpdatePlayer,
+        recordTrackOverride,
+        handleDeleteTrack,
+        handleAddClips,
+        handleMoveClips,
+        handleDeleteClip,
+        handleDeleteClips,
+        handleDeleteAll,
         resetPlayers,
         undo,
         redo,
         canUndo,
         canRedo,
-    } = usePlayerTracks(initialPlayers, currentTimeRef, setSelectedEvents, savedPlayersInit);
+    } = usePlayerTracks(initialPlayers, currentTimeRef, setSelectedEvents, savedStateInit?.players, savedStateInit?.clipsByTrack, savedStateInit?.trackOverrides);
 
     useEffect(() => {
         const handler = (e: BeforeUnloadEvent) => {
-            if (!isDirty) return;
-            e.preventDefault();
-            localStorage.removeItem(AUTOSAVE_KEY);
+            if (isDirty) {
+                e.preventDefault();
+            } else {
+                localStorage.removeItem(AUTOSAVE_KEY);
+            }
         };
         window.addEventListener('beforeunload', handler);
         return () => window.removeEventListener('beforeunload', handler);
@@ -92,11 +128,22 @@ function App() {
             isFirstPlayersRender.current = false;
             return;
         }
-        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(players));
+        if (clearAutosaveRef.current) {
+            clearAutosaveRef.current = false;
+            localStorage.removeItem(AUTOSAVE_KEY);
+        } else {
+            localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ players, clipsByTrack, trackOverrides }));
+        }
         if (isDirty) return;
         if (skipDirtyRef.current) { skipDirtyRef.current = false; return; }
         setIsDirty(true);
-    }, [players]);
+    }, [players, clipsByTrack, trackOverrides]);
+
+    const isFirstConfigRender = useRef(true);
+    useEffect(() => {
+        if (isFirstConfigRender.current) { isFirstConfigRender.current = false; return; }
+        setIsDirty(true);
+    }, [projectConfig]);
 
     // Keep selectedEvents in sync with players state (handles undo/redo restoring event data).
     useEffect(() => {
@@ -110,42 +157,78 @@ function App() {
         });
     }, [players]);
 
+    const projectConfigRef = useRef(projectConfig);
+    projectConfigRef.current = projectConfig;
+
+    const clipsByTrackRef = useRef(clipsByTrack);
+    clipsByTrackRef.current = clipsByTrack;
+    const trackOverridesRef = useRef(trackOverrides);
+    trackOverridesRef.current = trackOverrides;
+
     const handleExport = useCallback(async () => {
-        await exportProject(playersRef.current, videoRef.current);
+        await exportProject(playersRef.current, videoRef.current, projectConfigRef.current, clipsByTrackRef.current, trackOverridesRef.current, sourcesRef.current);
         setIsDirty(false);
     }, []);
 
     const handleImport = useCallback(async (file: File) => {
-        const { manifest, videoFile } = await importProject(file);
+        const { manifest, config, offlineSources } = await importProject(file);
         skipDirtyRef.current = true;
-        resetPlayers(manifest.players);
-        setSelectedPlayerId(manifest.players[0]?.id ?? null);
+        clearAutosaveRef.current = true;
+        isFirstConfigRender.current = true;
+        resetPlayers(manifest.players, manifest.clipsByTrack ?? {}, manifest.trackOverrides ?? {});
+
+        setSources(offlineSources);
         setSelectedEvents([]);
         setCurrentTime(0);
         setIsPlaying(false);
         setIsDirty(false);
-        if (videoFile) setFileToLoad(videoFile);
+        setProjectConfig(config ? { ...DEFAULT_PROJECT_CONFIG, ...config } : DEFAULT_PROJECT_CONFIG);
+        if (offlineSources.length > 0) setRelinkDialogOpen(true);
     }, [resetPlayers]);
 
     const handleNew = useCallback(() => {
         skipDirtyRef.current = true;
+        isFirstConfigRender.current = true;
         resetPlayers(makeFreshPlayers());
         localStorage.removeItem(AUTOSAVE_KEY);
         setVideo(null);
+        setSources([]);
         setSelectedEvents([]);
         setCurrentTime(0);
         setIsPlaying(false);
-        setFileToLoad(null);
         setIsDirty(false);
+        setProjectConfig(DEFAULT_PROJECT_CONFIG);
     }, [resetPlayers]);
+
+    const handleRelinkSource = useCallback(async (sourceId: string, file: File) => {
+        setSources((prev) =>
+            prev.map((s) => (s.id === sourceId ? { ...s, file, loading: true, thumbnailUrl: undefined } : s)),
+        );
+        const duration = await getFileDuration(file).catch(() => 0);
+        const thumbnailUrl =
+            file.type.startsWith('video') ? await generateThumbnail(file).catch(() => undefined) : undefined;
+        setSources((prev) =>
+            prev.map((s) =>
+                s.id === sourceId ? { ...s, file, duration, thumbnailUrl, loading: false } : s,
+            ),
+        );
+    }, []);
+
+    const handleDeleteSource = useCallback((sourceId: string) => {
+        setSources((prev) => prev.filter((s) => s.id !== sourceId));
+        const clipsToDelete = Object.entries(clipsByTrackRef.current).flatMap(([trackId, clips]) =>
+            clips.filter((c) => c.sourceId === sourceId).map((c) => ({ trackId, clipId: c.id })),
+        );
+        if (clipsToDelete.length > 0) handleDeleteClips(clipsToDelete);
+    }, [handleDeleteClips]);
 
     const handleOpenExportDialog = useCallback(() => setExportDialogOpen(true), []);
     const handleCloseExportDialog = useCallback(() => setExportDialogOpen(false), []);
+    const handleOpenSettings = useCallback(() => setSettingsOpen(true), []);
 
-    const rawSelectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? players[0];
-
-    const rawSelectedPlayerRef = useRef(rawSelectedPlayer);
-    rawSelectedPlayerRef.current = rawSelectedPlayer;
+    const inspectorPlayer = selectedEvents[0]
+        ? players.find((p) => p.track.events.some((e) => e.id === selectedEvents[0].id)) ?? null
+        : null;
 
     const playersRef = useRef(players);
     playersRef.current = players;
@@ -153,13 +236,298 @@ function App() {
     const videoRef = useRef(video);
     videoRef.current = video;
 
-    const handleCreateEventWithFocus = useCallback(
-        (...args: Parameters<typeof handleCreateEvent>) => {
-            const created = handleCreateEvent(...args);
-            if (created) setNewEventId(created.id);
+    const trackGroups = useMemo((): NLETrackGroup[] => [
+        ...players.map((p) => {
+            const override = trackOverrides[p.id];
+            const tracks: NLETrack[] = override
+                ? override.map((t) => ({
+                    ...t,
+                    events: p.track.events.filter((e) => e.layer === (t.eventLayer ?? 0)),
+                    player: p,
+                }))
+                : [{ id: p.id, type: TrackType.Event, events: p.track.events, player: p, isBlocked: false, eventLayer: 0 }];
+            return { id: p.id, label: p.name, type: TrackType.Event, tracks };
+        }),
+        {
+            id: 'video',
+            label: 'Video',
+            type: TrackType.Video,
+            tracks: (trackOverrides['video'] ?? [{ id: 'video-1', type: TrackType.Video, isBlocked: false }]).map((t) => ({ ...t, events: [], clips: clipsByTrack[t.id] ?? [] })),
         },
-        [handleCreateEvent]
+        {
+            id: 'audio',
+            label: 'Audio',
+            type: TrackType.Audio,
+            tracks: (trackOverrides['audio'] ?? [{ id: 'audio-1', type: TrackType.Audio, isBlocked: false }]).map((t) => ({ ...t, events: [], clips: clipsByTrack[t.id] ?? [] })),
+        },
+    ], [players, trackOverrides, clipsByTrack]);
+
+    const trackInfoByTrackId = useMemo(() => {
+        const map = new Map<string, { groupId: string; eventLayer: number }>();
+        for (const group of trackGroups) {
+            for (const track of group.tracks) {
+                map.set(track.id, { groupId: group.id, eventLayer: track.eventLayer ?? 0 });
+            }
+        }
+        return map;
+    }, [trackGroups]);
+
+    const handleAddTrack = useCallback((groupId: string, trackId: string, position: 'above' | 'below') => {
+        const group = trackGroups.find((g) => g.id === groupId);
+        if (!group) return;
+        const maxLayer = Math.max(...group.tracks.map((t) => t.eventLayer ?? 0));
+        const newRow: TrackOverrideRow = {
+            id: crypto.randomUUID(),
+            type: group.type,
+            isBlocked: false,
+            eventLayer: maxLayer + 1,
+        };
+        const idx = group.tracks.findIndex((t) => t.id === trackId);
+        if (idx === -1) return;
+        const currentRows: TrackOverrideRow[] = group.tracks.map((t) => ({
+            id: t.id,
+            type: t.type,
+            isBlocked: t.isBlocked,
+            eventLayer: t.eventLayer,
+            isHidden: t.isHidden,
+            isMuted: t.isMuted,
+        }));
+        currentRows.splice(position === 'above' ? idx + 1 : idx, 0, newRow);
+        recordTrackOverride(groupId, currentRows);
+    }, [trackGroups, recordTrackOverride]);
+
+    const handleSelectionChange = useCallback((ids: Set<number>) => {
+        if (ids.size === 0) {
+            setSelectedEvents([]);
+            return;
+        }
+        const events: TrackEvent[] = [];
+        for (const player of playersRef.current) {
+            for (const ev of player.track.events) {
+                if (ids.has(ev.id)) events.push(ev);
+            }
+        }
+        setSelectedEvents(events);
+    }, []);
+
+    const handleNLECreate = useCallback((
+        trackId: string,
+        partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>,
+        onCreated?: (id: number) => void,
+    ) => {
+        const resolved = trackInfoByTrackId.get(trackId);
+        const playerId = resolved?.groupId ?? trackId;
+        const layer = resolved?.eventLayer ?? 0;
+        const event = handleCreateEvent({ layer, ...partial }, playerId);
+        if (event) {
+            setNewEventId(event.id);
+            onCreated?.(event.id);
+        }
+    }, [handleCreateEvent, trackInfoByTrackId]);
+
+    const handleNLEDelete = useCallback((items: DeleteItem[]) => {
+        const byPlayer = new Map<string, number[]>();
+        for (const { trackId, eventId } of items) {
+            const groupId = trackInfoByTrackId.get(trackId)?.groupId ?? trackId;
+            const arr = byPlayer.get(groupId) ?? [];
+            arr.push(eventId);
+            byPlayer.set(groupId, arr);
+        }
+        for (const [playerId, eventIds] of byPlayer) {
+            handleDeleteEvents(playerId, eventIds);
+        }
+    }, [handleDeleteEvents, trackInfoByTrackId]);
+
+    const handleNLEDeleteSelection = useCallback((
+        eventItems: DeleteItem[],
+        clipItems: { trackId: string; clipId: string }[],
+    ) => {
+        const byPlayer = new Map<string, number[]>();
+        for (const { trackId, eventId } of eventItems) {
+            const groupId = trackInfoByTrackId.get(trackId)?.groupId ?? trackId;
+            const arr = byPlayer.get(groupId) ?? [];
+            arr.push(eventId);
+            byPlayer.set(groupId, arr);
+        }
+        handleDeleteAll(
+            Array.from(byPlayer, ([playerId, eventIds]) => ({ playerId, eventIds })),
+            clipItems,
+        );
+    }, [handleDeleteAll, trackInfoByTrackId]);
+
+    const handleNLEDuplicate = useCallback((items: DuplicateItem[], onCreated: (newIds: number[]) => void) => {
+        const byPlayer = new Map<string, TrackEvent[]>();
+        for (const { trackId, eventId } of items) {
+            const groupId = trackInfoByTrackId.get(trackId)?.groupId ?? trackId;
+            const player = playersRef.current.find((p) => p.id === groupId);
+            const ev = player?.track.events.find((e) => e.id === eventId);
+            if (!ev) continue;
+            const arr = byPlayer.get(groupId) ?? [];
+            arr.push(ev);
+            byPlayer.set(groupId, arr);
+        }
+        const allNewIds: number[] = [];
+        for (const [playerId, events] of byPlayer) {
+            const newEvents = handleDuplicateEvents(playerId, events);
+            allNewIds.push(...newEvents.map((e) => e.id));
+        }
+        onCreated(allNewIds);
+    }, [handleDuplicateEvents, trackInfoByTrackId]);
+
+    const handleNLEPaste = useCallback((items: PasteItem[], pasteTime: number, onCreated: (newIds: number[]) => void) => {
+        const byPlayer = new Map<string, TrackEvent[]>();
+        for (const { trackId, event } of items) {
+            const groupId = trackInfoByTrackId.get(trackId)?.groupId ?? trackId;
+            const arr = byPlayer.get(groupId) ?? [];
+            arr.push(event);
+            byPlayer.set(groupId, arr);
+        }
+        const allNewIds: number[] = [];
+        for (const [playerId, events] of byPlayer) {
+            const newEvents = handlePasteEvents(playerId, events, pasteTime);
+            allNewIds.push(...newEvents.map((e) => e.id));
+        }
+        onCreated(allNewIds);
+    }, [handlePasteEvents, trackInfoByTrackId]);
+
+    const handleNLEUpdateEvent = useCallback((trackId: string, eventId: number, time: number, duration: number) => {
+        const groupId = trackInfoByTrackId.get(trackId)?.groupId ?? trackId;
+        handleUpdateEvent(groupId, eventId, time, duration);
+    }, [handleUpdateEvent, trackInfoByTrackId]);
+
+    const sourcesRef = useRef(sources);
+    sourcesRef.current = sources;
+
+    const handleDropSource = useCallback((trackId: string, sourceId: string, time: number) => {
+        const source = sourcesRef.current.find((s) => s.id === sourceId);
+        if (!source) return;
+        const clip: Clip = {
+            id: crypto.randomUUID(),
+            type: source.type === 'video' ? ClipType.Video : ClipType.Audio,
+            time,
+            duration: source.duration,
+            sourceId,
+            sourceOffset: 0,
+        };
+        const entries: Array<{ trackId: string; clip: Clip }> = [{ trackId, clip }];
+        if (source.type === 'video') {
+            const audioTrack = trackGroups.find((g) => g.type === TrackType.Audio)?.tracks.find((t) => !t.isBlocked);
+            if (audioTrack) {
+                entries.push({ trackId: audioTrack.id, clip: { ...clip, id: crypto.randomUUID(), type: ClipType.Audio } });
+            }
+        }
+        handleAddClips(entries);
+    }, [trackGroups, handleAddClips]);
+
+    const videoClips = useMemo(
+        () => trackGroups.find((g) => g.type === TrackType.Video)?.tracks.flatMap((t) => (t.clips ?? []).map((c) => ({ ...c, trackId: t.id }))) ?? [],
+        [trackGroups],
     );
+
+    const audioClips = useMemo(
+        () => trackGroups.find((g) => g.type === TrackType.Audio)?.tracks.flatMap((t) => (t.clips ?? []).map((c) => ({ ...c, trackId: t.id }))) ?? [],
+        [trackGroups],
+    );
+
+    const hiddenVideoTrackIds = useMemo(
+        () => new Set(trackGroups.find((g) => g.type === TrackType.Video)?.tracks.filter((t) => t.isHidden).map((t) => t.id) ?? []),
+        [trackGroups],
+    );
+
+    const mutedAudioTrackIds = useMemo(
+        () => new Set(trackGroups.find((g) => g.type === TrackType.Audio)?.tracks.filter((t) => t.isMuted).map((t) => t.id) ?? []),
+        [trackGroups],
+    );
+
+    const handleToggleTrack = useCallback((trackId: string, field: 'isHidden' | 'isMuted' | 'isBlocked') => {
+        for (const group of trackGroups) {
+            const idx = group.tracks.findIndex((t) => t.id === trackId);
+            if (idx === -1) continue;
+            const rows: TrackOverrideRow[] = group.tracks.map((t) => ({
+                id: t.id,
+                type: t.type,
+                isBlocked: t.isBlocked,
+                eventLayer: t.eventLayer,
+                isHidden: t.isHidden,
+                isMuted: t.isMuted,
+            }));
+            rows[idx] = { ...rows[idx], [field]: !rows[idx][field] };
+            recordTrackOverride(group.id, rows);
+            break;
+        }
+    }, [trackGroups, recordTrackOverride]);
+
+    const duration = useMemo(() => {
+        const clipEnd = Math.max(
+            0,
+            ...videoClips.map((c) => c.time + c.duration),
+            ...audioClips.map((c) => c.time + c.duration),
+        );
+        return clipEnd > 0 ? clipEnd : (video?.duration ?? DEFAULT_DURATION);
+    }, [videoClips, audioClips, video]);
+
+    const handleNLEMove = useCallback((
+        moves: NLEMoveResult[],
+        newTracksInfo?: Map<string, { groupId: string; eventLayer: number; targetLocalIndex: number }>,
+    ) => {
+        if (newTracksInfo && newTracksInfo.size > 0) {
+            const newByGroup = new Map<string, Array<{ id: string; eventLayer: number; targetLocalIndex: number }>>();
+            for (const [trackId, info] of newTracksInfo) {
+                const list = newByGroup.get(info.groupId) ?? [];
+                list.push({ id: trackId, eventLayer: info.eventLayer, targetLocalIndex: info.targetLocalIndex });
+                newByGroup.set(info.groupId, list);
+            }
+            for (const [groupId, newTracks] of newByGroup) {
+                const group = trackGroups.find((g) => g.id === groupId);
+                if (!group) continue;
+                const currentRows: TrackOverrideRow[] = group.tracks.map((t) => ({
+                    id: t.id,
+                    type: t.type,
+                    isBlocked: t.isBlocked,
+                    eventLayer: t.eventLayer,
+                    isHidden: t.isHidden,
+                    isMuted: t.isMuted,
+                }));
+                const prepends = newTracks
+                    .filter(({ targetLocalIndex }) => targetLocalIndex < 0)
+                    .sort((a, b) => a.targetLocalIndex - b.targetLocalIndex);
+                const appends = newTracks
+                    .filter(({ targetLocalIndex }) => targetLocalIndex >= group.tracks.length)
+                    .sort((a, b) => a.targetLocalIndex - b.targetLocalIndex);
+                for (let i = 0; i < prepends.length; i++) {
+                    currentRows.splice(i, 0, {
+                        id: prepends[i].id,
+                        type: TrackType.Event,
+                        isBlocked: false,
+                        eventLayer: prepends[i].eventLayer,
+                    });
+                }
+                for (const { id, eventLayer } of appends) {
+                    currentRows.push({ id, type: TrackType.Event, isBlocked: false, eventLayer });
+                }
+                recordTrackOverride(groupId, currentRows);
+            }
+        }
+
+        const extendedInfo = new Map(trackInfoByTrackId);
+        if (newTracksInfo) {
+            for (const [trackId, info] of newTracksInfo) {
+                extendedInfo.set(trackId, info);
+            }
+        }
+
+        handleMoveEvents(moves.map((m) => {
+            const from = extendedInfo.get(m.fromTrackId);
+            const to = extendedInfo.get(m.toTrackId);
+            return {
+                fromPlayerId: from?.groupId ?? m.fromTrackId,
+                toPlayerId: to?.groupId ?? m.toTrackId,
+                eventId: m.eventId,
+                newTime: m.newTime,
+                newLayer: to?.eventLayer ?? 0,
+            };
+        }));
+    }, [handleMoveEvents, trackGroups, trackInfoByTrackId, recordTrackOverride]);
 
     useEffect(() => {
         if (newEventId !== null && selectedEvents[0]?.id !== newEventId) {
@@ -168,7 +536,7 @@ function App() {
     }, [selectedEvents, newEventId]);
 
     const handleInspectorUpdate = useCallback((eventId: number, meta: EventMeta) => {
-        const player = rawSelectedPlayerRef.current;
+        const player = playersRef.current.find((p) => p.track.events.some((e) => e.id === eventId));
         if (!player) return;
         handleUpdateMeta(player.id, eventId, meta);
         setSelectedEvents((prev) =>
@@ -185,65 +553,103 @@ function App() {
                     onExport={handleExport}
                     onImport={handleImport}
                     onExportVideo={handleOpenExportDialog}
+                    onOpenSettings={handleOpenSettings}
+                    onRelinkMedia={() => setRelinkDialogOpen(true)}
+                />
+                <SettingsDialog
+                    open={settingsOpen}
+                    onOpenChange={setSettingsOpen}
+                    config={projectConfig}
+                    onConfigChange={setProjectConfig}
+                    players={players}
+                    onUpdatePlayer={handleUpdatePlayer}
                 />
                 <ExportDialog
                     open={exportDialogOpen}
                     onClose={handleCloseExportDialog}
-                    video={video}
+                    videoClips={videoClips}
+                    audioClips={audioClips}
+                    sources={sources}
                     players={players}
+                />
+                <RelinkDialog
+                    open={relinkDialogOpen}
+                    onOpenChange={setRelinkDialogOpen}
+                    sources={sources}
+                    clipsByTrack={clipsByTrack}
+                    onRelink={handleRelinkSource}
+                    onDelete={handleDeleteSource}
                 />
                 <ResizablePanelGroup orientation="vertical" className="flex-1">
                     <ResizablePanel minSize={100} defaultSize="60%">
                         <ResizablePanelGroup orientation="horizontal">
+                            <ResizablePanel minSize="250px" defaultSize="15%">
+                                <Sources
+                                    sources={sources}
+                                    setSources={setSources}
+                                    clipsByTrack={clipsByTrack}
+                                    onOpenRelinkDialog={() => setRelinkDialogOpen(true)}
+                                />
+                            </ResizablePanel>
+                            <ResizableHandle />
                             <ResizablePanel
                                 minSize={100}
-                                defaultSize="85%"
+                                defaultSize="70%"
                                 className="bg-muted/20"
                             >
                                 <VideoPreview
                                     isPlaying={isPlaying}
                                     currentTime={currentTime}
                                     currentTimeRef={currentTimeRef}
-                                    video={video}
-                                    setVideo={setVideo}
                                     setCurrentTime={setCurrentTime}
                                     setIsPlaying={setIsPlaying}
                                     players={players}
-                                    fileToLoad={fileToLoad}
+                                    overlayStartHidden={projectConfig.overlayStartHidden}
+                                    duration={duration}
+                                    videoClips={videoClips}
+                                    audioClips={audioClips}
+                                    sources={sources}
+                                    hiddenVideoTrackIds={hiddenVideoTrackIds}
+                                    mutedAudioTrackIds={mutedAudioTrackIds}
                                 />
                             </ResizablePanel>
                             <ResizableHandle />
-                            <ResizablePanel minSize="400px" defaultSize="15%">
-                                <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} player={rawSelectedPlayer} autoFocus={selectedEvents[0]?.id === newEventId} />
+                            <ResizablePanel minSize="250px" defaultSize="15%">
+                                <Inspector editObject={selectedEvents} onUpdate={handleInspectorUpdate} player={inspectorPlayer} autoFocus={selectedEvents[0]?.id === newEventId} />
                             </ResizablePanel>
                         </ResizablePanelGroup>
                     </ResizablePanel>
                     <ResizableHandle />
-                    <ResizablePanel minSize={100} defaultSize="40%">
-                        <Timeline
-                            setCurrentTime={setCurrentTime}
-                            duration={video ? video.duration || 120 : 120}
+                    <ResizablePanel minSize="280px" defaultSize="40%">
+                        <NLETimeline
+                            duration={duration}
                             isPlaying={isPlaying}
                             setIsPlaying={setIsPlaying}
-                            selectedEvents={selectedEvents}
-                            setSelectedEvents={setSelectedEvents}
-                            players={players}
-                            selectedPlayer={rawSelectedPlayer}
-                            setSelectedPlayerId={setSelectedPlayerId}
-                            handleCreateEvent={handleCreateEventWithFocus}
-                            handleDeleteEvents={handleDeleteEvents}
-                            handleDuplicateEvents={handleDuplicateEvents}
-                            handlePasteEvents={handlePasteEvents}
-                            handleUpdateEvent={handleUpdateEvent}
-                            handleBeginResize={handleBeginResize}
-                            handleCommitResize={handleCommitResize}
-                            handleMoveEvents={handleMoveEvents}
-                            handleUpdatePlayer={handleUpdatePlayer}
-                            undo={undo}
-                            redo={redo}
+                            currentTimeRef={currentTimeRef}
+                            setCurrentTime={setCurrentTime}
+                            trackGroups={trackGroups}
+                            onUndo={undo}
+                            onRedo={redo}
                             canUndo={canUndo}
                             canRedo={canRedo}
-                            currentTimeRef={currentTimeRef}
+                            onCreateEvent={handleNLECreate}
+                            onDeleteEvents={handleNLEDelete}
+                            onDuplicateEvents={handleNLEDuplicate}
+                            onPasteEvents={handleNLEPaste}
+                            onUpdateEvent={handleNLEUpdateEvent}
+                            onMoveEvent={handleNLEMove}
+                            onResizeStart={handleBeginResize}
+                            onResizeEnd={handleCommitResize}
+                            onSelectionChange={handleSelectionChange}
+                            onAddTrack={handleAddTrack}
+                            onDeleteTrack={handleDeleteTrack}
+                            sources={sources}
+                            onDropSource={handleDropSource}
+                            onMoveClips={handleMoveClips}
+                            onDeleteClip={handleDeleteClip}
+                            onDeleteClips={handleDeleteClips}
+                            onDeleteSelection={handleNLEDeleteSelection}
+                            onUpdateTrack={handleToggleTrack}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>

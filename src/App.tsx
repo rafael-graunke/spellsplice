@@ -49,6 +49,7 @@ type SavedState = {
     clipsByTrack: Record<string, import('./components/types/clip').Clip[]>;
     trackOverrides: Record<string, TrackOverrideRow[]>;
     sources?: Array<{ id: string; name: string; type: 'video' | 'audio'; duration?: number; thumbnailUrl?: string }>;
+    config?: ProjectConfig;
 };
 
 type EditorConfig = { volume: number; zoom: number };
@@ -95,7 +96,9 @@ const [savedStateInit] = useState(loadSavedState);
         () => (savedStateInit?.sources?.length ?? 0) > 0,
     );
     const [deletedSourceNames, setDeletedSourceNames] = useState<Record<string, string>>({});
-    const [projectConfig, setProjectConfig] = useState<ProjectConfig>(DEFAULT_PROJECT_CONFIG);
+    const [projectConfig, setProjectConfig] = useState<ProjectConfig>(
+        savedStateInit?.config ? { ...DEFAULT_PROJECT_CONFIG, ...savedStateInit.config } : DEFAULT_PROJECT_CONFIG,
+    );
     const [newEventId, setNewEventId] = useState<number | null>(null);
     const isFirstPlayersRender = useRef(true);
     const skipDirtyRef = useRef(false);
@@ -108,7 +111,7 @@ const [savedStateInit] = useState(loadSavedState);
         players,
         trackOverrides,
         clipsByTrack,
-        handleCreateEvent,
+        handleCreateEventAutoLayer,
         handleDeleteEvents,
         handleDuplicateEvents,
         handlePasteEvents,
@@ -157,12 +160,12 @@ const [savedStateInit] = useState(loadSavedState);
             const serializedSources = sources.map(({ id, name, type, duration, thumbnailUrl }) => ({
                 id, name, type, duration, thumbnailUrl,
             }));
-            localStorage.setItem(PROJECT_KEY, JSON.stringify({ players, clipsByTrack, trackOverrides, sources: serializedSources }));
+            localStorage.setItem(PROJECT_KEY, JSON.stringify({ players, clipsByTrack, trackOverrides, sources: serializedSources, config: projectConfig }));
         }
         if (isDirty) return;
         if (skipDirtyRef.current) { skipDirtyRef.current = false; return; }
         setIsDirty(true);
-    }, [players, clipsByTrack, trackOverrides, sources]);
+    }, [players, clipsByTrack, trackOverrides, sources, projectConfig]);
 
     const isFirstEditorRender = useRef(true);
     useEffect(() => {
@@ -175,6 +178,7 @@ const [savedStateInit] = useState(loadSavedState);
         if (isFirstConfigRender.current) { isFirstConfigRender.current = false; return; }
         setIsDirty(true);
     }, [projectConfig]);
+
 
     // Keep selectedEvents in sync with players state (handles undo/redo restoring event data).
     useEffect(() => {
@@ -368,13 +372,12 @@ const [savedStateInit] = useState(loadSavedState);
     ) => {
         const resolved = trackInfoByTrackId.get(trackId);
         const playerId = resolved?.groupId ?? trackId;
-        const layer = resolved?.eventLayer ?? 0;
-        const event = handleCreateEvent({ layer, ...partial }, playerId);
+        const event = handleCreateEventAutoLayer(partial, playerId);
         if (event) {
             setNewEventId(event.id);
             onCreated?.(event.id);
         }
-    }, [handleCreateEvent, trackInfoByTrackId]);
+    }, [handleCreateEventAutoLayer, trackInfoByTrackId]);
 
     const handleNLEDelete = useCallback((items: DeleteItem[]) => {
         const byPlayer = new Map<string, number[]>();

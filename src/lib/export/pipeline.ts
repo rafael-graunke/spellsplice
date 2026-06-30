@@ -65,9 +65,11 @@ async function collectClipAudio(
 
         const sorted = [...sourceClips].sort((a, b) => a.sourceOffset - b.sourceOffset);
 
-        if (source.type === 'video') {
-            // mp4box streaming path: safe for large video files.
-            // One stream pass per clip — handles overlapping source ranges (e.g. looping same clip twice).
+        if (source.type === 'video' && targetCodec !== 'opus') {
+            // mp4box streaming path: memory-efficient for large video files. Yields native codec
+            // chunks (AAC for MP4). Not used when targeting Opus because WebCodecs AudioDecoder
+            // for mp4a.40.2 is unavailable on Linux Chromium (patent licensing); those builds
+            // only decode AAC via the browser media stack (audioCtx.decodeAudioData below).
             const meta = await getAudioTrackMeta(source.file);
             if (!meta) continue;
             if (!firstMeta) firstMeta = meta;
@@ -88,7 +90,9 @@ async function collectClipAudio(
                 }
             }
         } else {
-            // WebAudio path: decode any format the browser supports
+            // WebAudio path: decode via audioCtx.decodeAudioData (handles any format the browser
+            // media stack supports, including AAC on Linux). Used for all audio sources and for
+            // video sources when targeting Opus.
             const extracted = await extractAudioFromFile(source.file, sorted, signal, targetCodec);
             if (!extracted) continue;
             if (!firstMeta) firstMeta = extracted.meta;

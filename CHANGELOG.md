@@ -1,3 +1,61 @@
+# [0.9.0-rc.1](https://github.com/rafael-graunke/spellsplice/compare/v0.8.0...v0.9.0-rc.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* **export:** fix animation frame duplication and broken exit animations ([9ad7165](https://github.com/rafael-graunke/spellsplice/commit/9ad7165cbc2c0341e2a6fd96f58d340d2d1c01a9))
+* **inspector:** restore autofocus on event creation from command palette ([cb380d3](https://github.com/rafael-graunke/spellsplice/commit/cb380d3b0d080bf7263a7bd1c748a472616edb73))
+* **nle:** enable cross-player event drag ([001e782](https://github.com/rafael-graunke/spellsplice/commit/001e7820777e3de728ef2856f6eb5d361a85d2c8))
+* **nle:** fix cross-group drag companion placement ([7de38c7](https://github.com/rafael-graunke/spellsplice/commit/7de38c76c56bc4fdba3435ea9e3b67e71b4494b0))
+* **nle:** fix multi-select, delete, copy, undo bugs and remove dead code ([36cf6fe](https://github.com/rafael-graunke/spellsplice/commit/36cf6fe79d96e72894798f36daf7ba5a25c5fea2))
+* **nle:** persist clips/overrides, clamp drags, fix audio sync on seek ([83ba9f2](https://github.com/rafael-graunke/spellsplice/commit/83ba9f2f3fd2e01caa4e80efb9e1f25ce4890d05))
+* **nle:** require mouse movement before activating event drag ([8e9dabc](https://github.com/rafael-graunke/spellsplice/commit/8e9dabc5018e60707290bb44d4ab8f1ac6b6432c))
+* **nle:** resolve inspector using wrong player after cross-player drag ([85377af](https://github.com/rafael-graunke/spellsplice/commit/85377af54d4dd5e57ab10cc931e132776fddf48b))
+* **renders:** tune crop constants and hand stack bottom margin ([26b29c7](https://github.com/rafael-graunke/spellsplice/commit/26b29c74b2de44d6b2c2be9a751929bf46776f33))
+* **timeline:** add horizontal edge scroll and fix time delta during scroll ([572493e](https://github.com/rafael-graunke/spellsplice/commit/572493eecfa329487394c0201fb69ab8014765a5))
+* **timeline:** replace background-attachment:local with scroll-synced backgroundPositionY ([b76a23c](https://github.com/rafael-graunke/spellsplice/commit/b76a23cc5a24ab4273445f53f3ddc8fe71e9e4b1))
+
+
+### Features
+
+* add error boundary with crash screen and issue report link ([fff3fbe](https://github.com/rafael-graunke/spellsplice/commit/fff3fbe2e4c9146c1f088c59d8820187c7e0546b))
+* **appbar:** show app version in top bar ([fc1c411](https://github.com/rafael-graunke/spellsplice/commit/fc1c411f3c69ea36602a8b2e33a8643a77448299))
+* **inspector:** autofocus, Escape blur, life defaults, combobox fix ([2f1fcd8](https://github.com/rafael-graunke/spellsplice/commit/2f1fcd80dad4a93eb2f4ff2a6866e03f87b8ea7f))
+* **inspector:** overhaul edition picker with virtual list + preview ([9899fa2](https://github.com/rafael-graunke/spellsplice/commit/9899fa237c59333886054ba61d8dea1934ded205))
+* NLE export pipeline and player settings section ([e1ae0fa](https://github.com/rafael-graunke/spellsplice/commit/e1ae0fa191ffcdbd29ed9fdf1a1a4e5a239e5049))
+* **nle:** add clip delete, undo/redo, and fix playback on delete ([636fa52](https://github.com/rafael-graunke/spellsplice/commit/636fa5226daae19cff433e8f9ae3c4957258a8d7))
+* **nle:** add delete track context menu option ([e223494](https://github.com/rafael-graunke/spellsplice/commit/e2234940cb869f232429bb0482662fec66a9c91a))
+* **nle:** add NLE timeline foundation with decoupled scroll/zoom ([31fd0d3](https://github.com/rafael-graunke/spellsplice/commit/31fd0d3a9379e51273770f71f3a0dcf3f51e7d7f))
+* **nle:** add NLECursor playhead and arrow key seeking ([6418952](https://github.com/rafael-graunke/spellsplice/commit/6418952d26c157b022205aefceb7e6cd5fdce542))
+* **nle:** add NLECursor playhead to track area ([368938c](https://github.com/rafael-graunke/spellsplice/commit/368938c7cd1e07dc71cee69bbaacf62acd703158))
+* **nle:** add NLEEvent with cross-track drag for event tracks ([62bd3b7](https://github.com/rafael-graunke/spellsplice/commit/62bd3b77d9e62fc619b634fdc376108bdfe10be5))
+* **nle:** add target player selection via TAB and track group click ([b7008e6](https://github.com/rafael-graunke/spellsplice/commit/b7008e65a3b4ac6af228d92e2da7a4fa6e98d1ee))
+* **nle:** give target track full event-panel width on focus ([b5f8f61](https://github.com/rafael-graunke/spellsplice/commit/b5f8f611e65b9dd37455228392d05273756bf319))
+* **nle:** implement track mute, hide, and block controls ([65adda7](https://github.com/rafael-graunke/spellsplice/commit/65adda72a6a308c9950c669ae6424f55a761e821))
+* **nle:** render waveforms and frame thumbnails on clips ([076c436](https://github.com/rafael-graunke/spellsplice/commit/076c43630f708f88c4d61341d9ce161b660de6fb))
+* **nle:** replace Timeline with NLETimeline ([1f08fdd](https://github.com/rafael-graunke/spellsplice/commit/1f08fddc29e22072dc270f8bca12e52439481049))
+* **nle:** wire zoom slider and split track groups into resizable panels ([f9ce498](https://github.com/rafael-graunke/spellsplice/commit/f9ce498e9e43400a603f4f16ab45642ff1c4d45a))
+* **overlay:** add HIDE_UI, SHOW_UI, RESET events; unify hand state ([4955167](https://github.com/rafael-graunke/spellsplice/commit/4955167ce09821401b16858d9144586e67d91b01))
+* **preview:** add hover volume slider ([260dcff](https://github.com/rafael-graunke/spellsplice/commit/260dcffd06c31017c6b82f01103ac8553d8bd2a6))
+* **renders:** add anti-aliased pill clip for modern frame strips ([d087002](https://github.com/rafael-graunke/spellsplice/commit/d087002520228e1e87de2e82015ba75ac3a20f29))
+* **renders:** animate display-card and deck-stack overlays ([6741da3](https://github.com/rafael-graunke/spellsplice/commit/6741da39a905794b03a042ae293181ebf84d79a6))
+* **renders:** animate hand stack entries and exits ([e0a89e0](https://github.com/rafael-graunke/spellsplice/commit/e0a89e07c65403c509ac195df1f03fc733c6632b))
+* **renders:** per-card strip height from crop dimensions ([4d8b38c](https://github.com/rafael-graunke/spellsplice/commit/4d8b38c3ccca19c3eaae5776d26c6b52a4084122))
+* **settings:** add settings dialog with overlay-start-hidden option ([764f2dc](https://github.com/rafael-graunke/spellsplice/commit/764f2dcf8d4a78c9e3fd81079803c905107fe0a9))
+* source management, NLE view modes, and session persistence ([920813b](https://github.com/rafael-graunke/spellsplice/commit/920813be591ab1041f41eae377de165c6585d985))
+* **sources:** offline detection and relink on project open ([76cd7bc](https://github.com/rafael-graunke/spellsplice/commit/76cd7bc926d6ec34468a80baf937bb8a7401e3a1))
+* **timeline:** add 'Create event' context menu item, platform-aware shortcuts ([2780041](https://github.com/rafael-graunke/spellsplice/commit/2780041ada4ec54bbbd94d89a6d77180466be0e9))
+* **timeline:** add delta-based undo/redo with Ctrl+Z ([bd3bc4d](https://github.com/rafael-graunke/spellsplice/commit/bd3bc4d821e6650ffc78088a22349c6a9e43bf0d))
+* **timeline:** add edge-scroll, dynamic lanes, and fix ghost sizing ([3f51e85](https://github.com/rafael-graunke/spellsplice/commit/3f51e85b0105c1f19cb36b6b0b20dc98b03b7cb2))
+* **timeline:** add WIN event and UX polish ([5c897db](https://github.com/rafael-graunke/spellsplice/commit/5c897dbdf6251e94a1a151d2617f6d690a690033))
+* **timeline:** copy/paste events, keyboard delete, fix context menu deselect ([d5fc5fc](https://github.com/rafael-graunke/spellsplice/commit/d5fc5fc590f4652cc19b2bdc93707b53c8ca2719))
+
+
+### Performance Improvements
+
+* **nle:** debounce waveform canvas redraw on zoom ([1b4a2bb](https://github.com/rafael-graunke/spellsplice/commit/1b4a2bb9018f3bf6b916f6b58cfd79ba27953b4a))
+* **timeline:** memoize component tree to eliminate cascade re-renders ([7755a34](https://github.com/rafael-graunke/spellsplice/commit/7755a348b46100465c345839311ed05b92dc0959))
+
 # [0.8.0](https://github.com/rafael-graunke/spellsplice/compare/v0.7.0...v0.8.0) (2026-05-05)
 
 

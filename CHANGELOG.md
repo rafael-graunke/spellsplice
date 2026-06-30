@@ -1,3 +1,16 @@
+# [0.9.0-rc.2](https://github.com/rafael-graunke/spellsplice/compare/v0.9.0-rc.1...v0.9.0-rc.2) (2026-06-30)
+
+
+### Bug Fixes
+
+* **export:** include HIDE_UI/SHOW_UI in overlay animation guard ([48f3565](https://github.com/rafael-graunke/spellsplice/commit/48f3565b11d7d5207c69c46b16e7e36c90d1c575))
+* **export:** pass overlayStartHidden to video export pipeline ([82619e5](https://github.com/rafael-graunke/spellsplice/commit/82619e591c57228ed337801b4b55d4557df6eea8))
+
+
+### Features
+
+* **nle:** auto-layer event creation, persist config to autosave ([2620f1d](https://github.com/rafael-graunke/spellsplice/commit/2620f1d27897075a22bdcb16a532cca5340a426c))
+
 # [0.9.0-rc.1](https://github.com/rafael-graunke/spellsplice/compare/v0.8.0...v0.9.0-rc.1) (2026-06-30)
 
 

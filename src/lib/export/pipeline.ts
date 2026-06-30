@@ -16,6 +16,7 @@ import { Compositor } from './compose';
 
 export interface ExportOptions {
     fps?: number;
+    overlayStartHidden?: boolean;
 }
 
 export interface ExportProgress {
@@ -65,9 +66,11 @@ async function collectClipAudio(
 
         const sorted = [...sourceClips].sort((a, b) => a.sourceOffset - b.sourceOffset);
 
-        if (source.type === 'video') {
-            // mp4box streaming path: safe for large video files.
-            // One stream pass per clip — handles overlapping source ranges (e.g. looping same clip twice).
+        if (source.type === 'video' && targetCodec !== 'opus') {
+            // mp4box streaming path: memory-efficient for large video files. Yields native codec
+            // chunks (AAC for MP4). Not used when targeting Opus because WebCodecs AudioDecoder
+            // for mp4a.40.2 is unavailable on Linux Chromium (patent licensing); those builds
+            // only decode AAC via the browser media stack (audioCtx.decodeAudioData below).
             const meta = await getAudioTrackMeta(source.file);
             if (!meta) continue;
             if (!firstMeta) firstMeta = meta;
@@ -88,7 +91,9 @@ async function collectClipAudio(
                 }
             }
         } else {
-            // WebAudio path: decode any format the browser supports
+            // WebAudio path: decode via audioCtx.decodeAudioData (handles any format the browser
+            // media stack supports, including AAC on Linux). Used for all audio sources and for
+            // video sources when targeting Opus.
             const extracted = await extractAudioFromFile(source.file, sorted, signal, targetCodec);
             if (!extracted) continue;
             if (!firstMeta) firstMeta = extracted.meta;
@@ -109,7 +114,7 @@ export async function exportVideo(
     signal: AbortSignal,
     options: ExportOptions = {},
 ): Promise<void> {
-    const { fps = 60 } = options;
+    const { fps = 60, overlayStartHidden = false } = options;
     const sourceMap = new Map(sources.map(s => [s.id, s]));
     const sortedVideoClips = [...videoClips].sort((a, b) => a.time - b.time);
     const sortedAudioClips = [...audioClips].sort((a, b) => a.time - b.time);
@@ -203,12 +208,13 @@ export async function exportVideo(
 
     const updateOverlay = (targetSec: number) => {
         if (targetSec < overlayValidUntil) return;
-        compositor.updateOverlay(players, targetSec, d20Img, eyeImg);
+        compositor.updateOverlay(players, targetSec, d20Img, eyeImg, overlayStartHidden);
         overlayValidUntil = getNextChangeTime(tracks, targetSec);
         const anyAnimating = players.some(p =>
             p.track.events.some(e => {
                 if (e.type === 'ADD_TO_HAND' || e.type === 'REMOVE_FROM_HAND' ||
-                    e.type === 'STACK_DECK' || e.type === 'UNSTACK_DECK') {
+                    e.type === 'STACK_DECK' || e.type === 'UNSTACK_DECK' ||
+                    e.type === 'HIDE_UI' || e.type === 'SHOW_UI') {
                     return e.time <= targetSec && e.time > targetSec - ANIM_DURATION;
                 }
                 if (e.type === 'DISPLAY_CARD' && e.duration != null) {

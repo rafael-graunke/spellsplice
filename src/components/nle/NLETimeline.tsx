@@ -436,23 +436,25 @@ export function NLETimeline({
     const applyFocusLayout = useCallback((newTargetId: string) => {
         const groups = trackGroupsRef.current;
         const handles = panelHandlesRef.current;
-        const eventGroups = groups.filter((g) => g.type === TrackType.Event);
-        const nonEventGroups = groups.filter((g) => g.type !== TrackType.Event);
+        // Only consider groups currently rendered — unrendered groups (e.g. video in Event-only view)
+        // have no handle and their fallback percentage would skew eventSpace.
+        const renderedGroups = groups.filter((g) => handles.has(g.id));
+        const eventGroups = renderedGroups.filter((g) => g.type === TrackType.Event);
+        const nonEventGroups = renderedGroups.filter((g) => g.type !== TrackType.Event);
 
-        // Measure current non-event sizes to compute remaining event space
-        const nonEventTotal = nonEventGroups.reduce((sum, g) => {
-            const pct = handles.get(g.id)?.getSize().asPercentage ?? (100 / groups.length);
-            return sum + pct;
-        }, 0);
+        const nonEventTotal = nonEventGroups.reduce((sum, g) => sum + (handles.get(g.id)?.getSize().asPercentage ?? 0), 0);
 
         const eventSpace = 100 - nonEventTotal;
         const nonTargetCount = eventGroups.length - 1;
-        const targetPct = eventSpace * 1;
         const otherPct = nonTargetCount > 0 ? (eventSpace * 0.3) / nonTargetCount : 0;
+        const targetPct = eventSpace - otherPct * nonTargetCount;
 
-        for (const g of eventGroups) {
-            handles.get(g.id)?.resize(`${g.id === newTargetId ? targetPct : otherPct}%`);
-        }
+        // Non-targets first, target last — ensures target.resize() is the final call so its
+        // size is exactly targetPct regardless of loop order or panel count.
+        const nonTargets = eventGroups.filter((g) => g.id !== newTargetId);
+        const target = eventGroups.find((g) => g.id === newTargetId);
+        for (const g of nonTargets) handles.get(g.id)?.resize(`${otherPct}%`);
+        if (target) handles.get(target.id)?.resize(`${targetPct}%`);
     }, []);
 
     // Copy / paste state

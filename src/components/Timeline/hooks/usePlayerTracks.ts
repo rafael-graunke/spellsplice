@@ -23,7 +23,7 @@ type TracksState = {
     clipsByTrack: Record<string, Clip[]>;
 };
 
-const COLLISION_THRESHOLD = 1.0;
+const COLLISION_THRESHOLD = 2.0;
 
 function findAvailableLayer(
     events: TrackEvent[],
@@ -346,11 +346,53 @@ export function usePlayerTracks(
         });
     }, [record]);
 
+    const handleCreateEventAutoLayer = useCallback((
+        partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>,
+        playerId?: string,
+    ): TrackEvent | undefined => {
+        const targetId = playerId ?? playersRef.current[0]?.id;
+        if (!targetId) return undefined;
+        const player = playersRef.current.find((p) => p.id === targetId);
+        if (!player) return undefined;
+        const time = currentTimeRef.current;
+        const resizable = partial.resizable ?? false;
+        const duration = partial.duration ?? 1;
+        const layer = findAvailableLayer(player.track.events, time, duration, resizable);
+        const { layer: _ignored, ...rest } = partial as any;
+        const newEvent: TrackEvent = {
+            id: nextEventId.current++,
+            time,
+            layer,
+            duration,
+            resizable,
+            ...rest,
+        };
+        record((draft) => {
+            const p = draft.players.find((p) => p.id === targetId);
+            if (p) p.track.events.push(newEvent as any);
+            const existingRows = draft.trackOverrides[targetId];
+            const maxLayer = existingRows
+                ? Math.max(0, ...existingRows.map((r) => r.eventLayer ?? 0))
+                : 0;
+            if (layer > maxLayer) {
+                const rows: TrackOverrideRow[] = existingRows
+                    ?? [{ id: targetId, type: 'EVENT' as TrackType, isBlocked: false, eventLayer: 0 }];
+                draft.trackOverrides[targetId] = [
+                    ...rows,
+                    { id: crypto.randomUUID(), type: 'EVENT' as TrackType, isBlocked: false, eventLayer: layer },
+                ];
+            }
+        });
+        setSelectedEvents([newEvent]);
+        return newEvent;
+    }, [record, setSelectedEvents]);
+
     return {
         players,
         trackOverrides,
         clipsByTrack,
         handleCreateEvent,
+        handleCreateEventAutoLayer,
         handleDeleteEvents,
         handleDuplicateEvents,
         handlePasteEvents,

@@ -1,6 +1,5 @@
 <div align="center">
-  <img src="assets/logo.png" alt="logo" width="auto" height="auto" />
-  <p>Unofficial Magic: The Gathering video overlay editor.</p>
+  <img src="assets/og.png" alt="Spellsplice — Magic: The Gathering Video Overlay Editor" width="100%" />
 </div>
 
 
@@ -40,7 +39,12 @@ Load a video file, then use the timeline editor to mark in-game events — life 
 ## Screenshots
 
 <div align="center">
-  <img src="https://placehold.co/600x400?text=Screenshot" alt="screenshot" />
+  <img src="assets/screenshots/app.png" alt="Full app view" width="100%" />
+  <img src="assets/screenshots/timeline.png" alt="Timeline editor" width="100%" />
+  <img src="assets/screenshots/overlay.png" alt="Canvas overlay" width="100%" />
+  <img src="assets/screenshots/decklist.png" alt="Decklist import" width="100%" />
+  <img src="assets/screenshots/autocomplete.png" alt="Card autocomplete" width="100%" />
+  <img src="assets/screenshots/export.png" alt="Video export" width="100%" />
 </div>
 
 
@@ -79,7 +83,7 @@ npx prettier --write .  # Format all files
 
 ## Roadmap
 
-### v1 - Export Ready `[in progress]`
+### v1 - Export Ready `[waiting release]`
 
 Everything needed to produce a complete, finished video.
 
@@ -96,7 +100,7 @@ Everything needed to produce a complete, finished video.
 - [x] **Decklist import** - paste a decklist in MTGO format per player; card data and images are bulk-fetched from Scryfall once and cached locally for the session
   - [x] Autocomplete in event fields draws from the cached deck first, falling back to global Scryfall search for off-deck cards
 - [x] **Cards-in-hand display** - always-visible stacked card title crops per player (Card Kingdom / Mengu's Workshop style), rendered from the local image cache
-- [x] **Project export/import** - save and load the full timeline (players, events, deck data) to a JSON file
+- [x] **Project export/import** - save and load the full timeline (players, events, clips, deck data) as a `.sps` file; media sources relink on open via a file picker
 - [x] **Video export** - render the overlay baked into the video, or export overlay-only, directly in the browser
 - [x] **Player name & deck name editing** in Inspector - changes reflect on the overlay in real time
 - [x] Complete all event types and state handlers:

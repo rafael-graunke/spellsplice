@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { GripVertical, Trash2Icon } from 'lucide-react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
     DndContext,
     closestCenter,
@@ -17,7 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useCardSearch } from '@/hooks/useCardSearch';
-import { useCardPrintings } from '@/hooks/useCardPrintings';
+import { useCardPrintings, type Printing } from '@/hooks/useCardPrintings';
 import {
     Combobox,
     ComboboxInput,
@@ -26,16 +27,18 @@ import {
     ComboboxItem,
 } from '@/components/ui/combobox';
 import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from '@/components/ui/popover';
+    Dialog,
+    DialogContent,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
 import { Item, ItemContent, ItemTitle, ItemActions } from '@/components/ui/item';
 import { Button } from '@/components/ui/button';
-import { cardDataCache } from '@/lib/cardCache';
+import { cardDataCache, storePrinting } from '@/lib/cardCache';
 import type { TrackEvent, EventMeta } from '../types/event';
 import type { Card } from '../types/card';
 import type { Player } from '../types/player';
+import { cn } from '@/lib/utils';
 
 interface CardFieldsProps {
     event: TrackEvent;
@@ -43,42 +46,181 @@ interface CardFieldsProps {
     onUpdate: (meta: EventMeta) => void;
     player?: Player | null;
     showEdition?: boolean;
+    autoFocus?: boolean;
+}
+
+interface PrintingsListProps {
+    filtered: Printing[];
+    editionKey: (p: Printing) => string;
+    onSelect: (p: Printing) => void;
+    onHover: (p: Printing) => void;
+    onLeave: () => void;
+}
+
+function PrintingsList({ filtered, editionKey, onSelect, onHover, onLeave }: PrintingsListProps) {
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const virtualizer = useVirtualizer({
+        count: filtered.length,
+        getScrollElement: () => scrollRef.current,
+        estimateSize: () => 32,
+        overscan: 5,
+    });
+
+    return (
+        <div ref={scrollRef} className="h-80 overflow-y-auto rounded-md border scrollbar-thin">
+            <div style={{ height: virtualizer.getTotalSize() }} className="relative w-full">
+                {virtualizer.getVirtualItems().map((vItem) => {
+                    const p = filtered[vItem.index];
+                    const key = editionKey(p);
+                    const hasNum = key.includes('#');
+                    return (
+                        <div
+                            key={`${p.set}-${p.collector_number}`}
+                            style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                height: vItem.size,
+                                transform: `translateY(${vItem.start}px)`,
+                            }}
+                            className="flex cursor-pointer items-center gap-2 px-2 hover:bg-accent"
+                            onClick={() => onSelect(p)}
+                            onMouseEnter={() => onHover(p)}
+                            onMouseLeave={onLeave}
+                        >
+                            <span className="w-16 shrink-0 font-mono text-xs uppercase text-muted-foreground">
+                                {key}
+                            </span>
+                            <span className="truncate text-xs">
+                                {p.set_name}{hasNum ? ` (#${p.collector_number})` : ''}
+                            </span>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function useBlobUrl(url: string | undefined): string | null {
+    const [blobUrl, setBlobUrl] = useState<string | null>(null);
+    useEffect(() => {
+        if (!url) { setBlobUrl(null); return; }
+        let active = true;
+        fetch(url, { mode: 'cors', cache: 'reload' })
+            .then((r) => r.blob())
+            .then((blob) => { if (active) setBlobUrl(URL.createObjectURL(blob)); })
+            .catch(() => {});
+        return () => {
+            active = false;
+            setBlobUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+        };
+    }, [url]);
+    return blobUrl;
 }
 
 function EditionPicker({ card, onSelect }: { card: Card; onSelect: (edition: string) => void }) {
     const [open, setOpen] = useState(false);
-    const { data: printings, isFetching } = useCardPrintings(open ? card.name : '');
+    const [search, setSearch] = useState('');
+    const [hovered, setHovered] = useState<Printing | null>(null);
+    const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    // Once opened, keep passing card.name so the cache stays warm on reopen.
+    const hasOpenedRef = useRef(false);
+    if (open) hasOpenedRef.current = true;
+    const { printings, editionKey, totalCards, loadedCount, isStreaming, isFetching } = useCardPrintings(
+        hasOpenedRef.current ? card.name : '',
+    );
+
+    const filtered = useMemo(() => {
+        if (!search) return printings;
+        const q = search.toLowerCase();
+        return printings.filter(
+            (p) =>
+                p.set.toLowerCase().includes(q) ||
+                p.set_name.toLowerCase().includes(q) ||
+                p.collector_number.includes(q),
+        );
+    }, [printings, search]);
+
+    useEffect(() => {
+        if (!open) {
+            setSearch('');
+            setHovered(null);
+            clearTimeout(hoverTimer.current);
+        }
+    }, [open]);
+
+    const previewBlobUrl = useBlobUrl(hovered?.image_uris?.normal);
+
+    const onRowEnter = (p: Printing) => {
+        clearTimeout(hoverTimer.current);
+        hoverTimer.current = setTimeout(() => setHovered(p), 250);
+    };
+    const onRowLeave = () => {
+        clearTimeout(hoverTimer.current);
+    };
 
     return (
-        <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
                 <Button variant="outline" size="xs" className="font-mono uppercase">
                     {card.edition ?? 'Any Set'}
                 </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-52 max-h-100 overflow-y-auto p-1" align="end">
-                {isFetching && (
-                    <div className="py-2 text-center text-xs text-muted-foreground">
-                        Loading…
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-2xl" showCloseButton>
+                <DialogTitle>Select printing for &ldquo;{card.name}&rdquo;</DialogTitle>
+                <div className="flex gap-4">
+                    <div className="flex flex-1 flex-col gap-2">
+                        <input
+                            className="h-8 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
+                            placeholder="Search sets…"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            autoFocus
+                        />
+                        {isFetching && printings.length === 0 && (
+                            <div className="py-4 text-center text-xs text-muted-foreground">
+                                Loading…
+                            </div>
+                        )}
+                        <PrintingsList
+                            filtered={filtered}
+                            editionKey={editionKey}
+                            onSelect={(p) => {
+                                const key = editionKey(p);
+                                storePrinting(card.name, key, p.image_uris, p.frame);
+                                onSelect(key);
+                                setOpen(false);
+                            }}
+                            onHover={onRowEnter}
+                            onLeave={onRowLeave}
+                        />
+                        {isStreaming && totalCards != null && (
+                            <div className="text-xs text-muted-foreground">
+                                Loaded {loadedCount} / {totalCards}
+                            </div>
+                        )}
                     </div>
-                )}
-                {printings?.map((p) => (
-                    <div
-                        key={`${p.set}-${p.collector_number}`}
-                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-accent"
-                        onClick={() => {
-                            onSelect(p.set);
-                            setOpen(false);
-                        }}
-                    >
-                        <span className="w-9 shrink-0 font-mono uppercase text-muted-foreground">
-                            {p.set}
-                        </span>
-                        <span className="truncate">{p.set_name}</span>
+                    <div className="relative aspect-[23/32] shrink-0 self-stretch">
+                        {previewBlobUrl ? (
+                            <img
+                                src={previewBlobUrl}
+                                alt={card.name}
+                                className={cn(
+                                    "absolute inset-0 h-full w-full object-cover",
+                                    hovered?.set.startsWith("lea")  ? "rounded-[20px]" : "rounded-[13px]",
+                                )}
+                            />
+                        ) : (
+                            <div className="absolute inset-0 flex items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
+                                Hover a row to preview
+                            </div>
+                        )}
                     </div>
-                ))}
-            </PopoverContent>
-        </Popover>
+                </div>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -126,7 +268,7 @@ function SortableCardItem({
                             onSelect={(edition) => onUpdateEdition(index, edition)}
                         />
                     )}
-                    <Button variant="ghost" size="icon-sm" onClick={() => onRemove(index)}>
+                    <Button className="cursor-pointer" variant="ghost" size="icon-sm" onClick={() => onRemove(index)}>
                         <Trash2Icon />
                     </Button>
                 </ItemActions>
@@ -139,11 +281,10 @@ function makeId() {
     return Math.random().toString(36).slice(2);
 }
 
-export function CardFields({ event, multi, onUpdate, player, showEdition = true }: CardFieldsProps) {
+export function CardFields({ event, multi, onUpdate, player, showEdition = true, autoFocus }: CardFieldsProps) {
     const [query, setQuery] = useState('');
     const [comboKey, setComboKey] = useState(0);
     const { data: suggestions, isFetching } = useCardSearch(query, player);
-
     const selected: Card[] = event.meta?.cards ?? [];
 
     // Stable IDs keyed to card instances, not positions.
@@ -174,8 +315,16 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true 
         onUpdate({ cards: arrayMove(selected, from, to) });
     };
 
+    const focusNextMountRef = useRef(!!autoFocus);
+    const hasInitedRef = useRef(false);
+
     useEffect(() => {
         setQuery('');
+        if (!hasInitedRef.current) {
+            hasInitedRef.current = true;
+            return;
+        }
+        focusNextMountRef.current = !!autoFocus;
         setComboKey((k) => k + 1);
     }, [event.id]);
 
@@ -195,6 +344,7 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true 
         const next = multi ? [...selected, newCard] : [newCard];
         onUpdate({ cards: next });
         setQuery('');
+        focusNextMountRef.current = true;
         setComboKey((k) => k + 1);
     };
 
@@ -213,8 +363,9 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true 
 
             <Combobox<string, false>
                 key={comboKey}
-                filter={null}
-                autoHighlight
+                items={suggestions ?? []}
+                filter={() => true}
+                autoHighlight="always"
                 onInputValueChange={(val, details) => {
                     if (details.reason === 'input-change') setQuery(val);
                 }}
@@ -222,7 +373,12 @@ export function CardFields({ event, multi, onUpdate, player, showEdition = true 
                     if (name) addCard(name);
                 }}
             >
-                <ComboboxInput placeholder="Search cards…" className="h-8" />
+                <ComboboxInput
+                    placeholder="Search cards…"
+                    className="h-8"
+                    autoFocus={focusNextMountRef.current}
+                    onKeyDown={(e) => { if (e.key === 'Escape') (e.target as HTMLInputElement).blur(); }}
+                />
                 <ComboboxContent>
                     <ComboboxList>
                         {isFetching && (

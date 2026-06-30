@@ -8,15 +8,20 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import type { VideoState } from '@/components/types/video';
+import type { Clip } from '@/components/types/clip';
+import type { MediaSource } from '@/components/types/source';
 import type { Player } from '@/components/types/player';
+import type { ProjectConfig } from '@/components/types/config';
 import { exportVideo, type ExportProgress } from '@/lib/export';
 
 interface ExportDialogProps {
     open: boolean;
     onClose: () => void;
-    video: VideoState | null;
+    videoClips: Clip[];
+    audioClips: Clip[];
+    sources: MediaSource[];
     players: Player[];
+    config: ProjectConfig;
 }
 
 type Status = 'idle' | 'running' | 'done' | 'error';
@@ -38,7 +43,7 @@ function phaseLabel(p: ExportProgress): string {
 
 const canExport = 'showSaveFilePicker' in window;
 
-export function ExportDialog({ open, onClose, video, players }: ExportDialogProps) {
+export function ExportDialog({ open, onClose, videoClips, audioClips, sources, players, config }: ExportDialogProps) {
     const [status, setStatus] = useState<Status>('idle');
     const [progress, setProgress] = useState<ExportProgress | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -58,14 +63,14 @@ export function ExportDialog({ open, onClose, video, players }: ExportDialogProp
     };
 
     const startExport = async () => {
-        if (!video) return;
+        if (videoClips.length === 0) return;
         const abort = new AbortController();
         abortRef.current = abort;
         setStatus('running');
         setProgress(null);
         setError(null);
         try {
-            await exportVideo(video, players, setProgress, abort.signal, { fps });
+            await exportVideo(videoClips, audioClips, sources, players, setProgress, abort.signal, { fps, overlayStartHidden: config.overlayStartHidden });
             setStatus('done');
         } catch (err) {
             if (err instanceof DOMException && err.name === 'AbortError') {
@@ -81,6 +86,8 @@ export function ExportDialog({ open, onClose, video, players }: ExportDialogProp
     const handleCancel = () => {
         abortRef.current?.abort();
     };
+
+    const noClips = videoClips.length === 0;
 
     return (
         <Dialog
@@ -115,12 +122,17 @@ export function ExportDialog({ open, onClose, video, players }: ExportDialogProp
                         <DialogFooter>
                             <Button variant="outline" onClick={handleClose}>Cancel</Button>
                             <span className="group relative">
-                                <Button onClick={startExport} disabled={!video || !canExport}>
+                                <Button onClick={startExport} disabled={noClips || !canExport}>
                                     Export
                                 </Button>
                                 {!canExport && (
                                     <span className="pointer-events-none absolute bottom-full left-1/2 mb-2 w-56 -translate-x-1/2 rounded-md bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md opacity-0 group-hover:opacity-100 transition-opacity">
                                         Video export requires Chrome or Edge. Save your project and open it there.
+                                    </span>
+                                )}
+                                {canExport && noClips && (
+                                    <span className="pointer-events-none absolute bottom-full left-1/2 mb-2 w-56 -translate-x-1/2 rounded-md bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md opacity-0 group-hover:opacity-100 transition-opacity">
+                                        Add video clips to the timeline before exporting.
                                     </span>
                                 )}
                             </span>

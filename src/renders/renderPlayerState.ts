@@ -7,7 +7,8 @@ export function renderPlayerState(
     offsetY: number,
     drawW: number,
     _drawH: number,
-    d20Img: HTMLImageElement | null
+    d20Img: HTMLImageElement | null,
+    uiVisibility = 1,
 ) {
     playerStates.forEach((state, i) => {
         if (!state) return;
@@ -20,7 +21,9 @@ export function renderPlayerState(
         const bottomY = topY + boxH;
         const rx = offsetX + drawW;
 
+        const slideX = (isLeft ? -1 : 1) * 500 * (1 - uiVisibility);
         ctx.save();
+        ctx.translate(slideX, 0);
         ctx.beginPath();
 
         if (isLeft) {

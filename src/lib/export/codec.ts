@@ -1,15 +1,15 @@
 export type ContainerFormat = 'mp4' | 'webm';
 
 export async function pickCodec(fps: number): Promise<{ codec: string; format: ContainerFormat }> {
-    for (const [codec, format] of [
-        ['avc1.64002a', 'mp4'],
-        ['vp09.00.10.08', 'webm'],
+    for (const [codec, format, audioCodec] of [
+        ['avc1.64002a', 'mp4', 'mp4a.40.2'],
+        ['vp09.00.10.08', 'webm', 'opus'],
     ] as const) {
-        const { supported } = await VideoEncoder.isConfigSupported({
-            codec, width: 1920, height: 1080, framerate: fps,
-            bitrate: 20_000_000,
-        });
-        if (supported) return { codec, format };
+        const [videoSupport, audioSupport] = await Promise.all([
+            VideoEncoder.isConfigSupported({ codec, width: 1920, height: 1080, framerate: fps, bitrate: 20_000_000 }),
+            AudioEncoder.isConfigSupported({ codec: audioCodec, sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 }),
+        ]);
+        if (videoSupport.supported && audioSupport.supported) return { codec, format };
     }
     throw new Error('No supported video encoder found. Try Chrome on a recent OS.');
 }

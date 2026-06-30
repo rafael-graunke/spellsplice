@@ -27,13 +27,18 @@ Load a video file, then use the timeline editor to mark in-game events — life 
 ## Features
 
 - **Video playback** with frame-accurate canvas rendering
-- **Interactive timeline** with zoom, scrubbing, and a draggable playhead
-- **Basic event types**: Lose Life, Gain Life, Add to Hand, Remove from Hand, Reveal from Hand, Stack Deck, Unstack Deck, Display Card
-- **Drag-and-drop events** — reposition or move events between player tracks
-- **Resizable duration events** — some events (like Display Card) span a time range and show as an overlay banner while active
-- **Up to 4 players**, each with their own track
-- **Live canvas overlay** showing each player's life total and hand size, updated frame-by-frame as events fire
-- **Command palette** (Cmd+K) for quickly adding new events
+- **Non-linear timeline editor** — zoom, scrubbing, draggable playhead, rubber-band multi-select, command palette (Cmd+K)
+- **Full event suite**: Lose Life, Gain Life, Add to Hand, Remove from Hand, Reveal from Hand, Stack Deck, Unstack Deck, Display Card, Win, Hide UI, Show UI, Reset
+- **Drag-and-drop events** across layers and players; resizable duration events (e.g. Display Card) span a time range
+- **Up to 4 players**, each with their own multi-layer track
+- **Live canvas overlay** — player name, life total, and hand size rendered frame-by-frame as events fire
+- **Cards-in-hand display** — stacked card title-bar crops per player, always visible on the overlay
+- **Deck stack overlay** with entrance animation
+- **Decklist import** — paste an MTGO-format decklist; card data and images are bulk-fetched from Scryfall and cached locally
+- **Inspector panel** — edit event properties; card autocomplete draws from the cached deck first, falls back to Scryfall
+- **Project export/import** — save and load the full timeline as a `.sps` file; media sources relink on open via a file picker
+- **Video export** — bake the overlay into the video directly in the browser (Chrome/Edge; powered by WebCodecs + WebGL)
+- **Settings dialog** — project metadata, player defaults, overlay appearance
 
 
 ## Screenshots
@@ -83,7 +88,7 @@ npx prettier --write .  # Format all files
 
 ## Roadmap
 
-### v1 - Export Ready `[waiting release]`
+### v1 - Export Ready `[released]`
 
 Everything needed to produce a complete, finished video.
 

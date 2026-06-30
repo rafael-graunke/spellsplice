@@ -217,8 +217,8 @@ shadcn/ui + Radix UI + Tailwind CSS v4. Components live in `src/components/ui/`.
 | Version | Theme | Status |
 |---------|-------|--------|
 | **v0** | Foundation | ✅ Done |
-| **v1** | Export Ready | 🟡 Current |
-| **v2** | Streaming & Creator Tools | ⬜ Future |
+| **v1** | Export Ready | ✅ Done |
+| **v2** | Streaming & Creator Tools | 🟡 Current |
 | **v3** | Desktop App | ⬜ Future |
 
 **v1 targets**:

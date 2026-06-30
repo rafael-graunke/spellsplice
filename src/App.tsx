@@ -664,6 +664,7 @@ const [savedStateInit] = useState(loadSavedState);
                     audioClips={audioClips}
                     sources={sources}
                     players={players}
+                    config={projectConfig}
                 />
                 <RelinkDialog
                     open={relinkDialogOpen}

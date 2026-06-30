@@ -16,6 +16,7 @@ import { Compositor } from './compose';
 
 export interface ExportOptions {
     fps?: number;
+    overlayStartHidden?: boolean;
 }
 
 export interface ExportProgress {
@@ -113,7 +114,7 @@ export async function exportVideo(
     signal: AbortSignal,
     options: ExportOptions = {},
 ): Promise<void> {
-    const { fps = 60 } = options;
+    const { fps = 60, overlayStartHidden = false } = options;
     const sourceMap = new Map(sources.map(s => [s.id, s]));
     const sortedVideoClips = [...videoClips].sort((a, b) => a.time - b.time);
     const sortedAudioClips = [...audioClips].sort((a, b) => a.time - b.time);
@@ -207,7 +208,7 @@ export async function exportVideo(
 
     const updateOverlay = (targetSec: number) => {
         if (targetSec < overlayValidUntil) return;
-        compositor.updateOverlay(players, targetSec, d20Img, eyeImg);
+        compositor.updateOverlay(players, targetSec, d20Img, eyeImg, overlayStartHidden);
         overlayValidUntil = getNextChangeTime(tracks, targetSec);
         const anyAnimating = players.some(p =>
             p.track.events.some(e => {

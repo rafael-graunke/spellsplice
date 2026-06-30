@@ -1,3 +1,15 @@
+# [1.0.0](https://github.com/rafael-graunke/spellsplice/compare/v0.9.0...v1.0.0) (2026-06-30)
+
+
+* docs!: mark v1 as released ([0aafb98](https://github.com/rafael-graunke/spellsplice/commit/0aafb98be3610d768b30b4591039750e5452a90b))
+
+
+### BREAKING CHANGES
+
+* triggers 1.0.0 release cut. v1 feature set is
+  complete — video export, project files, decklist import, NLE,
+  cards-in-hand overlay, settings dialog.
+
 # [1.0.0-rc.1](https://github.com/rafael-graunke/spellsplice/compare/v0.9.0...v1.0.0-rc.1) (2026-06-30)
 
 

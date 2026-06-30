@@ -213,7 +213,8 @@ export async function exportVideo(
         const anyAnimating = players.some(p =>
             p.track.events.some(e => {
                 if (e.type === 'ADD_TO_HAND' || e.type === 'REMOVE_FROM_HAND' ||
-                    e.type === 'STACK_DECK' || e.type === 'UNSTACK_DECK') {
+                    e.type === 'STACK_DECK' || e.type === 'UNSTACK_DECK' ||
+                    e.type === 'HIDE_UI' || e.type === 'SHOW_UI') {
                     return e.time <= targetSec && e.time > targetSec - ANIM_DURATION;
                 }
                 if (e.type === 'DISPLAY_CARD' && e.duration != null) {

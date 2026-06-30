@@ -21,6 +21,7 @@ interface NLEClipProps {
     clip: Clip;
     sourceName: string;
     sourceMissing?: boolean;
+    sourceOffline?: boolean;
     zoom: number;
     isSelected: boolean;
     isBeingDragged: boolean;
@@ -31,7 +32,7 @@ interface NLEClipProps {
     thumbnails?: ClipThumbnails;
 }
 
-export function NLEClip({ clip, sourceName, sourceMissing, zoom, isSelected, isBeingDragged, onMouseDown, onSelect, onDelete, waveformData, thumbnails }: NLEClipProps) {
+export function NLEClip({ clip, sourceName, sourceMissing, sourceOffline, zoom, isSelected, isBeingDragged, onMouseDown, onSelect, onDelete, waveformData, thumbnails }: NLEClipProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     useEffect(() => {
@@ -80,9 +81,11 @@ export function NLEClip({ clip, sourceName, sourceMissing, zoom, isSelected, isB
                         'absolute cursor-grab border ring-2 ring-inset active:cursor-grabbing overflow-hidden h-[calc(100%-6px)] top-1/2 -translate-y-1/2 rounded-sm select-none',
                         sourceMissing
                             ? 'bg-red-950/80 border-red-500'
-                            : cn(ClipColorMap[clip.type].bg, ClipColorMap[clip.type].ring),
+                            : sourceOffline
+                                ? 'bg-amber-950/80 border-amber-500'
+                                : cn(ClipColorMap[clip.type].bg, ClipColorMap[clip.type].ring),
                         isBeingDragged && 'opacity-0',
-                        isSelected && (sourceMissing ? 'ring-red-400 ring-inset' : 'ring-white '),
+                        isSelected && (sourceMissing ? 'ring-red-400' : sourceOffline ? 'ring-amber-400' : 'ring-white'),
                     )}
                     style={{ left: clip.time * zoom, width: clip.duration * zoom }}
                     onMouseDown={(e) => {
@@ -130,9 +133,13 @@ export function NLEClip({ clip, sourceName, sourceMissing, zoom, isSelected, isB
                     )}
                     <span className={cn(
                         'absolute inset-0 flex items-center px-2 text-xs truncate pointer-events-none',
-                        sourceMissing ? 'text-red-300' : 'text-white/90',
+                        sourceMissing ? 'text-red-300' : sourceOffline ? 'text-amber-300' : 'text-white/90',
                     )}>
-                        {sourceMissing ? 'Source for clip not found. Please relink the source.' : sourceName}
+                        {sourceMissing
+                            ? 'Source deleted — relink via Manage Sources'
+                            : sourceOffline
+                                ? `${sourceName} (Offline)`
+                                : sourceName}
                     </span>
                 </div>
             </ContextMenuTrigger>

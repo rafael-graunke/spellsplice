@@ -26,3 +26,17 @@ export function parseDecklist(text: string): Decklist {
 
     return { maindeck, ...(sideboard.length > 0 && { sideboard }) };
 }
+
+export function serializeDecklist(decklist: Decklist): string {
+    const lines: string[] = [];
+    for (const { card, quantity } of decklist.maindeck) {
+        lines.push(card.edition ? `${quantity} ${card.name} (${card.edition})` : `${quantity} ${card.name}`);
+    }
+    if (decklist.sideboard && decklist.sideboard.length > 0) {
+        lines.push('Sideboard');
+        for (const { card, quantity } of decklist.sideboard) {
+            lines.push(card.edition ? `${quantity} ${card.name} (${card.edition})` : `${quantity} ${card.name}`);
+        }
+    }
+    return lines.join('\n');
+}

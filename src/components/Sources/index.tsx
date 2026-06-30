@@ -10,9 +10,11 @@ interface SourcesProps {
     setSources: React.Dispatch<React.SetStateAction<MediaSource[]>>;
     clipsByTrack: Record<string, Clip[]>;
     onOpenRelinkDialog: () => void;
+    onRelink?: (sourceId: string, file: File) => void;
+    onDelete?: (sourceId: string) => void;
 }
 
-export function Sources({ sources, setSources, clipsByTrack, onOpenRelinkDialog }: SourcesProps) {
+export function Sources({ sources, setSources, clipsByTrack, onOpenRelinkDialog, onRelink, onDelete }: SourcesProps) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [isDragOver, setIsDragOver] = React.useState(false);
 
@@ -107,7 +109,10 @@ export function Sources({ sources, setSources, clipsByTrack, onOpenRelinkDialog 
                     accept="video/*,audio/*"
                     multiple
                     className="hidden"
-                    onChange={(e) => e.target.files && addFiles(e.target.files)}
+                    onChange={(e) => {
+                        if (e.target.files) addFiles(e.target.files);
+                        e.target.value = '';
+                    }}
                 />
             </div>
 
@@ -122,6 +127,8 @@ export function Sources({ sources, setSources, clipsByTrack, onOpenRelinkDialog 
                             key={source.id}
                             source={source}
                             clipCount={clipCountBySource.get(source.id)}
+                            onRelink={onRelink ? (file) => onRelink(source.id, file) : undefined}
+                            onDelete={onDelete ? () => onDelete(source.id) : undefined}
                         />
                     ))}
                 </div>

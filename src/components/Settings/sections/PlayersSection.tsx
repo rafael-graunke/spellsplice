@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
 import type { Player, Decklist } from '@/components/types/player';
-import { parseDecklist } from '@/lib/parseDecklist';
+import { parseDecklist, serializeDecklist } from '@/lib/parseDecklist';
 import { cardDataCache, verifyCard } from '@/lib/cardCache';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -119,7 +119,14 @@ function PlayerRow({ player, onUpdate }: PlayerRowProps) {
 
                 <button
                     type="button"
-                    onClick={() => setDecklistExpanded((v) => !v)}
+                    onClick={() => {
+                        setDecklistExpanded((v) => {
+                            if (!v && player.decklist && !decklistText) {
+                                setDecklistText(serializeDecklist(player.decklist));
+                            }
+                            return !v;
+                        });
+                    }}
                     className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-fit"
                 >
                     {decklistExpanded

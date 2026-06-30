@@ -99,6 +99,11 @@ function HelpDropdown() {
                         <DropdownMenuItem onClick={() => setShortcutsOpen(true)}>
                             Shortcuts
                         </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                            <a href="https://github.com/rafael-graunke/spellsplice/issues" target="_blank" rel="noreferrer">
+                                Report an issue
+                            </a>
+                        </DropdownMenuItem>
                     </DropdownMenuGroup>
                 </DropdownMenuContent>
             </DropdownMenu>

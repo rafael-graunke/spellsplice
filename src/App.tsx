@@ -1,5 +1,4 @@
 import './App.css';
-import { ThemeProvider } from './components/theme-provider';
 import {
     ResizableHandle,
     ResizablePanel,
@@ -33,7 +32,8 @@ import type { MediaSource } from './components/types/source';
 
 type PlayerInit = Omit<Player, 'track'>;
 
-const AUTOSAVE_KEY = 'spellsplice-autosave';
+const PROJECT_KEY = 'spellsplice-project';
+const EDITOR_KEY = 'spellsplice-editor';
 const DEFAULT_DURATION = 120;
 
 const initialPlayers: PlayerInit[] = [
@@ -48,11 +48,24 @@ type SavedState = {
     players: Player[];
     clipsByTrack: Record<string, import('./components/types/clip').Clip[]>;
     trackOverrides: Record<string, TrackOverrideRow[]>;
+    sources?: Array<{ id: string; name: string; type: 'video' | 'audio'; duration?: number; thumbnailUrl?: string }>;
 };
+
+type EditorConfig = { volume: number; zoom: number };
+
+function loadEditorConfig(): EditorConfig {
+    try {
+        const raw = localStorage.getItem(EDITOR_KEY);
+        if (!raw) return { volume: 100, zoom: 20 };
+        return { volume: 100, zoom: 20, ...JSON.parse(raw) };
+    } catch {
+        return { volume: 100, zoom: 20 };
+    }
+}
 
 function loadSavedState(): SavedState | undefined {
     try {
-        const raw = localStorage.getItem(AUTOSAVE_KEY);
+        const raw = localStorage.getItem(PROJECT_KEY);
         if (!raw) return undefined;
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) return { players: parsed, clipsByTrack: {}, trackOverrides: {} };
@@ -63,16 +76,25 @@ function loadSavedState(): SavedState | undefined {
 }
 
 function App() {
+const [savedStateInit] = useState(loadSavedState);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [video, setVideo] = useState<VideoState | null>(null);
-    const [sources, setSources] = useState<MediaSource[]>([]);
+    const [sources, setSources] = useState<MediaSource[]>(
+        () => savedStateInit?.sources?.map((s) => ({ ...s, duration: s.duration ?? 0 })) ?? [],
+    );
     const [selectedEvents, setSelectedEvents] = useState<TrackEvent[]>([]);
+
+    const [volume, setVolume] = useState(() => loadEditorConfig().volume);
+    const [zoom, setZoom] = useState(() => loadEditorConfig().zoom);
 
     const [isDirty, setIsDirty] = useState(false);
     const [exportDialogOpen, setExportDialogOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
-    const [relinkDialogOpen, setRelinkDialogOpen] = useState(false);
+    const [relinkDialogOpen, setRelinkDialogOpen] = useState(
+        () => (savedStateInit?.sources?.length ?? 0) > 0,
+    );
+    const [deletedSourceNames, setDeletedSourceNames] = useState<Record<string, string>>({});
     const [projectConfig, setProjectConfig] = useState<ProjectConfig>(DEFAULT_PROJECT_CONFIG);
     const [newEventId, setNewEventId] = useState<number | null>(null);
     const isFirstPlayersRender = useRef(true);
@@ -81,7 +103,6 @@ function App() {
     const currentTimeRef = useRef(0);
 
     useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
-    const [savedStateInit] = useState(loadSavedState);
 
     const {
         players,
@@ -99,11 +120,12 @@ function App() {
         handleUpdatePlayer,
         recordTrackOverride,
         handleDeleteTrack,
-        handleAddClips,
+        handleAddClipsWithOverride,
         handleMoveClips,
         handleDeleteClip,
         handleDeleteClips,
         handleDeleteAll,
+        relinkClips,
         resetPlayers,
         undo,
         redo,
@@ -116,7 +138,7 @@ function App() {
             if (isDirty) {
                 e.preventDefault();
             } else {
-                localStorage.removeItem(AUTOSAVE_KEY);
+                localStorage.removeItem(PROJECT_KEY);
             }
         };
         window.addEventListener('beforeunload', handler);
@@ -130,14 +152,23 @@ function App() {
         }
         if (clearAutosaveRef.current) {
             clearAutosaveRef.current = false;
-            localStorage.removeItem(AUTOSAVE_KEY);
+            localStorage.removeItem(PROJECT_KEY);
         } else {
-            localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ players, clipsByTrack, trackOverrides }));
+            const serializedSources = sources.map(({ id, name, type, duration, thumbnailUrl }) => ({
+                id, name, type, duration, thumbnailUrl,
+            }));
+            localStorage.setItem(PROJECT_KEY, JSON.stringify({ players, clipsByTrack, trackOverrides, sources: serializedSources }));
         }
         if (isDirty) return;
         if (skipDirtyRef.current) { skipDirtyRef.current = false; return; }
         setIsDirty(true);
-    }, [players, clipsByTrack, trackOverrides]);
+    }, [players, clipsByTrack, trackOverrides, sources]);
+
+    const isFirstEditorRender = useRef(true);
+    useEffect(() => {
+        if (isFirstEditorRender.current) { isFirstEditorRender.current = false; return; }
+        localStorage.setItem(EDITOR_KEY, JSON.stringify({ volume, zoom }));
+    }, [volume, zoom]);
 
     const isFirstConfigRender = useRef(true);
     useEffect(() => {
@@ -166,7 +197,7 @@ function App() {
     trackOverridesRef.current = trackOverrides;
 
     const handleExport = useCallback(async () => {
-        await exportProject(playersRef.current, videoRef.current, projectConfigRef.current, clipsByTrackRef.current, trackOverridesRef.current, sourcesRef.current);
+        await exportProject(playersRef.current, projectConfigRef.current, clipsByTrackRef.current, trackOverridesRef.current, sourcesRef.current);
         setIsDirty(false);
     }, []);
 
@@ -190,7 +221,7 @@ function App() {
         skipDirtyRef.current = true;
         isFirstConfigRender.current = true;
         resetPlayers(makeFreshPlayers());
-        localStorage.removeItem(AUTOSAVE_KEY);
+        localStorage.removeItem(PROJECT_KEY);
         setVideo(null);
         setSources([]);
         setSelectedEvents([]);
@@ -215,11 +246,31 @@ function App() {
     }, []);
 
     const handleDeleteSource = useCallback((sourceId: string) => {
+        const source = sourcesRef.current.find((s) => s.id === sourceId);
+        if (source) setDeletedSourceNames((prev) => ({ ...prev, [sourceId]: source.name }));
         setSources((prev) => prev.filter((s) => s.id !== sourceId));
+        // Clips are kept as orphaned — user can relink via Manage Sources
+    }, []);
+
+    const handleRelinkClips = useCallback((oldSourceId: string, newSourceId: string) => {
+        relinkClips(oldSourceId, newSourceId);
+        setDeletedSourceNames((prev) => {
+            const next = { ...prev };
+            delete next[oldSourceId];
+            return next;
+        });
+    }, [relinkClips]);
+
+    const handleDeleteOrphanedClips = useCallback((sourceId: string) => {
         const clipsToDelete = Object.entries(clipsByTrackRef.current).flatMap(([trackId, clips]) =>
             clips.filter((c) => c.sourceId === sourceId).map((c) => ({ trackId, clipId: c.id })),
         );
         if (clipsToDelete.length > 0) handleDeleteClips(clipsToDelete);
+        setDeletedSourceNames((prev) => {
+            const next = { ...prev };
+            delete next[sourceId];
+            return next;
+        });
     }, [handleDeleteClips]);
 
     const handleOpenExportDialog = useCallback(() => setExportDialogOpen(true), []);
@@ -390,9 +441,9 @@ function App() {
         onCreated(allNewIds);
     }, [handlePasteEvents, trackInfoByTrackId]);
 
-    const handleNLEUpdateEvent = useCallback((trackId: string, eventId: number, time: number, duration: number) => {
+    const handleNLEUpdateEvent = useCallback((trackId: string, eventId: number, time: number, eventDuration: number) => {
         const groupId = trackInfoByTrackId.get(trackId)?.groupId ?? trackId;
-        handleUpdateEvent(groupId, eventId, time, duration);
+        handleUpdateEvent(groupId, eventId, Math.max(0, Math.min(durationRef.current, time)), eventDuration);
     }, [handleUpdateEvent, trackInfoByTrackId]);
 
     const sourcesRef = useRef(sources);
@@ -401,6 +452,34 @@ function App() {
     const handleDropSource = useCallback((trackId: string, sourceId: string, time: number) => {
         const source = sourcesRef.current.find((s) => s.id === sourceId);
         if (!source) return;
+
+        const clipEnd = time + (source.duration ?? 0);
+        const clipsCollide = (clips: Clip[]) =>
+            clips.some((c) => time < c.time + (c.duration ?? 0) && clipEnd > c.time);
+
+        const resolveTrack = (
+            group: NLETrackGroup,
+            preferredTrackId: string,
+        ): { id: string; updatedRows?: TrackOverrideRow[] } => {
+            if (!clipsCollide(clipsByTrack[preferredTrackId] ?? [])) {
+                return { id: preferredTrackId };
+            }
+            for (const t of group.tracks) {
+                if (t.id === preferredTrackId || t.isBlocked) continue;
+                if (!clipsCollide(clipsByTrack[t.id] ?? [])) return { id: t.id };
+            }
+            const maxLayer = Math.max(0, ...group.tracks.map((t) => t.eventLayer ?? 0));
+            const newRow: TrackOverrideRow = { id: crypto.randomUUID(), type: group.type, isBlocked: false, eventLayer: maxLayer + 1 };
+            const updatedRows: TrackOverrideRow[] = [
+                ...group.tracks.map((t) => ({ id: t.id, type: t.type, isBlocked: t.isBlocked, eventLayer: t.eventLayer, isHidden: t.isHidden, isMuted: t.isMuted })),
+                newRow,
+            ];
+            return { id: newRow.id, updatedRows };
+        };
+
+        const group = trackGroups.find((g) => g.tracks.some((t) => t.id === trackId));
+        if (!group) return;
+
         const clip: Clip = {
             id: crypto.randomUUID(),
             type: source.type === 'video' ? ClipType.Video : ClipType.Audio,
@@ -409,15 +488,24 @@ function App() {
             sourceId,
             sourceOffset: 0,
         };
-        const entries: Array<{ trackId: string; clip: Clip }> = [{ trackId, clip }];
+
+        const videoResolution = resolveTrack(group, trackId);
+        const entries: Array<{ trackId: string; clip: Clip }> = [{ trackId: videoResolution.id, clip }];
+        const overrides: Array<{ groupId: string; rows: TrackOverrideRow[] }> = [];
+        if (videoResolution.updatedRows) overrides.push({ groupId: group.id, rows: videoResolution.updatedRows });
+
         if (source.type === 'video') {
-            const audioTrack = trackGroups.find((g) => g.type === TrackType.Audio)?.tracks.find((t) => !t.isBlocked);
-            if (audioTrack) {
-                entries.push({ trackId: audioTrack.id, clip: { ...clip, id: crypto.randomUUID(), type: ClipType.Audio } });
+            const audioGroup = trackGroups.find((g) => g.type === TrackType.Audio);
+            const firstAudioTrack = audioGroup?.tracks.find((t) => !t.isBlocked);
+            if (audioGroup && firstAudioTrack) {
+                const audioResolution = resolveTrack(audioGroup, firstAudioTrack.id);
+                entries.push({ trackId: audioResolution.id, clip: { ...clip, id: crypto.randomUUID(), type: ClipType.Audio } });
+                if (audioResolution.updatedRows) overrides.push({ groupId: audioGroup.id, rows: audioResolution.updatedRows });
             }
         }
-        handleAddClips(entries);
-    }, [trackGroups, handleAddClips]);
+
+        handleAddClipsWithOverride(entries, overrides);
+    }, [trackGroups, clipsByTrack, handleAddClipsWithOverride]);
 
     const videoClips = useMemo(
         () => trackGroups.find((g) => g.type === TrackType.Video)?.tracks.flatMap((t) => (t.clips ?? []).map((c) => ({ ...c, trackId: t.id }))) ?? [],
@@ -465,6 +553,9 @@ function App() {
         );
         return clipEnd > 0 ? clipEnd : (video?.duration ?? DEFAULT_DURATION);
     }, [videoClips, audioClips, video]);
+
+    const durationRef = useRef(duration);
+    durationRef.current = duration;
 
     const handleNLEMove = useCallback((
         moves: NLEMoveResult[],
@@ -523,7 +614,7 @@ function App() {
                 fromPlayerId: from?.groupId ?? m.fromTrackId,
                 toPlayerId: to?.groupId ?? m.toTrackId,
                 eventId: m.eventId,
-                newTime: m.newTime,
+                newTime: Math.max(0, Math.min(durationRef.current, m.newTime)),
                 newLayer: to?.eventLayer ?? 0,
             };
         }));
@@ -545,8 +636,7 @@ function App() {
     }, [handleUpdateMeta, setSelectedEvents]);
 
     return (
-        <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-            <section className="h-screen flex flex-col">
+        <section className="h-screen flex flex-col">
                 <AppBar
                     isDirty={isDirty}
                     onNew={handleNew}
@@ -579,6 +669,9 @@ function App() {
                     clipsByTrack={clipsByTrack}
                     onRelink={handleRelinkSource}
                     onDelete={handleDeleteSource}
+                    onRelinkClips={handleRelinkClips}
+                    onDeleteOrphanedClips={handleDeleteOrphanedClips}
+                    deletedSourceNames={deletedSourceNames}
                 />
                 <ResizablePanelGroup orientation="vertical" className="flex-1">
                     <ResizablePanel minSize={100} defaultSize="60%">
@@ -589,6 +682,8 @@ function App() {
                                     setSources={setSources}
                                     clipsByTrack={clipsByTrack}
                                     onOpenRelinkDialog={() => setRelinkDialogOpen(true)}
+                                    onRelink={handleRelinkSource}
+                                    onDelete={handleDeleteSource}
                                 />
                             </ResizablePanel>
                             <ResizableHandle />
@@ -611,6 +706,8 @@ function App() {
                                     sources={sources}
                                     hiddenVideoTrackIds={hiddenVideoTrackIds}
                                     mutedAudioTrackIds={mutedAudioTrackIds}
+                                    volume={volume}
+                                    onVolumeChange={setVolume}
                                 />
                             </ResizablePanel>
                             <ResizableHandle />
@@ -628,6 +725,8 @@ function App() {
                             currentTimeRef={currentTimeRef}
                             setCurrentTime={setCurrentTime}
                             trackGroups={trackGroups}
+                            initialZoom={zoom}
+                            onZoomChange={setZoom}
                             onUndo={undo}
                             onRedo={redo}
                             canUndo={canUndo}
@@ -654,7 +753,6 @@ function App() {
                     </ResizablePanel>
                 </ResizablePanelGroup>
             </section>
-        </ThemeProvider>
     );
 }
 

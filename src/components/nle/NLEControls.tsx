@@ -2,7 +2,9 @@ import React, { useEffect } from 'react';
 import { Minus, Pause, Play, Plus, SkipBack, SkipForward } from 'lucide-react';
 import { Slider } from '../ui/slider';
 import { Input } from '../ui/input';
+import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import type { RefObject } from 'react';
+import type { ViewMode } from './NLETimeline';
 
 interface ZoomControlsProps {
     zoom: number;
@@ -68,7 +70,10 @@ function PlaybackControls({ isPlaying, setIsPlaying, setCurrentTime, currentTime
     );
 }
 
-interface NLEControlsProps extends ZoomControlsProps, PlaybackControlsProps {}
+interface NLEControlsProps extends ZoomControlsProps, PlaybackControlsProps {
+    viewMode: ViewMode;
+    setViewMode: (mode: ViewMode) => void;
+}
 
 function NLEControls({
     isPlaying,
@@ -78,11 +83,21 @@ function NLEControls({
     duration,
     zoom,
     onZoomChange,
+    viewMode,
+    setViewMode,
 }: NLEControlsProps) {
     return (
         <div className="border-b w-full flex flex-row justify-between gap-4 p-2 px-4">
-            <div className="w-64" />
-            {/* TODO: CreateControls — moved to track right-click context menu */}
+            <div id="timeline-view">
+                <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+                    <TabsList>
+                        <TabsTrigger value="full">Full View</TabsTrigger>
+                        <TabsTrigger value="event">Event Editing</TabsTrigger>
+                        <TabsTrigger value="video">Video Editing</TabsTrigger>
+                    </TabsList>
+                </Tabs>
+            </div>
+
             <div className="flex flex-row justify-center">
                 <PlaybackControls
                     isPlaying={isPlaying}

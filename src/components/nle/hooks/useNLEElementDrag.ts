@@ -68,7 +68,8 @@ function clampClipTime(time: number, duration: number, others: Clip[]): number {
         if (start < oe && end > os) {
             const distLeft = Math.abs(start - oe);
             const distRight = Math.abs(end - os);
-            return distLeft <= distRight ? Math.max(0, oe) : Math.max(0, os - duration);
+            const leftPos = os - duration;
+            return distLeft <= distRight || leftPos < 0 ? oe : leftPos;
         }
     }
     return start;

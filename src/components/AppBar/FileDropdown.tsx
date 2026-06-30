@@ -68,7 +68,7 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo, onOpe
             <input
                 ref={importRef}
                 type="file"
-                accept=".spellsplice"
+                accept=".sps"
                 className="hidden"
                 onChange={(e) => {
                     const file = e.target.files?.[0];

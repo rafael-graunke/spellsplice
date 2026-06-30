@@ -44,6 +44,8 @@ import {
 
 const TIMELINE_PADDING_X = 30;
 
+export type ViewMode = 'full' | 'event' | 'video';
+
 interface NLECreateDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -184,6 +186,8 @@ interface NLETimelineProps {
     onDropSource?: (trackId: string, sourceId: string, time: number) => void;
     onMoveClips?: (moves: ClipMoveResult[]) => void;
     onDeleteClip?: (trackId: string, clipId: string) => void;
+    initialZoom?: number;
+    onZoomChange?: (zoom: number) => void;
 }
 
 export function NLETimeline({
@@ -215,6 +219,8 @@ export function NLETimeline({
     onDeleteClip,
     onDeleteClips,
     onDeleteSelection,
+    initialZoom,
+    onZoomChange,
 }: NLETimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
@@ -226,7 +232,8 @@ export function NLETimeline({
 
     const { scrollLeftRef, setScroll, setMaxScroll, subscribe } =
         useTimelineScroll();
-    const { zoom, zoomRef, setZoom } = useTimelineZoom();
+    const { zoom, zoomRef, setZoom } = useTimelineZoom(initialZoom ?? 20);
+    useEffect(() => { onZoomChange?.(zoom); }, [zoom, onZoomChange]);
     useTimelineViewport(scrollLeftRef, zoomRef, containerWidthRef);
     const { selectedIds, selectedClipIds, select, selectClip, selectMany, clearSelection } = useTimelineSelection();
     // Refs so that callbacks passed through NLEEvent/NLEClip.memo always read fresh values
@@ -295,9 +302,13 @@ export function NLETimeline({
     const blockedTrackIdsRef = useRef(blockedTrackIds);
     blockedTrackIdsRef.current = blockedTrackIds;
 
+    const blockedTrackIdsKey = useMemo(
+        () => [...blockedTrackIds].sort().join(','),
+        [blockedTrackIds],
+    );
     useEffect(() => {
         clearSelection();
-    }, [blockedTrackIds, clearSelection]);
+    }, [blockedTrackIdsKey, clearSelection]);
 
     const handleMoveEvents = useCallback(
         (moves: NLEMoveResult[], newTracksInfo?: Map<string, { groupId: string; eventLayer: number; targetLocalIndex: number }>) => {
@@ -338,6 +349,14 @@ export function NLETimeline({
         const map = new Map<string, string>();
         for (const s of sources ?? []) map.set(s.id, s.name);
         return map;
+    }, [sources]);
+
+    const sourceOfflineIds = useMemo(() => {
+        const set = new Set<string>();
+        for (const s of sources ?? []) {
+            if (!s.file && !s.loading) set.add(s.id);
+        }
+        return set;
     }, [sources]);
 
     const waveformMap = useWaveformPeaks(sources ?? []);
@@ -391,6 +410,13 @@ export function NLETimeline({
     );
 
     useEffect(() => { updateCursorPosition(); }, [updateCursorPosition]);
+
+    const [viewMode, setViewMode] = useState<ViewMode>('full');
+    const visibleGroups = useMemo(() => {
+        if (viewMode === 'event') return trackGroups.filter((g) => g.type === TrackType.Event);
+        if (viewMode === 'video') return trackGroups.filter((g) => g.type === TrackType.Video || g.type === TrackType.Audio);
+        return trackGroups;
+    }, [trackGroups, viewMode]);
 
     // Target player state — which Event group receives Ctrl+K events
     const [targetGroupId, setTargetGroupId] = useState<string | undefined>(undefined);
@@ -602,6 +628,8 @@ export function NLETimeline({
                 duration={duration}
                 zoom={zoomPercent}
                 onZoomChange={handleZoomChange}
+                viewMode={viewMode}
+                setViewMode={setViewMode}
             />
             <div
                 ref={contentRef}
@@ -638,10 +666,10 @@ export function NLETimeline({
                     onMouseDown={handleMarqueeMouseDown}
                 >
                     <ResizablePanelGroup orientation="vertical" className="h-full overflow-x-hidden">
-                        {trackGroups.flatMap((group, i) => [
+                        {visibleGroups.flatMap((group, i) => [
                             <ResizablePanel
                                 key={group.id}
-                                defaultSize={100 / trackGroups.length}
+                                defaultSize={100 / visibleGroups.length}
                                 className="overflow-y-auto"
                                 minSize={TRACK_HEIGHT + 2}
                                 groupResizeBehavior={group.type === TrackType.Event ? 'preserve-relative-size' : 'preserve-pixel-size'}
@@ -712,6 +740,7 @@ export function NLETimeline({
                                             draggingClipIds={draggingClipIds}
                                             selectedClipIds={selectedClipIds}
                                             sourceNameMap={sourceNameMap}
+                                            sourceOfflineIds={sourceOfflineIds}
                                             onClipMoveStart={(tId, clip, e) => handleClipDragStart(tId, clip, e)}
                                             onSelectClip={(_tId, clipId, additive) => selectClip(clipId, additive)}
                                             onDeleteClip={onDeleteClip}

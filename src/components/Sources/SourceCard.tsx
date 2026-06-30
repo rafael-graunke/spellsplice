@@ -1,5 +1,21 @@
-import { AudioLines, Link2Off } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { AudioLines, Link2, Link2Off, Trash2 } from 'lucide-react';
 import type { MediaSource } from '../types/source';
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuSeparator,
+    ContextMenuTrigger,
+} from '@/components/ui/context-menu';
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 function formatDuration(seconds: number): string {
     const mins = Math.floor(seconds / 60);
@@ -10,12 +26,17 @@ function formatDuration(seconds: number): string {
 interface SourceCardProps {
     source: MediaSource;
     clipCount?: number;
+    onRelink?: (file: File) => void;
+    onDelete?: () => void;
 }
 
-export function SourceCard({ source, clipCount }: SourceCardProps) {
+export function SourceCard({ source, clipCount, onRelink, onDelete }: SourceCardProps) {
     const loading = source.loading;
     const offline = !source.file && !loading;
-    return (
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [deleteOpen, setDeleteOpen] = useState(false);
+
+    const card = (
         <div
             className={`flex flex-col rounded overflow-hidden border text-xs ${
                 offline
@@ -35,7 +56,7 @@ export function SourceCard({ source, clipCount }: SourceCardProps) {
         >
             <div className="relative w-full aspect-video bg-muted flex items-center justify-center">
                 {source.type === 'video' ? (
-                    source.thumbnailUrl ? (
+                    source.thumbnailUrl && !offline ? (
                         <img
                             src={source.thumbnailUrl}
                             alt={source.name}
@@ -65,5 +86,74 @@ export function SourceCard({ source, clipCount }: SourceCardProps) {
                 {source.name}
             </div>
         </div>
+    );
+
+    return (
+        <>
+            <ContextMenu>
+                <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
+                <ContextMenuContent>
+                    {onRelink && (
+                        <ContextMenuItem
+                            disabled={!offline}
+                            onSelect={() => fileInputRef.current?.click()}
+                        >
+                            <Link2 />
+                            Relink…
+                        </ContextMenuItem>
+                    )}
+                    {onRelink && onDelete && <ContextMenuSeparator />}
+                    {onDelete && (
+                        <ContextMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+                            <Trash2 />
+                            Delete
+                        </ContextMenuItem>
+                    )}
+                </ContextMenuContent>
+            </ContextMenu>
+
+            {onRelink && (
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="video/*,audio/*"
+                    className="hidden"
+                    onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) onRelink(file);
+                        e.target.value = '';
+                    }}
+                />
+            )}
+
+            {onDelete && (
+                <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+                    <DialogContent showCloseButton>
+                        <DialogHeader>
+                            <DialogTitle>Delete source?</DialogTitle>
+                        </DialogHeader>
+                        <p className="text-sm text-muted-foreground">
+                            {clipCount && clipCount > 0
+                                ? `"${source.name}" is used by ${clipCount} clip${clipCount !== 1 ? 's' : ''}. Deleting it will orphan those clips.`
+                                : `Remove "${source.name}" from the project?`}
+                        </p>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+                                Cancel
+                            </Button>
+                            <Button
+                                variant="destructive"
+                                onClick={() => {
+                                    onDelete();
+                                    setDeleteOpen(false);
+                                }}
+                            >
+                                Delete
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
+        </>
     );
 }

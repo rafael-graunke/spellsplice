@@ -435,6 +435,7 @@ interface TrackProps {
     draggingClipIds?: Set<string>;
     selectedClipIds?: Set<string>;
     sourceNameMap?: Map<string, string>;
+    sourceOfflineIds?: Set<string>;
     onClipMoveStart?: (trackId: string, clip: Clip, e: React.MouseEvent) => void;
     onSelectClip?: (trackId: string, clipId: string, additive: boolean) => void;
     onDeleteClip?: (trackId: string, clipId: string) => void;
@@ -486,6 +487,7 @@ export function Track({
     draggingClipIds,
     selectedClipIds,
     sourceNameMap,
+    sourceOfflineIds,
     onClipMoveStart,
     onSelectClip,
     onDeleteClip,
@@ -557,6 +559,7 @@ export function Track({
                         clip={clip}
                         sourceName={sourceNameMap?.get(clip.sourceId) ?? clip.sourceId}
                         sourceMissing={sourceNameMap !== undefined && !sourceNameMap.has(clip.sourceId)}
+                        sourceOffline={sourceOfflineIds?.has(clip.sourceId) ?? false}
                         zoom={zoom}
                         isSelected={selectedClipIds?.has(clip.id) ?? false}
                         isBeingDragged={draggingClipIds?.has(clip.id) ?? false}

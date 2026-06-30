@@ -23,6 +23,8 @@ interface VideoPreviewProps {
     sources?: MediaSource[];
     hiddenVideoTrackIds?: Set<string>;
     mutedAudioTrackIds?: Set<string>;
+    volume?: number;
+    onVolumeChange?: (v: number) => void;
 }
 
 function VideoPreview({
@@ -39,10 +41,12 @@ function VideoPreview({
     sources = [],
     hiddenVideoTrackIds,
     mutedAudioTrackIds,
+    volume = 100,
+    onVolumeChange,
 }: VideoPreviewProps) {
-    const [volume, setVolume] = useState(100);
+    const setVolume = onVolumeChange ?? (() => {});
     const [isHovered, setIsHovered] = useState(false);
-    const volumeRef = useRef(1);
+    const volumeRef = useRef(volume / 100);
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const playersRef = useRef(players);
@@ -497,7 +501,7 @@ function VideoPreview({
             {isHovered && (
                 <div className="absolute bottom-3 right-3 flex items-center gap-2 rounded-md bg-black/60 px-3 py-2 backdrop-blur-sm">
                     <button
-                        onClick={() => setVolume((v) => (v === 0 ? 100 : 0))}
+                        onClick={() => setVolume(volume === 0 ? 100 : 0)}
                         className="text-white/80 hover:text-white transition-colors"
                     >
                         {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}

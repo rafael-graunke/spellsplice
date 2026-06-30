@@ -242,6 +242,20 @@ export function usePlayerTracks(
         });
     }, [record]);
 
+    const handleAddClipsWithOverride = useCallback((
+        entries: Array<{ trackId: string; clip: Clip }>,
+        overrides: Array<{ groupId: string; rows: TrackOverrideRow[] }>,
+    ) => {
+        record((draft) => {
+            for (const { groupId, rows } of overrides) {
+                draft.trackOverrides[groupId] = rows;
+            }
+            for (const { trackId, clip } of entries) {
+                draft.clipsByTrack[trackId] = [...(draft.clipsByTrack[trackId] ?? []), clip];
+            }
+        });
+    }, [record]);
+
     const handleMoveClips = useCallback((moves: ClipMoveResult[]) => {
         record((draft) => {
             for (const { clipId, fromTrackId, toTrackId, newTime } of moves) {
@@ -264,6 +278,16 @@ export function usePlayerTracks(
         record((draft) => {
             for (const { trackId, clipId } of items) {
                 draft.clipsByTrack[trackId] = (draft.clipsByTrack[trackId] ?? []).filter((c) => c.id !== clipId);
+            }
+        });
+    }, [record]);
+
+    const relinkClips = useCallback((oldSourceId: string, newSourceId: string) => {
+        record((draft) => {
+            for (const trackId of Object.keys(draft.clipsByTrack)) {
+                draft.clipsByTrack[trackId] = (draft.clipsByTrack[trackId] ?? []).map((c) =>
+                    c.sourceId === oldSourceId ? { ...c, sourceId: newSourceId } : c,
+                );
             }
         });
     }, [record]);
@@ -339,10 +363,12 @@ export function usePlayerTracks(
         recordTrackOverride,
         handleDeleteTrack,
         handleAddClips,
+        handleAddClipsWithOverride,
         handleMoveClips,
         handleDeleteClip,
         handleDeleteClips,
         handleDeleteAll,
+        relinkClips,
         resetPlayers,
         undo,
         redo,

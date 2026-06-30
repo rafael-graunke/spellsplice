@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import type { Clip } from '@/components/types/clip';
 import type { MediaSource } from '@/components/types/source';
 import type { Player } from '@/components/types/player';
+import type { ProjectConfig } from '@/components/types/config';
 import { exportVideo, type ExportProgress } from '@/lib/export';
 
 interface ExportDialogProps {
@@ -20,6 +21,7 @@ interface ExportDialogProps {
     audioClips: Clip[];
     sources: MediaSource[];
     players: Player[];
+    config: ProjectConfig;
 }
 
 type Status = 'idle' | 'running' | 'done' | 'error';
@@ -41,7 +43,7 @@ function phaseLabel(p: ExportProgress): string {
 
 const canExport = 'showSaveFilePicker' in window;
 
-export function ExportDialog({ open, onClose, videoClips, audioClips, sources, players }: ExportDialogProps) {
+export function ExportDialog({ open, onClose, videoClips, audioClips, sources, players, config }: ExportDialogProps) {
     const [status, setStatus] = useState<Status>('idle');
     const [progress, setProgress] = useState<ExportProgress | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -68,7 +70,7 @@ export function ExportDialog({ open, onClose, videoClips, audioClips, sources, p
         setProgress(null);
         setError(null);
         try {
-            await exportVideo(videoClips, audioClips, sources, players, setProgress, abort.signal, { fps });
+            await exportVideo(videoClips, audioClips, sources, players, setProgress, abort.signal, { fps, overlayStartHidden: config.overlayStartHidden });
             setStatus('done');
         } catch (err) {
             if (err instanceof DOMException && err.name === 'AbortError') {

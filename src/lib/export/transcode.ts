@@ -52,9 +52,17 @@ export async function transcodeToOpus(
     for (const chunk of sourceChunks) {
         decoder.decode(chunk);
     }
-    await decoder.flush();
+    try {
+        await decoder.flush();
+    } catch {
+        // decoder may have closed due to error; throw that instead
+    }
     if (decoderError) throw decoderError;
-    await encoder.flush();
+    try {
+        await encoder.flush();
+    } catch {
+        // encoder may have closed due to error; throw that instead
+    }
     if (encoderError) throw encoderError;
     encoder.close();
     decoder.close();

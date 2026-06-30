@@ -42,7 +42,13 @@ export async function exportProject(
     zip.file('project.json', JSON.stringify(manifest, null, 2));
     zip.file('card-data-cache.json', JSON.stringify(cardDataCache));
 
-    const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/octet-stream' });
+    const zipBytes = await zip.generateAsync({ type: 'uint8array' });
+    // Prepend magic header so WhatsApp/Windows don't detect ZIP magic bytes and rename to .zip
+    const magic = new Uint8Array([0x53, 0x50, 0x4c, 0x53]); // "SPLS"
+    const out = new Uint8Array(magic.length + zipBytes.length);
+    out.set(magic, 0);
+    out.set(zipBytes, magic.length);
+    const blob = new Blob([out], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -56,7 +62,12 @@ export async function importProject(file: File): Promise<{
     config: ProjectConfig | null;
     offlineSources: MediaSource[];
 }> {
-    const zip = await JSZip.loadAsync(file);
+    const raw = await file.arrayBuffer();
+    const magic = new Uint8Array([0x53, 0x50, 0x4c, 0x53]);
+    const header = new Uint8Array(raw, 0, 4);
+    const hasMagic = header.every((b, i) => b === magic[i]);
+    const zipData = hasMagic ? raw.slice(4) : raw;
+    const zip = await JSZip.loadAsync(zipData);
 
     const json = await zip.file('project.json')!.async('string');
     const manifest = JSON.parse(json) as ProjectExport;

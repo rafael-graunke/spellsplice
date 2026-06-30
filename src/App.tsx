@@ -1,5 +1,4 @@
 import './App.css';
-import { ThemeProvider } from './components/theme-provider';
 import {
     ResizableHandle,
     ResizablePanel,
@@ -77,7 +76,7 @@ function loadSavedState(): SavedState | undefined {
 }
 
 function App() {
-    const [savedStateInit] = useState(loadSavedState);
+const [savedStateInit] = useState(loadSavedState);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [video, setVideo] = useState<VideoState | null>(null);
@@ -637,8 +636,7 @@ function App() {
     }, [handleUpdateMeta, setSelectedEvents]);
 
     return (
-        <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-            <section className="h-screen flex flex-col">
+        <section className="h-screen flex flex-col">
                 <AppBar
                     isDirty={isDirty}
                     onNew={handleNew}
@@ -755,7 +753,6 @@ function App() {
                     </ResizablePanel>
                 </ResizablePanelGroup>
             </section>
-        </ThemeProvider>
     );
 }
 

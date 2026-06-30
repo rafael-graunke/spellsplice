@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { modKey } from '@/lib/platform';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -13,6 +14,7 @@ import {
     DropdownMenuContent,
     DropdownMenuGroup,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuShortcut,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -23,16 +25,21 @@ interface FileDropdownProps {
     onExport: () => Promise<void>;
     onImport: (file: File) => void;
     onExportVideo: () => void;
+    onOpenSettings: () => void;
+    onRelinkMedia: () => void;
 }
 
-function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: FileDropdownProps) {
+function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo, onOpenSettings, onRelinkMedia }: FileDropdownProps) {
     const importRef = useRef<HTMLInputElement>(null);
-    const [showNewModal, setShowNewModal] = useState(false);
+    const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
-    const handleNew = () => {
-        if (isDirty) setShowNewModal(true);
-        else onNew();
+    const guardDirty = (action: () => void) => {
+        if (isDirty) setPendingAction(() => action);
+        else action();
     };
+
+    const handleNew = () => guardDirty(onNew);
+    const handleOpen = () => guardDirty(() => importRef.current?.click());
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -41,23 +48,27 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: Fil
                 onExport();
             } else if (e.ctrlKey && !e.altKey && e.code === 'KeyO') {
                 e.preventDefault();
-                importRef.current?.click();
+                if (isDirty) setPendingAction(() => () => importRef.current?.click());
+                else importRef.current?.click();
             } else if (e.ctrlKey && e.altKey && e.code === 'KeyN') {
                 e.preventDefault();
-                if (isDirty) setShowNewModal(true);
+                if (isDirty) setPendingAction(() => onNew);
                 else onNew();
+            } else if (e.ctrlKey && !e.altKey && e.code === 'Comma') {
+                e.preventDefault();
+                onOpenSettings();
             }
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [isDirty, onExport, onNew]);
+    }, [isDirty, onExport, onNew, onOpenSettings]);
 
     return (
         <>
             <input
                 ref={importRef}
                 type="file"
-                accept=".spellsplice"
+                accept=".sps"
                 className="hidden"
                 onChange={(e) => {
                     const file = e.target.files?.[0];
@@ -66,26 +77,23 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: Fil
                 }}
             />
 
-            <Dialog open={showNewModal} onOpenChange={setShowNewModal}>
+            <Dialog open={pendingAction !== null} onOpenChange={(open) => { if (!open) setPendingAction(null); }}>
                 <DialogContent showCloseButton={false}>
                     <DialogHeader>
                         <DialogTitle>Unsaved changes</DialogTitle>
                         <DialogDescription>
-                            This project has unsaved changes. Save before creating a new project?
+                            This project has unsaved changes. Discard and continue?
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => { setShowNewModal(false); onNew(); }}>
-                            Discard
+                        <Button variant="outline" onClick={() => setPendingAction(null)}>
+                            Cancel
                         </Button>
                         <Button
-                            onClick={async () => {
-                                await onExport();
-                                setShowNewModal(false);
-                                onNew();
-                            }}
+                            variant="destructive"
+                            onClick={() => { pendingAction?.(); setPendingAction(null); }}
                         >
-                            Save
+                            Discard
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -98,14 +106,19 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo }: Fil
                 <DropdownMenuContent className="w-48">
                     <DropdownMenuGroup>
                         <DropdownMenuItem onClick={handleNew}>
-                            New...<DropdownMenuShortcut>Ctrl+Alt+N</DropdownMenuShortcut>
+                            New...<DropdownMenuShortcut>{modKey}+Alt+N</DropdownMenuShortcut>
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => importRef.current?.click()}>
-                            Open...<DropdownMenuShortcut>Ctrl+O</DropdownMenuShortcut>
+                        <DropdownMenuItem onClick={handleOpen}>
+                            Open...<DropdownMenuShortcut>{modKey}+O</DropdownMenuShortcut>
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={onExport}>
-                            Save<DropdownMenuShortcut>Ctrl+S</DropdownMenuShortcut>
+                            Save<DropdownMenuShortcut>{modKey}+S</DropdownMenuShortcut>
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={onOpenSettings}>
+                            Settings<DropdownMenuShortcut>{modKey}+,</DropdownMenuShortcut>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={onRelinkMedia}>Relink Media...</DropdownMenuItem>
+                        <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={onExportVideo}>Export...</DropdownMenuItem>
                     </DropdownMenuGroup>
                 </DropdownMenuContent>

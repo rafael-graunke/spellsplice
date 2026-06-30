@@ -1,5 +1,5 @@
 import type { Player } from '@/components/types/player';
-import { derivePlayerState, getActiveWindowedEvents } from '@/lib/deriveState';
+import { derivePlayerState, getActiveWindowedEvents, deriveUIVisibility } from '@/lib/deriveState';
 import { renderPlayerState } from '@/renders/renderPlayerState';
 import { renderHandStack } from '@/renders/renderHandStack';
 import { renderDeckStack } from '@/renders/renderDeckStack';
@@ -110,6 +110,13 @@ export class Compositor {
         );
     }
 
+    uploadBlackFrame(): void {
+        const { gl } = this;
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.videoTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
+    }
+
     uploadVideoElement(videoEl: HTMLVideoElement): void {
         const { gl } = this;
         gl.activeTexture(gl.TEXTURE0);
@@ -130,6 +137,7 @@ export class Compositor {
         time: number,
         d20Img: HTMLImageElement | null,
         eyeImg: HTMLImageElement | null,
+        overlayStartHidden = false,
     ): void {
         const { overlayCtx, overlayCanvas, gl } = this;
         const { drawW, drawH, offsetX, offsetY, outW, outH } = this;
@@ -138,28 +146,55 @@ export class Compositor {
 
         const playerStates = players.map((p) => derivePlayerState(p, p.track.events, time));
         const activeEvents = players.map((p) => getActiveWindowedEvents(p.track.events, time));
+        const uiVisibility = deriveUIVisibility(players, time, overlayStartHidden);
 
         const ctx2d = overlayCtx as unknown as CanvasRenderingContext2D;
-        renderPlayerState(ctx2d, playerStates, offsetX, offsetY, drawW, drawH, d20Img);
-        renderHandStack(ctx2d, playerStates, offsetX, offsetY, drawW, drawH, eyeImg);
-        renderDeckStack(ctx2d, playerStates, offsetX, offsetY, drawW, drawH);
+        renderPlayerState(ctx2d, playerStates, offsetX, offsetY, drawW, drawH, d20Img, uiVisibility);
+        renderHandStack(ctx2d, players, time, offsetX, offsetY, drawW, drawH, eyeImg, uiVisibility);
+        renderDeckStack(ctx2d, players, time, offsetX, offsetY, drawW, drawH, uiVisibility);
 
+        const CARD_ANIM_DURATION = 0.35;
+        const cardEaseOut = (t: number) => 1 - Math.pow(1 - t, 3);
         const cardH = drawH * 0.5;
         const cardW = cardH * (223 / 310);
+        const offscreenY = offsetY + drawH;
         let cardOffset = 0;
         activeEvents.forEach((events) => {
             events.forEach((event) => {
                 const card = event.meta?.cards?.[0];
                 if (!card?.name) return;
                 const cached = ensureImage(card.name, card.edition);
-                if (cached === 'loading' || cached === 'error') return;
                 const cardX = offsetX + drawW / 2 - cardW / 2 + cardOffset * (cardW + 8);
-                const cardY = offsetY + drawH / 2 - cardH / 2;
+                const finalCardY = offsetY + drawH / 2 - cardH / 2;
+
+                const enterAge = time - event.time;
+                const exitAge = event.duration != null ? event.time + event.duration - time : Infinity;
+                let cardY = finalCardY;
+                if (enterAge < CARD_ANIM_DURATION) {
+                    const t = cardEaseOut(enterAge / CARD_ANIM_DURATION);
+                    cardY = offscreenY + (finalCardY - offscreenY) * t;
+                } else if (exitAge <= CARD_ANIM_DURATION) {
+                    const t = cardEaseOut((CARD_ANIM_DURATION - exitAge) / CARD_ANIM_DURATION);
+                    cardY = finalCardY + (offscreenY - finalCardY) * t;
+                }
+
                 overlayCtx.save();
+                overlayCtx.globalAlpha = uiVisibility;
                 overlayCtx.beginPath();
-                overlayCtx.roundRect(cardX, cardY, cardW, cardH, 20);
+                const corner_scale = card.edition?.startsWith("lea") ? 0.07 : 0.045;
+                overlayCtx.roundRect(cardX, cardY, cardW, cardH, cardW * corner_scale);
                 overlayCtx.clip();
-                overlayCtx.drawImage(cached, cardX, cardY, cardW, cardH);
+                if (cached instanceof HTMLImageElement) {
+                    overlayCtx.drawImage(cached, cardX, cardY, cardW, cardH);
+                } else {
+                    overlayCtx.fillStyle = '#3a0257';
+                    overlayCtx.fill();
+                    overlayCtx.fillStyle = '#ffffff';
+                    overlayCtx.font = `bold ${Math.round(cardH * 0.05)}px sans-serif`;
+                    overlayCtx.textBaseline = 'top';
+                    overlayCtx.textAlign = 'left';
+                    overlayCtx.fillText(card.name, cardX + 25, cardY + 25);
+                }
                 overlayCtx.restore();
                 cardOffset++;
             });
@@ -184,7 +219,6 @@ export class Compositor {
         gl.deleteTexture(this.videoTex);
         gl.deleteTexture(this.overlayTex);
         gl.deleteProgram(this.program);
-        gl.getExtension('WEBGL_lose_context')?.loseContext();
     }
 
     private compileShader(type: number, src: string): WebGLShader {

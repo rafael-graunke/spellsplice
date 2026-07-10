@@ -29,6 +29,8 @@ import type { ProjectConfig } from './components/types/config';
 import { DEFAULT_PROJECT_CONFIG } from './components/types/config';
 import { Sources } from './components/Sources';
 import type { MediaSource } from './components/types/source';
+import WelcomeScreen from './components/Welcome';
+import LiveMode from './components/LiveMode/LiveMode';
 
 type PlayerInit = Omit<Player, 'track'>;
 
@@ -78,6 +80,8 @@ function loadSavedState(): SavedState | undefined {
 
 function App() {
 const [savedStateInit] = useState(loadSavedState);
+    const [showWelcome, setShowWelcome] = useState(() => !savedStateInit);
+    const [liveModeActive, setLiveModeActive] = useState(false);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [video, setVideo] = useState<VideoState | null>(null);
@@ -219,10 +223,12 @@ const [savedStateInit] = useState(loadSavedState);
         setIsDirty(false);
         setProjectConfig(config ? { ...DEFAULT_PROJECT_CONFIG, ...config } : DEFAULT_PROJECT_CONFIG);
         if (offlineSources.length > 0) setRelinkDialogOpen(true);
+        setShowWelcome(false);
     }, [resetPlayers]);
 
-    const handleNew = useCallback(() => {
+    const resetToFresh = useCallback(() => {
         skipDirtyRef.current = true;
+        clearAutosaveRef.current = true;
         isFirstConfigRender.current = true;
         resetPlayers(makeFreshPlayers());
         localStorage.removeItem(PROJECT_KEY);
@@ -234,6 +240,16 @@ const [savedStateInit] = useState(loadSavedState);
         setIsDirty(false);
         setProjectConfig(DEFAULT_PROJECT_CONFIG);
     }, [resetPlayers]);
+
+    const handleNew = useCallback(() => {
+        resetToFresh();
+        setShowWelcome(false);
+    }, [resetToFresh]);
+
+    const handleShowWelcome = useCallback(() => {
+        resetToFresh();
+        setShowWelcome(true);
+    }, [resetToFresh]);
 
     const handleRelinkSource = useCallback(async (sourceId: string, file: File) => {
         setSources((prev) =>
@@ -642,7 +658,7 @@ const [savedStateInit] = useState(loadSavedState);
         <section className="h-screen flex flex-col">
                 <AppBar
                     isDirty={isDirty}
-                    onNew={handleNew}
+                    onNew={handleShowWelcome}
                     onExport={handleExport}
                     onImport={handleImport}
                     onExportVideo={handleOpenExportDialog}
@@ -677,6 +693,15 @@ const [savedStateInit] = useState(loadSavedState);
                     onDeleteOrphanedClips={handleDeleteOrphanedClips}
                     deletedSourceNames={deletedSourceNames}
                 />
+                {liveModeActive ? (
+                    <LiveMode />
+                ) : showWelcome ? (
+                    <WelcomeScreen
+                        onCreateNew={handleNew}
+                        onOpenProject={handleImport}
+                        onStartLiveMode={() => setLiveModeActive(true)}
+                    />
+                ) : (
                 <ResizablePanelGroup orientation="vertical" className="flex-1">
                     <ResizablePanel minSize={100} defaultSize="60%">
                         <ResizablePanelGroup orientation="horizontal">
@@ -756,6 +781,7 @@ const [savedStateInit] = useState(loadSavedState);
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>
+                )}
             </section>
     );
 }

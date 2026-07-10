@@ -1,4 +1,4 @@
-import { ensureBorderCrop } from '@/lib/cardCache';
+import { ensureBorderCrop, getCardLayout } from '@/lib/cardCache';
 import { CARD_COLOR_HEX, getCardColorKey } from '@/lib/cardColors';
 import { drawManaCostRow, ensureManaFontLoaded } from '@/lib/manaGlyphs';
 import type { Card } from '@/components/types/card';
@@ -12,6 +12,12 @@ interface CropConfig {
     sh: number;
     scaleHeight?: boolean;
     curveClip?: boolean;
+    // Split-layout cards (e.g. "Wear // Tear") render the name/mana bar as a
+    // vertical strip along the left edge of the portrait border_crop image
+    // (Scryfall renders the physically-landscape card pre-rotated for web
+    // display). `rotate` marks sx/sy/sw/sh as that vertical strip, drawn
+    // rotated 90deg clockwise to produce the horizontal strip.
+    rotate?: boolean;
 }
 
 export const EDITION_CROPS: Record<
@@ -33,6 +39,14 @@ export const FRAME_CROPS: Record<
     '2003': { sx: 14, sy: 19, sw: 450, sh: 49, curveClip: true },
     '2015': { sx: 14, sy: 19, sw: 450, sh: 49, curveClip: true },
 };
+
+// PLACEHOLDER values, not yet measured against real split-card renders.
+export const SPLIT_FRAME_CROPS: Record<string, CropConfig> = {
+    '1997': { sx: 14, sy: 19, sw: 60, sh: 642, curveClip: false, rotate: true },
+    '2003': { sx: 21, sy: 10, sw: 46, sh: 625, curveClip: true, rotate: true, scaleHeight: true },
+    '2015': { sx: 21, sy: 10, sw: 46, sh: 625, curveClip: true, rotate: true, scaleHeight: true },
+};
+export const SPLIT_DEFAULT_CROP: CropConfig = { sx: 21, sy: 10, sw: 46, sh: 625, curveClip: true, rotate: true, scaleHeight: true };
 
 export const DEFAULT_CROP: CropConfig = { sx: 14, sy: 19, sw: 450, sh: 49, curveClip: false };
 export const STRIP_W = 430;
@@ -58,6 +72,9 @@ function clipStripPath(
 
 export function getCardCrop(card: Card): CropConfig {
     const { frame } = ensureBorderCrop(card.name, card.edition);
+    if (getCardLayout(card.name, card.edition) === 'split') {
+        return SPLIT_FRAME_CROPS[frame ?? ''] ?? SPLIT_DEFAULT_CROP;
+    }
     return (
         (card.edition ? EDITION_CROPS[card.edition] : undefined) ??
         FRAME_CROPS[frame ?? ''] ??
@@ -67,11 +84,36 @@ export function getCardCrop(card: Card): CropConfig {
 
 export function getStripH(card: Card): number {
     const crop = getCardCrop(card);
-    let stripH = Math.round((STRIP_W * crop.sh) / crop.sw);
+    // Rotating the crop 90deg swaps which source dimension maps to strip width vs height.
+    let stripH = crop.rotate
+        ? Math.round((STRIP_W * crop.sw) / crop.sh)
+        : Math.round((STRIP_W * crop.sh) / crop.sw);
     if (crop.scaleHeight) {
         stripH = Math.round(stripH * STRIP_H_SCALE);
     }
     return stripH;
+}
+
+// Draws crop.sx/sy/sw/sh from img into the destW x destH box at (destX,destY),
+// rotating 90deg clockwise first when crop.rotate is set (split-layout cards).
+function drawStripImage(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    img: HTMLImageElement,
+    crop: CropConfig,
+    destX: number,
+    destY: number,
+    destW: number,
+    destH: number,
+): void {
+    if (!crop.rotate) {
+        ctx.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, destX, destY, destW, destH);
+        return;
+    }
+    ctx.save();
+    ctx.translate(destX + destW, destY);
+    ctx.rotate(Math.PI / 2);
+    ctx.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, destH, destW);
+    ctx.restore();
 }
 
 export function drawCardStrip(
@@ -100,7 +142,7 @@ export function drawCardStrip(
         tmpCtx.imageSmoothingQuality = 'high';
 
         if (img instanceof HTMLImageElement) {
-            tmpCtx.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, STRIP_W, stripH);
+            drawStripImage(tmpCtx, img, crop, 0, 0, STRIP_W, stripH);
         } else {
             tmpCtx.fillStyle = placeholderBg;
             tmpCtx.fillRect(0, 0, STRIP_W, stripH);
@@ -131,7 +173,7 @@ export function drawCardStrip(
         ctx.clip();
 
         if (img instanceof HTMLImageElement) {
-            ctx.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, x, y, STRIP_W, stripH);
+            drawStripImage(ctx, img, crop, x, y, STRIP_W, stripH);
         } else {
             ctx.fillStyle = placeholderBg;
             ctx.fill();

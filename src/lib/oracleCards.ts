@@ -81,8 +81,22 @@ let cardsCache: OracleCard[] | null = null;
 let loadPromise: Promise<OracleCard[]> | null = null;
 
 export function ensureOracleCards(onStatus?: (status: OracleCardsStatus) => void): Promise<OracleCard[]> {
-    if (cardsCache) return Promise.resolve(cardsCache);
-    if (loadPromise) return loadPromise;
+    if (cardsCache) {
+        onStatus?.('ready');
+        return Promise.resolve(cardsCache);
+    }
+    if (loadPromise) {
+        return loadPromise.then(
+            (cards) => {
+                onStatus?.('ready');
+                return cards;
+            },
+            (err) => {
+                onStatus?.('error');
+                throw err;
+            },
+        );
+    }
 
     loadPromise = (async () => {
         try {

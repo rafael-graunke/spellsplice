@@ -1,6 +1,7 @@
 import type { OracleCard } from './oracleCards';
 
 export const LIVE_MODE_KEY = 'spellsplice-live-mode';
+export const LIVE_PROJECT_KEY = 'spellsplice-live-project';
 
 export interface LiveModeConfig {
     websocketUrl: string;

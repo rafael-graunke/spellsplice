@@ -1,6 +1,6 @@
 import { slowFetch } from './scryfallQueue';
 
-type SetData = { image_uris: Record<string, string>; frame?: string };
+type SetData = { image_uris: Record<string, string>; frame?: string; layout?: string };
 
 const CARD_CACHE_KEY = 'spellsplice-card-cache';
 
@@ -77,14 +77,15 @@ function ensureCardData(cardName: string, edition?: string): void {
     slowFetch(editionEndpoint(cardName, edition))
         .then((r) => r.json())
         .then((data) => {
-            const face = data.card_faces?.[0] ?? data;
-            const allUris: Record<string, string> = face.image_uris ?? {};
+            const face = data.card_faces?.[0];
+            const allUris: Record<string, string> = face?.image_uris ?? data.image_uris ?? {};
             const uris: Record<string, string> = {};
             if (allUris.normal) uris.normal = allUris.normal;
             if (allUris.border_crop) uris.border_crop = allUris.border_crop;
             const setData: SetData = {
                 image_uris: uris,
                 ...(data.frame && { frame: data.frame }),
+                ...(data.layout && { layout: data.layout }),
             };
 
             const storeKey = edition ?? (data.set as string);
@@ -105,6 +106,7 @@ export function storePrinting(
     editionKey: string,
     imageUris: { normal?: string; border_crop?: string },
     frame?: string,
+    layout?: string,
 ): void {
     const uris: Record<string, string> = {};
     if (imageUris.normal) uris.normal = imageUris.normal;
@@ -112,7 +114,11 @@ export function storePrinting(
     if (!Object.keys(uris).length) return;
 
     if (!cardDataCache[cardName]) cardDataCache[cardName] = {};
-    cardDataCache[cardName][editionKey] = { image_uris: uris, ...(frame && { frame }) };
+    cardDataCache[cardName][editionKey] = {
+        image_uris: uris,
+        ...(frame && { frame }),
+        ...(layout && { layout }),
+    };
     loadImagesForSet(cardName, editionKey, uris);
     try { localStorage.setItem(CARD_CACHE_KEY, JSON.stringify(cardDataCache)); } catch {}
 }
@@ -134,10 +140,21 @@ export function ensureBorderCrop(
 ): { img: HTMLImageElement | 'loading' | 'error'; frame: string | null } {
     const setCode = edition ?? '*';
     const img = cardImageCache[cardName]?.[setCode]?.['border_crop'];
-    const frame = cardDataCache[cardName]?.[setCode]?.frame ?? null;
-    if (img !== undefined) return { img, frame };
+    const setData = cardDataCache[cardName]?.[setCode];
+    const frame = setData?.frame ?? null;
+    if (img !== undefined) {
+        // Backfill entries cached before `layout` was tracked (e.g. a stale
+        // localStorage copy in an OBS Browser Source that never re-fetched).
+        if (setData && setData.layout === undefined) ensureCardData(cardName, edition);
+        return { img, frame };
+    }
     ensureCardData(cardName, edition);
     return { img: 'loading', frame: null };
+}
+
+export function getCardLayout(cardName: string, edition?: string): string | null {
+    const setCode = edition ?? '*';
+    return cardDataCache[cardName]?.[setCode]?.layout ?? null;
 }
 
 export async function verifyCard(cardName: string, edition?: string): Promise<boolean> {
@@ -149,12 +166,16 @@ export async function verifyCard(cardName: string, edition?: string): Promise<bo
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const data = await response.json();
-    const face = data.card_faces?.[0] ?? data;
-    const allUris: Record<string, string> = face.image_uris ?? {};
+    const face = data.card_faces?.[0];
+    const allUris: Record<string, string> = face?.image_uris ?? data.image_uris ?? {};
     const uris: Record<string, string> = {};
     if (allUris.normal) uris.normal = allUris.normal;
     if (allUris.border_crop) uris.border_crop = allUris.border_crop;
-    const setData: SetData = { image_uris: uris, ...(data.frame && { frame: data.frame }) };
+    const setData: SetData = {
+        image_uris: uris,
+        ...(data.frame && { frame: data.frame }),
+        ...(data.layout && { layout: data.layout }),
+    };
 
     if (!cardDataCache[cardName]) cardDataCache[cardName] = {};
     cardDataCache[cardName][key] = setData;

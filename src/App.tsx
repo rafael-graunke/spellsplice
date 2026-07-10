@@ -31,12 +31,23 @@ import { Sources } from './components/Sources';
 import type { MediaSource } from './components/types/source';
 import WelcomeScreen from './components/Welcome';
 import LiveMode from './components/LiveMode/LiveMode';
+import LiveModeDialog from './components/LiveMode/LiveModeDialog';
+import { LIVE_PROJECT_KEY } from '@/lib/liveMode';
 
 type PlayerInit = Omit<Player, 'track'>;
 
 const PROJECT_KEY = 'spellsplice-project';
 const EDITOR_KEY = 'spellsplice-editor';
+const MODE_KEY = 'spellsplice-mode';
 const DEFAULT_DURATION = 120;
+
+type Mode = 'welcome' | 'timeline' | 'live';
+
+function loadMode(hasProject: boolean): Mode {
+    const raw = localStorage.getItem(MODE_KEY);
+    if (raw === 'timeline' || raw === 'live' || raw === 'welcome') return raw;
+    return hasProject ? 'timeline' : 'welcome';
+}
 
 const initialPlayers: PlayerInit[] = [
     { id: 'player1', name: 'Player 1', handSize: 0, lifeTotal: 20, wins: 0, cards: [], topStack: []},
@@ -80,8 +91,8 @@ function loadSavedState(): SavedState | undefined {
 
 function App() {
 const [savedStateInit] = useState(loadSavedState);
-    const [showWelcome, setShowWelcome] = useState(() => !savedStateInit);
-    const [liveModeActive, setLiveModeActive] = useState(false);
+    const [mode, setMode] = useState<Mode>(() => loadMode(!!savedStateInit));
+    const [liveSettingsOpen, setLiveSettingsOpen] = useState(false);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [video, setVideo] = useState<VideoState | null>(null);
@@ -110,6 +121,10 @@ const [savedStateInit] = useState(loadSavedState);
     const currentTimeRef = useRef(0);
 
     useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
+
+    useEffect(() => {
+        localStorage.setItem(MODE_KEY, mode);
+    }, [mode]);
 
     const {
         players,
@@ -144,8 +159,6 @@ const [savedStateInit] = useState(loadSavedState);
         const handler = (e: BeforeUnloadEvent) => {
             if (isDirty) {
                 e.preventDefault();
-            } else {
-                localStorage.removeItem(PROJECT_KEY);
             }
         };
         window.addEventListener('beforeunload', handler);
@@ -223,7 +236,7 @@ const [savedStateInit] = useState(loadSavedState);
         setIsDirty(false);
         setProjectConfig(config ? { ...DEFAULT_PROJECT_CONFIG, ...config } : DEFAULT_PROJECT_CONFIG);
         if (offlineSources.length > 0) setRelinkDialogOpen(true);
-        setShowWelcome(false);
+        setMode('timeline');
     }, [resetPlayers]);
 
     const resetToFresh = useCallback(() => {
@@ -243,13 +256,14 @@ const [savedStateInit] = useState(loadSavedState);
 
     const handleNew = useCallback(() => {
         resetToFresh();
-        setShowWelcome(false);
+        setMode('timeline');
     }, [resetToFresh]);
 
-    const handleShowWelcome = useCallback(() => {
-        resetToFresh();
-        setShowWelcome(true);
-    }, [resetToFresh]);
+    const handleFileNew = useCallback(() => {
+        if (mode === 'timeline') resetToFresh();
+        else if (mode === 'live') localStorage.removeItem(LIVE_PROJECT_KEY);
+        setMode('welcome');
+    }, [mode, resetToFresh]);
 
     const handleRelinkSource = useCallback(async (sourceId: string, file: File) => {
         setSources((prev) =>
@@ -657,13 +671,15 @@ const [savedStateInit] = useState(loadSavedState);
     return (
         <section className="h-screen flex flex-col">
                 <AppBar
+                    mode={mode}
                     isDirty={isDirty}
-                    onNew={handleShowWelcome}
+                    onNew={handleFileNew}
                     onExport={handleExport}
                     onImport={handleImport}
                     onExportVideo={handleOpenExportDialog}
                     onOpenSettings={handleOpenSettings}
                     onRelinkMedia={() => setRelinkDialogOpen(true)}
+                    onOpenLiveSettings={() => setLiveSettingsOpen(true)}
                 />
                 <SettingsDialog
                     open={settingsOpen}
@@ -672,6 +688,11 @@ const [savedStateInit] = useState(loadSavedState);
                     onConfigChange={setProjectConfig}
                     players={players}
                     onUpdatePlayer={handleUpdatePlayer}
+                />
+                <LiveModeDialog
+                    open={liveSettingsOpen}
+                    onOpenChange={setLiveSettingsOpen}
+                    onStart={() => setLiveSettingsOpen(false)}
                 />
                 <ExportDialog
                     open={exportDialogOpen}
@@ -693,13 +714,13 @@ const [savedStateInit] = useState(loadSavedState);
                     onDeleteOrphanedClips={handleDeleteOrphanedClips}
                     deletedSourceNames={deletedSourceNames}
                 />
-                {liveModeActive ? (
+                {mode === 'live' ? (
                     <LiveMode />
-                ) : showWelcome ? (
+                ) : mode === 'welcome' ? (
                     <WelcomeScreen
                         onCreateNew={handleNew}
                         onOpenProject={handleImport}
-                        onStartLiveMode={() => setLiveModeActive(true)}
+                        onStartLiveMode={() => setMode('live')}
                     />
                 ) : (
                 <ResizablePanelGroup orientation="vertical" className="flex-1">

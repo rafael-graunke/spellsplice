@@ -132,7 +132,7 @@ import { findOracleCard } from '@/lib/oracleCards';
 import { CARD_COLOR_ORDER, getCardColorKey } from '@/lib/cardColors';
 import { getManaValue } from '@/lib/manaCost';
 import type { Decklist } from '@/components/types/player';
-import { loadLiveModeConfig, type LiveMessage } from '@/lib/liveMode';
+import { loadLiveModeConfig, type LiveMessage, LIVE_PROJECT_KEY } from '@/lib/liveMode';
 import { useLiveModeSocket } from '@/hooks/useLiveModeSocket';
 import { LibraryPanel, type LibraryCardInstance } from './LibraryPanel';
 import { PlayerHand } from './PlayerHand';
@@ -154,13 +154,29 @@ function emptySide(): SideState {
     return { decklist: null, library: [], hand: [] };
 }
 
+function loadLiveProject(): Record<Side, SideState> | null {
+    try {
+        const raw = localStorage.getItem(LIVE_PROJECT_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw) as Record<Side, SideState>;
+    } catch {
+        return null;
+    }
+}
+
+function saveLiveProject(sides: Record<Side, SideState>) {
+    localStorage.setItem(LIVE_PROJECT_KEY, JSON.stringify(sides));
+}
+
 function LiveMode() {
     const { status } = useOracleCards();
     const sensors = useSensors(useSensor(PointerSensor));
-    const [sides, setSides] = useState<Record<Side, SideState>>({
-        left: emptySide(),
-        right: emptySide(),
-    });
+    const [sides, setSides] = useState<Record<Side, SideState>>(
+        () => loadLiveProject() ?? { left: emptySide(), right: emptySide() },
+    );
+    useEffect(() => {
+        saveLiveProject(sides);
+    }, [sides]);
     const [activeId, setActiveId] = useState<string | null>(null);
     const [activeWidth, setActiveWidth] = useState<number | null>(null);
 

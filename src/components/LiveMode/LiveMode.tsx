@@ -117,7 +117,7 @@ function LiveMode() {
 }
 */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     DndContext,
     DragOverlay,
@@ -132,6 +132,8 @@ import { findOracleCard } from '@/lib/oracleCards';
 import { CARD_COLOR_ORDER, getCardColorKey } from '@/lib/cardColors';
 import { getManaValue } from '@/lib/manaCost';
 import type { Decklist } from '@/components/types/player';
+import { loadLiveModeConfig, type LiveMessage } from '@/lib/liveMode';
+import { useLiveModeSocket } from '@/hooks/useLiveModeSocket';
 import { LibraryPanel, type LibraryCardInstance } from './LibraryPanel';
 import { PlayerHand } from './PlayerHand';
 import { CardChip } from './CardChip';
@@ -161,6 +163,33 @@ function LiveMode() {
     });
     const [activeId, setActiveId] = useState<string | null>(null);
     const [activeWidth, setActiveWidth] = useState<number | null>(null);
+
+    const [config] = useState(() => loadLiveModeConfig());
+    const sendRef = useRef<(msg: LiveMessage) => void>(() => {});
+
+    const handleSocketMessage = (msg: LiveMessage) => {
+        if (msg.type === 'request-state') {
+            sendRef.current({
+                type: 'live-state',
+                state: { left: sides.left.hand, right: sides.right.hand },
+            });
+        }
+    };
+
+    const { send } = useLiveModeSocket(config?.websocketUrl ?? null, handleSocketMessage);
+    useEffect(() => {
+        sendRef.current = send;
+    }, [send]);
+
+    const broadcastHand = (side: Side, hand: LibraryCardInstance[]) => {
+        sendRef.current({
+            type: 'live-state',
+            state: {
+                left: side === 'left' ? hand : sides.left.hand,
+                right: side === 'right' ? hand : sides.right.hand,
+            },
+        });
+    };
 
     const activeCard = useMemo(() => {
         if (!activeId) return null;
@@ -198,36 +227,28 @@ function LiveMode() {
         const { active, over } = e;
         if (!over) return;
 
-        const [prefix, side, instanceId] = String(active.id).split(':');
+        const [prefix, sideStr, instanceId] = String(active.id).split(':');
+        const s = sideStr as Side;
 
-        if (prefix === 'lib' && over.id === `hand-${side}`) {
-            setSides((prev) => {
-                const s = prev[side as Side];
-                const entry = s.library.find((c) => c.id === instanceId);
-                if (!entry) return prev;
-                return {
-                    ...prev,
-                    [side]: {
-                        ...s,
-                        hand: [...s.hand, { id: makeId(), card: entry.card }],
-                    },
-                };
-            });
+        if (prefix === 'lib' && over.id === `hand-${sideStr}`) {
+            const entry = sides[s].library.find((c) => c.id === instanceId);
+            if (!entry) return;
+            const newHand = [...sides[s].hand, { id: makeId(), card: entry.card }];
+            setSides((prev) => ({ ...prev, [s]: { ...prev[s], hand: newHand } }));
+            broadcastHand(s, newHand);
             return;
         }
 
-        if (prefix === 'hand' && over.id === `lib-${side}`) {
-            setSides((prev) => {
-                const s = prev[side as Side];
-                return {
-                    ...prev,
-                    [side]: {
-                        ...s,
-                        hand: s.hand.filter((c) => c.id !== instanceId),
-                    },
-                };
-            });
+        if (prefix === 'hand' && over.id === `lib-${sideStr}`) {
+            const newHand = sides[s].hand.filter((c) => c.id !== instanceId);
+            setSides((prev) => ({ ...prev, [s]: { ...prev[s], hand: newHand } }));
+            broadcastHand(s, newHand);
         }
+    };
+
+    const handleClearHand = (side: Side) => {
+        setSides((prev) => ({ ...prev, [side]: { ...prev[side], hand: [] } }));
+        broadcastHand(side, []);
     };
 
     return (
@@ -248,10 +269,10 @@ function LiveMode() {
                     />
                 </div>
                 <div className="flex flex-col min-h-0">
-                    <PlayerHand side="left" cards={sides.left.hand} />
+                    <PlayerHand side="left" cards={sides.left.hand} onClear={() => handleClearHand('left')} />
                 </div>
                 <div className="flex flex-col min-h-0">
-                    <PlayerHand side="right" cards={sides.right.hand} />
+                    <PlayerHand side="right" cards={sides.right.hand} onClear={() => handleClearHand('right')} />
                 </div>
                 <div className="flex flex-col min-h-0 overflow-hidden">
                     <LibraryPanel

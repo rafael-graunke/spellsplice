@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react';
-import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
+import { CheckCircle2, Copy, Loader2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 import {
     Dialog,
     DialogContent,
@@ -10,7 +11,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { loadLiveModeConfig, saveLiveModeConfig } from '@/lib/liveMode';
+import { buildOverlayUrl, loadLiveModeConfig, saveLiveModeConfig } from '@/lib/liveMode';
 
 interface LiveModeDialogProps {
     open: boolean;
@@ -100,6 +101,27 @@ function LiveModeDialogContent({ onStart }: { onStart: () => void }) {
                 onChange={(e) => handleUrlChange(e.target.value)}
                 disabled={busy}
             />
+
+            {url && (
+                <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">
+                        Paste this into OBS&apos;s Browser Source URL field (works without shared
+                        localStorage):
+                    </p>
+                    <InputGroup>
+                        <InputGroupInput readOnly value={buildOverlayUrl(url)} className="text-xs" />
+                        <InputGroupAddon align="inline-end">
+                            <InputGroupButton
+                                variant="ghost"
+                                size="icon-xs"
+                                onClick={() => navigator.clipboard.writeText(buildOverlayUrl(url))}
+                            >
+                                <Copy />
+                            </InputGroupButton>
+                        </InputGroupAddon>
+                    </InputGroup>
+                </div>
+            )}
 
             {status !== 'idle' && (
                 <div className="flex items-center gap-2 text-sm">

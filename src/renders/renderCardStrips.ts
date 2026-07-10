@@ -1,5 +1,9 @@
 import { ensureBorderCrop } from '@/lib/cardCache';
+import { CARD_COLOR_HEX, getCardColorKey } from '@/lib/cardColors';
+import { drawManaCostRow, ensureManaFontLoaded } from '@/lib/manaGlyphs';
 import type { Card } from '@/components/types/card';
+
+const PLACEHOLDER_TEXT = '#262626';
 
 interface CropConfig {
     sx: number;
@@ -78,11 +82,15 @@ export function drawCardStrip(
     isLeft: boolean,
     eyeIcon: HTMLImageElement | null = null,
     alpha = 1,
+    manaCost?: string,
+    colors?: string[],
 ) {
     const { img } = ensureBorderCrop(card.name, card.edition);
     const crop = getCardCrop(card);
     const stripH = getStripH(card);
     const iconSize = Math.round(stripH * 0.7);
+    const placeholderBg = CARD_COLOR_HEX[getCardColorKey(colors)];
+    if (manaCost && !(img instanceof HTMLImageElement)) ensureManaFontLoaded();
 
     if (crop.curveClip) {
         // fill() is anti-aliased; clip() is not. Use an offscreen canvas + destination-in mask.
@@ -94,13 +102,16 @@ export function drawCardStrip(
         if (img instanceof HTMLImageElement) {
             tmpCtx.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, STRIP_W, stripH);
         } else {
-            tmpCtx.fillStyle = '#3a0257';
+            tmpCtx.fillStyle = placeholderBg;
             tmpCtx.fillRect(0, 0, STRIP_W, stripH);
-            tmpCtx.fillStyle = '#ffffff';
-            tmpCtx.font = 'bold 18px sans-serif';
+            tmpCtx.fillStyle = PLACEHOLDER_TEXT;
+            tmpCtx.font = 'bold 22px sans-serif';
             tmpCtx.textBaseline = 'middle';
             tmpCtx.textAlign = 'left';
             tmpCtx.fillText(card.name, 10, Math.round(stripH / 2));
+            if (manaCost) {
+                drawManaCostRow(tmpCtx, manaCost, STRIP_W - 10, Math.round(stripH / 2), stripH * 0.32);
+            }
         }
 
         tmpCtx.globalCompositeOperation = 'destination-in';
@@ -122,13 +133,16 @@ export function drawCardStrip(
         if (img instanceof HTMLImageElement) {
             ctx.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, x, y, STRIP_W, stripH);
         } else {
-            ctx.fillStyle = '#3a0257';
+            ctx.fillStyle = placeholderBg;
             ctx.fill();
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 18px sans-serif';
+            ctx.fillStyle = PLACEHOLDER_TEXT;
+            ctx.font = 'bold 22px sans-serif';
             ctx.textBaseline = 'middle';
             ctx.textAlign = 'left';
             ctx.fillText(card.name, x + 10, Math.round(y + stripH / 2));
+            if (manaCost) {
+                drawManaCostRow(ctx, manaCost, x + STRIP_W - 10, Math.round(y + stripH / 2), stripH * 0.32);
+            }
         }
 
         ctx.restore();

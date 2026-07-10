@@ -1,14 +1,18 @@
 export type CardColorKey = 'C' | 'W' | 'U' | 'B' | 'R' | 'G' | 'M';
 
-export const CARD_COLOR_BG: Record<CardColorKey, string> = {
-    C: 'bg-[#ccc6c1]',
-    W: 'bg-[#f3f4ef]',
-    U: 'bg-[#bbd9e8]',
-    B: 'bg-[#bcb1b7]',
-    R: 'bg-[#f0c8b5]',
-    G: 'bg-[#cfd3bd]',
-    M: 'bg-[#d3c294]',
+export const CARD_COLOR_HEX: Record<CardColorKey, string> = {
+    C: '#ccc6c1',
+    W: '#f3f4ef',
+    U: '#bbd9e8',
+    B: '#bcb1b7',
+    R: '#f0c8b5',
+    G: '#cfd3bd',
+    M: '#d3c294',
 };
+
+export const CARD_COLOR_BG: Record<CardColorKey, string> = Object.fromEntries(
+    Object.entries(CARD_COLOR_HEX).map(([key, hex]) => [key, `bg-[${hex}]`]),
+) as Record<CardColorKey, string>;
 
 export function getCardColorKey(colors: string[] | undefined): CardColorKey {
     if (!colors || colors.length === 0) return 'C';

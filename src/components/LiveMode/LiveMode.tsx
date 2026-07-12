@@ -127,7 +127,6 @@ import {
     type DragEndEvent,
     type DragStartEvent,
 } from '@dnd-kit/core';
-import { PlusIcon } from 'lucide-react';
 import { useOracleCards } from '@/hooks/useOracleCards';
 import { findOracleCard } from '@/lib/oracleCards';
 import { CARD_COLOR_ORDER, getCardColorKey } from '@/lib/cardColors';
@@ -135,7 +134,6 @@ import { getManaValue } from '@/lib/manaCost';
 import type { Decklist } from '@/components/types/player';
 import { loadLiveModeConfig, type LiveMessage, LIVE_PROJECT_KEY } from '@/lib/liveMode';
 import { useLiveModeSocket } from '@/hooks/useLiveModeSocket';
-import { Button } from '@/components/ui/button';
 import { LibraryPanel, type LibraryCardInstance } from './LibraryPanel';
 import { PlayerHand } from './PlayerHand';
 import { PlayerState } from './PlayerState';
@@ -143,12 +141,24 @@ import { Annotation } from './Annotation';
 import { CardChip } from './CardChip';
 
 type Side = 'left' | 'right';
-type AnnotationZone = 'graveyard' | 'topDeck';
+type Zone = 'hand' | 'graveyard' | 'topDeck';
+type AnnotationZone = Exclude<Zone, 'hand'>;
 
-const ANNOTATION_DROP_ID: Record<AnnotationZone, (side: Side) => string> = {
+const ZONE_DROP_ID: Record<Zone, (side: Side) => string> = {
+    hand: (side) => `hand-${side}`,
     graveyard: (side) => `annotation-graveyard-${side}`,
     topDeck: (side) => `annotation-top-deck-${side}`,
 };
+const ZONES = Object.keys(ZONE_DROP_ID) as Zone[];
+const ANNOTATION_ZONES = ZONES.filter((z): z is AnnotationZone => z !== 'hand');
+
+// Optional per-zone override for the title broadcast to the overlay; falls
+// back to the humanized field name (e.g. "topDeck" -> "Top Deck") when unset.
+const ZONE_DESCRIPTION: Partial<Record<AnnotationZone, string>> = {};
+
+function humanizeFieldName(field: string): string {
+    return field.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
+}
 
 interface SideState {
     name: string;
@@ -207,6 +217,7 @@ function LiveMode() {
     }, [sides]);
     const [activeId, setActiveId] = useState<string | null>(null);
     const [activeWidth, setActiveWidth] = useState<number | null>(null);
+    const [skipDropAnimation, setSkipDropAnimation] = useState(false);
 
     const [config] = useState(() => loadLiveModeConfig());
     const sendRef = useRef<(msg: LiveMessage) => void>(() => {});
@@ -217,6 +228,14 @@ function LiveMode() {
                 type: 'live-state',
                 state: { left: sides.left.hand, right: sides.right.hand },
             });
+            for (const zone of ANNOTATION_ZONES) {
+                sendRef.current({
+                    type: 'annotation-state',
+                    annotationId: zone,
+                    title: ZONE_DESCRIPTION[zone] ?? humanizeFieldName(zone),
+                    state: { left: sides.left[zone], right: sides.right[zone] },
+                });
+            }
         }
     };
 
@@ -233,6 +252,23 @@ function LiveMode() {
                 right: side === 'right' ? hand : sides.right.hand,
             },
         });
+    };
+
+    const broadcastAnnotation = (zone: AnnotationZone, side: Side, cards: LibraryCardInstance[]) => {
+        sendRef.current({
+            type: 'annotation-state',
+            annotationId: zone,
+            title: ZONE_DESCRIPTION[zone] ?? humanizeFieldName(zone),
+            state: {
+                left: side === 'left' ? cards : sides.left[zone],
+                right: side === 'right' ? cards : sides.right[zone],
+            },
+        });
+    };
+
+    const broadcastZone = (zone: Zone, side: Side, cards: LibraryCardInstance[]) => {
+        if (zone === 'hand') broadcastHand(side, cards);
+        else broadcastAnnotation(zone, side, cards);
     };
 
     const activeCard = useMemo(() => {
@@ -272,40 +308,59 @@ function LiveMode() {
     };
 
     const handleDragEnd = (e: DragEndEvent) => {
-        setActiveId(null);
-        setActiveWidth(null);
         const { active, over } = e;
-        if (!over) return;
+        let success = false;
 
-        const [prefix, sideStr, instanceId] = String(active.id).split(':');
-        const s = sideStr as Side;
+        if (over) {
+            const [prefix, key, instanceId] = String(active.id).split(':');
 
-        if (prefix === 'lib') {
-            const entry = sides[s].library.find((c) => c.id === instanceId);
-            if (!entry) return;
+            if (prefix === 'lib') {
+                const s = key as Side;
+                const entry = sides[s].library.find((c) => c.id === instanceId);
+                if (entry) {
+                    for (const zone of ZONES) {
+                        if (over.id === ZONE_DROP_ID[zone](s)) {
+                            const newZoneCards = [...sides[s][zone], { id: makeId(), card: entry.card }];
+                            setSides((prev) => ({ ...prev, [s]: { ...prev[s], [zone]: newZoneCards } }));
+                            broadcastZone(zone, s, newZoneCards);
+                            success = true;
+                            break;
+                        }
+                    }
+                }
+            } else if (prefix === 'hand' || prefix === 'annotation') {
+                const side: Side = prefix === 'hand' ? (key as Side) : key.endsWith('-left') ? 'left' : 'right';
+                const sourceZone: Zone = prefix === 'hand' ? 'hand' : key.startsWith('graveyard') ? 'graveyard' : 'topDeck';
+                const entry = sides[side][sourceZone].find((c) => c.id === instanceId);
 
-            if (over.id === `hand-${sideStr}`) {
-                const newHand = [...sides[s].hand, { id: makeId(), card: entry.card }];
-                setSides((prev) => ({ ...prev, [s]: { ...prev[s], hand: newHand } }));
-                broadcastHand(s, newHand);
-                return;
-            }
-
-            for (const zone of Object.keys(ANNOTATION_DROP_ID) as AnnotationZone[]) {
-                if (over.id === ANNOTATION_DROP_ID[zone](s)) {
-                    const newZone = [...sides[s][zone], { id: makeId(), card: entry.card }];
-                    setSides((prev) => ({ ...prev, [s]: { ...prev[s], [zone]: newZone } }));
-                    return;
+                if (entry) {
+                    if (over.id === `lib-${side}`) {
+                        const newSourceCards = sides[side][sourceZone].filter((c) => c.id !== instanceId);
+                        setSides((prev) => ({ ...prev, [side]: { ...prev[side], [sourceZone]: newSourceCards } }));
+                        broadcastZone(sourceZone, side, newSourceCards);
+                        success = true;
+                    } else {
+                        for (const zone of ZONES) {
+                            if (zone === sourceZone || over.id !== ZONE_DROP_ID[zone](side)) continue;
+                            const newSourceCards = sides[side][sourceZone].filter((c) => c.id !== instanceId);
+                            const newTargetCards = [...sides[side][zone], entry];
+                            setSides((prev) => ({
+                                ...prev,
+                                [side]: { ...prev[side], [sourceZone]: newSourceCards, [zone]: newTargetCards },
+                            }));
+                            broadcastZone(sourceZone, side, newSourceCards);
+                            broadcastZone(zone, side, newTargetCards);
+                            success = true;
+                            break;
+                        }
+                    }
                 }
             }
-            return;
         }
 
-        if (prefix === 'hand' && over.id === `lib-${sideStr}`) {
-            const newHand = sides[s].hand.filter((c) => c.id !== instanceId);
-            setSides((prev) => ({ ...prev, [s]: { ...prev[s], hand: newHand } }));
-            broadcastHand(s, newHand);
-        }
+        setSkipDropAnimation(success);
+        setActiveId(null);
+        setActiveWidth(null);
     };
 
     const handleClearHand = (side: Side) => {
@@ -315,6 +370,7 @@ function LiveMode() {
 
     const handleClearAnnotation = (side: Side, zone: AnnotationZone) => {
         setSides((prev) => ({ ...prev, [side]: { ...prev[side], [zone]: [] } }));
+        broadcastAnnotation(zone, side, []);
     };
 
     const handleUpdateSide = (side: Side, patch: Partial<Pick<SideState, 'name' | 'deckName' | 'life'>>) => {
@@ -326,7 +382,11 @@ function LiveMode() {
             sensors={sensors}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
-            onDragCancel={() => { setActiveId(null); setActiveWidth(null); }}
+            onDragCancel={() => {
+                setSkipDropAnimation(false);
+                setActiveId(null);
+                setActiveWidth(null);
+            }}
         >
             <div className="flex-1 min-h-0 grid grid-cols-[1fr_2fr_2fr_1fr] p-2 gap-2">
                 <div className="flex flex-col min-h-0 overflow-hidden">
@@ -339,7 +399,6 @@ function LiveMode() {
                     />
                 </div>
                 <div className="flex flex-col min-h-0 gap-2 rounded-lg border p-2">
-                    <p className="text-sm font-medium">Player Control</p>
                     <PlayerState
                         name={sides.left.name}
                         deckName={sides.left.deckName}
@@ -351,30 +410,31 @@ function LiveMode() {
                     <div className="grid grid-cols-2 gap-2 flex-1 min-h-0">
                         <PlayerHand side="left" cards={sides.left.hand} onClear={() => handleClearHand('left')} />
                         <div className="flex flex-col gap-2 min-h-0">
-                            <div className="flex flex-1 min-h-24 items-center justify-center rounded-lg border p-2 text-xs text-muted-foreground">
+                            <div className="flex w-full aspect-[5/7] items-center justify-center rounded-lg border p-2 text-xs text-muted-foreground">
                                 Card display
                             </div>
                             <Annotation
                                 id="graveyard-left"
                                 title="Graveyard"
+                                description={ZONE_DESCRIPTION.graveyard}
                                 cards={sides.left.graveyard}
                                 onClear={() => handleClearAnnotation('left', 'graveyard')}
                             />
                             <Annotation
                                 id="top-deck-left"
                                 title="Top Deck"
+                                description={ZONE_DESCRIPTION.topDeck}
                                 cards={sides.left.topDeck}
                                 onClear={() => handleClearAnnotation('left', 'topDeck')}
                             />
-                            <Button variant="outline" size="sm" className="cursor-pointer">
+                            {/* <Button variant="outline" size="sm" className="cursor-pointer">
                                 <PlusIcon />
                                 Create annotation
-                            </Button>
+                            </Button> */}
                         </div>
                     </div>
                 </div>
                 <div className="flex flex-col min-h-0 gap-2 rounded-lg border p-2">
-                    <p className="text-sm font-medium">Player Control</p>
                     <PlayerState
                         name={sides.right.name}
                         deckName={sides.right.deckName}
@@ -385,25 +445,27 @@ function LiveMode() {
                     />
                     <div className="grid grid-cols-2 gap-2 flex-1 min-h-0">
                         <div className="flex flex-col gap-2 min-h-0">
-                            <div className="flex flex-1 min-h-24 items-center justify-center rounded-lg border p-2 text-xs text-muted-foreground">
+                            <div className="flex w-full aspect-[5/7] items-center justify-center rounded-lg border p-2 text-xs text-muted-foreground">
                                 Card display
                             </div>
                             <Annotation
                                 id="graveyard-right"
                                 title="Graveyard"
+                                description={ZONE_DESCRIPTION.graveyard}
                                 cards={sides.right.graveyard}
                                 onClear={() => handleClearAnnotation('right', 'graveyard')}
                             />
                             <Annotation
                                 id="top-deck-right"
                                 title="Top Deck"
+                                description={ZONE_DESCRIPTION.topDeck}
                                 cards={sides.right.topDeck}
                                 onClear={() => handleClearAnnotation('right', 'topDeck')}
                             />
-                            <Button variant="outline" size="sm" className="cursor-pointer">
+                            {/* <Button variant="outline" size="sm" className="cursor-pointer">
                                 <PlusIcon />
                                 Create annotation
-                            </Button>
+                            </Button> */}
                         </div>
                         <PlayerHand side="right" cards={sides.right.hand} onClear={() => handleClearHand('right')} />
                     </div>
@@ -419,7 +481,7 @@ function LiveMode() {
                 </div>
             </div>
 
-            <DragOverlay>
+            <DragOverlay dropAnimation={skipDropAnimation ? null : undefined}>
                 {activeCard ? (
                     <CardChip
                         card={activeCard}

@@ -2,6 +2,12 @@ import type { Card } from '@/components/types/card';
 import type { LiveHandCard } from '@/lib/liveMode';
 import { STRIP_W, getStripH, drawCardStrip } from './renderCardStrips';
 
+export function getHandStackTopY(hand: LiveHandCard[], offsetY: number, drawH: number): number {
+    const bottomY = offsetY + drawH - 20;
+    const totalH = hand.reduce((s, { card }) => s + getStripH({ name: card.name }), 0);
+    return bottomY - totalH;
+}
+
 export function renderLiveHand(
     ctx: CanvasRenderingContext2D,
     left: LiveHandCard[],

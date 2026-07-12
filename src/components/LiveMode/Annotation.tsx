@@ -1,19 +1,21 @@
 import { useDroppable } from '@dnd-kit/core';
-import { Trash2Icon } from 'lucide-react';
+import { InfoIcon, Trash2Icon } from 'lucide-react';
 import type { LibraryCardInstance } from './LibraryPanel';
 import { DraggableCard } from './DraggableCard';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 interface AnnotationProps {
     id: string;
     title: string;
+    description?: string;
     cards: LibraryCardInstance[];
     maxCards?: number;
     onClear: () => void;
 }
 
-export function Annotation({ id, title, cards, maxCards, onClear }: AnnotationProps) {
+export function Annotation({ id, title, description, cards, maxCards, onClear }: AnnotationProps) {
     const { setNodeRef, isOver } = useDroppable({
         id: `annotation-${id}`,
         disabled: maxCards !== undefined && cards.length >= maxCards,
@@ -28,7 +30,19 @@ export function Annotation({ id, title, cards, maxCards, onClear }: AnnotationPr
             )}
         >
             <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-medium">{title}</p>
+                <div className="flex items-center gap-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{title}</p>
+                    {description && (
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <InfoIcon className="size-3.5 text-muted-foreground shrink-0" />
+                                </TooltipTrigger>
+                                <TooltipContent>{description}</TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                    )}
+                </div>
                 <Button
                     className="cursor-pointer"
                     variant="destructive"

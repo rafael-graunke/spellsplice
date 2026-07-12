@@ -23,6 +23,7 @@ export function createDefaultLiveState(): LiveOverlayState {
 
 export type LiveMessage =
     | { type: 'live-state'; state: LiveOverlayState }
+    | { type: 'annotation-state'; annotationId: string; title: string; state: LiveOverlayState }
     | { type: 'request-state' };
 
 export function loadLiveModeConfig(): LiveModeConfig | null {

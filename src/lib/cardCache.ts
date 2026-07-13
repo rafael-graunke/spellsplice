@@ -26,7 +26,9 @@ function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
                     const blobUrl = URL.createObjectURL(blob);
                     const img = new Image();
                     img.onload = () => {
-                        URL.revokeObjectURL(blobUrl);
+                        // Not revoked: img.src is reused directly by <img> tags
+                        // (e.g. CardDisplay), so the blob URL must stay alive
+                        // for the lifetime of the module-level cache.
                         resolve(img);
                     };
                     img.onerror = () => {

@@ -1,51 +1,31 @@
 import { useCallback, useState } from 'react';
-import { CheckCircle2, Copy, Loader2, XCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { useLiveModeSocket } from '@/hooks/useLiveModeSocket';
 import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
-import { buildOverlayUrl, loadLiveModeConfig, saveLiveModeConfig } from '@/lib/liveMode';
+    loadLiveModeConfig,
+    saveLiveModeConfig,
+    loadLiveTemplateState,
+    saveLiveTemplateState,
+    DEFAULT_CARD_STRIP_WIDTH,
+    type LiveTemplateState,
+} from '@/lib/liveMode';
+import { cn } from '@/lib/utils';
+import ConnectionSection from './sections/ConnectionSection';
+import OverlaySection from './sections/OverlaySection';
+import TemplateSection from './sections/TemplateSection';
+
+type Section = 'connection' | 'overlay' | 'template';
+
+const NAV_ITEMS: { id: Section; label: string }[] = [
+    { id: 'connection', label: 'Connection' },
+    { id: 'overlay', label: 'Overlay Appearance' },
+    { id: 'template', label: 'Template' },
+];
 
 interface LiveModeDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onStart: () => void;
-}
-
-type TestStatus = 'idle' | 'testing' | 'success' | 'error';
-
-const TEST_TIMEOUT_MS = 5000;
-
-function testWebsocket(url: string): Promise<boolean> {
-    return new Promise((resolve) => {
-        let settled = false;
-        let ws: WebSocket;
-        try {
-            ws = new WebSocket(url);
-        } catch {
-            resolve(false);
-            return;
-        }
-        const finish = (result: boolean) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            ws.onopen = null;
-            ws.onerror = null;
-            ws.close();
-            resolve(result);
-        };
-        const timer = setTimeout(() => finish(false), TEST_TIMEOUT_MS);
-        ws.onopen = () => finish(true);
-        ws.onerror = () => finish(false);
-    });
 }
 
 function LiveModeDialog({ open, onOpenChange, onStart }: LiveModeDialogProps) {
@@ -57,103 +37,79 @@ function LiveModeDialog({ open, onOpenChange, onStart }: LiveModeDialogProps) {
 }
 
 function LiveModeDialogContent({ onStart }: { onStart: () => void }) {
+    const [selectedSection, setSelectedSection] = useState<Section>('connection');
     const [url, setUrl] = useState(() => loadLiveModeConfig()?.websocketUrl ?? '');
-    const [status, setStatus] = useState<TestStatus>('idle');
+    const [cardStripWidth, setCardStripWidth] = useState(
+        () => loadLiveModeConfig()?.cardStripWidth ?? DEFAULT_CARD_STRIP_WIDTH,
+    );
+    const [templateState, setTemplateState] = useState(() => loadLiveTemplateState());
 
-    const handleUrlChange = useCallback((value: string) => {
-        setUrl(value);
-        setStatus('idle');
-    }, []);
+    // Own connection scoped to the dialog's lifetime, used only to broadcast
+    // live config changes (e.g. card strip width) to any connected overlay
+    // as they're made - independent of the Connection tab's Test/Start flow.
+    const { send } = useLiveModeSocket(url || null, () => {});
 
-    const handleTest = useCallback(async () => {
-        setStatus('testing');
-        const ok = await testWebsocket(url);
-        setStatus(ok ? 'success' : 'error');
-    }, [url]);
+    const handleCardStripWidthChange = useCallback(
+        (value: number) => {
+            setCardStripWidth(value);
+            saveLiveModeConfig({ websocketUrl: '', ...loadLiveModeConfig(), cardStripWidth: value });
+            send({ type: 'config-state', cardStripWidth: value });
+        },
+        [send],
+    );
 
-    const handleStart = useCallback(async () => {
-        setStatus('testing');
-        const ok = await testWebsocket(url);
-        if (ok) {
-            saveLiveModeConfig({ websocketUrl: url });
-            setStatus('success');
-            onStart();
-        } else {
-            setStatus('error');
-        }
-    }, [url, onStart]);
-
-    const busy = status === 'testing';
+    const handleTemplateChange = useCallback(
+        (next: LiveTemplateState) => {
+            saveLiveTemplateState(next);
+            setTemplateState(next);
+            send({ type: 'template-state', template: next });
+        },
+        [send],
+    );
 
     return (
-        <DialogContent>
-            <DialogHeader>
-                <DialogTitle>Live Mode Configuration</DialogTitle>
-                <DialogDescription>
-                    Set the WebSocket URL used by Live Mode. This is shared with the overlay and does not
-                    affect timeline projects.
-                </DialogDescription>
-            </DialogHeader>
-
-            <Input
-                placeholder="wss://example.com/socket"
-                value={url}
-                onChange={(e) => handleUrlChange(e.target.value)}
-                disabled={busy}
-            />
-
-            {url && (
-                <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">
-                        Paste this into OBS&apos;s Browser Source URL field (works without shared
-                        localStorage):
+        <DialogContent className="sm:max-w-3xl h-[560px] p-0 gap-0 overflow-hidden">
+            <DialogTitle className="sr-only">Live Mode Settings</DialogTitle>
+            <div className="flex h-full overflow-hidden">
+                <nav className="w-52 shrink-0 border-r flex flex-col pt-3 pb-3">
+                    <p className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Live Mode
                     </p>
-                    <InputGroup>
-                        <InputGroupInput readOnly value={buildOverlayUrl(url)} className="text-xs" />
-                        <InputGroupAddon align="inline-end">
-                            <InputGroupButton
-                                variant="ghost"
-                                size="icon-xs"
-                                onClick={() => navigator.clipboard.writeText(buildOverlayUrl(url))}
-                            >
-                                <Copy />
-                            </InputGroupButton>
-                        </InputGroupAddon>
-                    </InputGroup>
-                </div>
-            )}
-
-            {status !== 'idle' && (
-                <div className="flex items-center gap-2 text-sm">
-                    {status === 'testing' && (
-                        <>
-                            <Loader2 className="size-4 animate-spin text-yellow-500" />
-                            <span className="text-yellow-500">Testing connection...</span>
-                        </>
+                    {NAV_ITEMS.map((item) => (
+                        <button
+                            key={item.id}
+                            onClick={() => setSelectedSection(item.id)}
+                            className={cn(
+                                'w-full text-left px-4 py-1.5 text-sm rounded-none transition-colors',
+                                selectedSection === item.id
+                                    ? 'bg-accent text-accent-foreground'
+                                    : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                            )}
+                        >
+                            {item.label}
+                        </button>
+                    ))}
+                </nav>
+                <div className="flex-1 min-h-0 overflow-y-auto p-6">
+                    {selectedSection === 'connection' && (
+                        <ConnectionSection
+                            url={url}
+                            onUrlChange={setUrl}
+                            cardStripWidth={cardStripWidth}
+                            onStart={onStart}
+                        />
                     )}
-                    {status === 'success' && (
-                        <>
-                            <CheckCircle2 className="size-4 text-green-500" />
-                            <span className="text-green-500">Connected Successfully!</span>
-                        </>
+                    {selectedSection === 'overlay' && (
+                        <OverlaySection
+                            cardStripWidth={cardStripWidth}
+                            onCardStripWidthChange={handleCardStripWidthChange}
+                        />
                     )}
-                    {status === 'error' && (
-                        <>
-                            <XCircle className="size-4 text-red-500" />
-                            <span className="text-red-500">Connection failed</span>
-                        </>
+                    {selectedSection === 'template' && (
+                        <TemplateSection state={templateState} onChange={handleTemplateChange} />
                     )}
                 </div>
-            )}
-
-            <DialogFooter>
-                <Button variant="outline" onClick={handleTest} disabled={busy || !url}>
-                    Test Connection
-                </Button>
-                <Button onClick={handleStart} disabled={busy || !url}>
-                    Start
-                </Button>
-            </DialogFooter>
+            </div>
         </DialogContent>
     );
 }

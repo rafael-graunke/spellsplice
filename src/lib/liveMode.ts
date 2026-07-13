@@ -2,9 +2,15 @@ import type { OracleCard } from './oracleCards';
 
 export const LIVE_MODE_KEY = 'spellsplice-live-mode';
 export const LIVE_PROJECT_KEY = 'spellsplice-live-project';
+export const LIVE_TEMPLATE_KEY = 'spellsplice-live-template';
+
+// Matches renderCardStrips.ts's STRIP_W default. Duplicated (not imported) to
+// keep this lib module decoupled from the canvas-rendering layer.
+export const DEFAULT_CARD_STRIP_WIDTH = 430;
 
 export interface LiveModeConfig {
     websocketUrl: string;
+    cardStripWidth?: number;
 }
 
 export interface LiveHandCard {
@@ -21,9 +27,123 @@ export function createDefaultLiveState(): LiveOverlayState {
     return { left: [], right: [] };
 }
 
+export type TemplateMode = 'shared' | 'per-player';
+export type TemplateAnchor =
+    | 'top-left'
+    | 'top-center'
+    | 'top-right'
+    | 'bottom-left'
+    | 'bottom-center'
+    | 'bottom-right';
+export type TemplateField = 'name' | 'deckName' | 'life' | 'wins';
+
+export interface TemplateMargins {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+}
+
+// Binds one SVG element (by id) to a tracked player field, resolved at
+// render time via getElementById - robust against SVG exporters that
+// fragment text into per-character tspans, unlike text-based substitution.
+export interface TemplateFieldMapping {
+    id: string;
+    field: TemplateField;
+    side: 'left' | 'right';
+}
+
+export interface SingleTemplateConfig {
+    svg: string | null;
+    anchor: TemplateAnchor;
+    scale: number;
+    margins: TemplateMargins;
+    fieldMappings: TemplateFieldMapping[];
+}
+
+// mode: 'shared' renders `shared` once; 'per-player' renders `left` and
+// `right` independently. Kept as one object so the overlay always receives
+// a single consistent snapshot instead of merging partial updates.
+export interface LiveTemplateState {
+    mode: TemplateMode;
+    shared: SingleTemplateConfig;
+    left: SingleTemplateConfig;
+    right: SingleTemplateConfig;
+}
+
+export interface LivePlayerInfo {
+    name: string;
+    deckName: string;
+    life: number;
+    wins: number;
+}
+
+const DEFAULT_FIELD_IDS: { id: string; field: TemplateField }[] = [
+    { id: 'name', field: 'name' },
+    { id: 'deck', field: 'deckName' },
+    { id: 'life', field: 'life' },
+    { id: 'wins', field: 'wins' },
+];
+
+// Shared templates address both players from one SVG, so default mapping ids
+// are side-prefixed (e.g. "left.life"); per-player templates only ever bind
+// their own player, so the prefix is dropped (e.g. "life").
+export function defaultFieldMappings(kind: 'shared' | 'left' | 'right'): TemplateFieldMapping[] {
+    if (kind === 'shared') {
+        return (['left', 'right'] as const).flatMap((side) =>
+            DEFAULT_FIELD_IDS.map(({ id, field }) => ({ id: `${side}.${id}`, field, side })),
+        );
+    }
+    return DEFAULT_FIELD_IDS.map(({ id, field }) => ({ id, field, side: kind }));
+}
+
+export function defaultTemplateConfig(kind: 'shared' | 'left' | 'right'): SingleTemplateConfig {
+    return {
+        svg: null,
+        anchor: 'top-center',
+        scale: 100,
+        margins: { top: 20, right: 20, bottom: 20, left: 20 },
+        fieldMappings: defaultFieldMappings(kind),
+    };
+}
+
+export function defaultLiveTemplateState(): LiveTemplateState {
+    return {
+        mode: 'shared',
+        shared: defaultTemplateConfig('shared'),
+        left: defaultTemplateConfig('left'),
+        right: defaultTemplateConfig('right'),
+    };
+}
+
+export function loadLiveTemplateState(): LiveTemplateState {
+    try {
+        const raw = localStorage.getItem(LIVE_TEMPLATE_KEY);
+        if (!raw) return defaultLiveTemplateState();
+        const parsed = JSON.parse(raw) as Partial<LiveTemplateState>;
+        const defaults = defaultLiveTemplateState();
+        return {
+            mode: parsed.mode ?? defaults.mode,
+            shared: { ...defaults.shared, ...parsed.shared },
+            left: { ...defaults.left, ...parsed.left },
+            right: { ...defaults.right, ...parsed.right },
+        };
+    } catch {
+        return defaultLiveTemplateState();
+    }
+}
+
+export function saveLiveTemplateState(state: LiveTemplateState) {
+    localStorage.setItem(LIVE_TEMPLATE_KEY, JSON.stringify(state));
+}
+
 export type LiveMessage =
     | { type: 'live-state'; state: LiveOverlayState }
     | { type: 'annotation-state'; annotationId: string; title: string; state: LiveOverlayState }
+    | { type: 'card-display-state'; left: LiveHandCard | null; right: LiveHandCard | null }
+    | { type: 'config-state'; cardStripWidth: number }
+    | { type: 'template-state'; template: LiveTemplateState }
+    | { type: 'player-info-state'; left: LivePlayerInfo; right: LivePlayerInfo }
     | { type: 'request-state' };
 
 export function loadLiveModeConfig(): LiveModeConfig | null {
@@ -49,8 +169,17 @@ export function resolveOverlayWebsocketUrl(search: string): string | null {
     return loadLiveModeConfig()?.websocketUrl ?? null;
 }
 
-export function buildOverlayUrl(websocketUrl: string): string {
+// Same isolated-localStorage problem as the websocket URL above - a `?stripW=`
+// query param carries the setting into OBS's Browser Source.
+export function resolveOverlayCardStripWidth(search: string): number {
+    const fromQuery = Number(new URLSearchParams(search).get('stripW'));
+    if (fromQuery > 0) return fromQuery;
+    return loadLiveModeConfig()?.cardStripWidth ?? DEFAULT_CARD_STRIP_WIDTH;
+}
+
+export function buildOverlayUrl(websocketUrl: string, cardStripWidth?: number): string {
     const url = new URL('/overlay', window.location.origin);
     url.searchParams.set('ws', websocketUrl);
+    if (cardStripWidth) url.searchParams.set('stripW', String(cardStripWidth));
     return url.toString();
 }

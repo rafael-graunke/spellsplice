@@ -132,13 +132,20 @@ import { findOracleCard } from '@/lib/oracleCards';
 import { CARD_COLOR_ORDER, getCardColorKey } from '@/lib/cardColors';
 import { getManaValue } from '@/lib/manaCost';
 import type { Decklist } from '@/components/types/player';
-import { loadLiveModeConfig, type LiveMessage, LIVE_PROJECT_KEY } from '@/lib/liveMode';
+import {
+    loadLiveModeConfig,
+    loadLiveTemplateState,
+    type LiveMessage,
+    type LivePlayerInfo,
+    LIVE_PROJECT_KEY,
+} from '@/lib/liveMode';
 import { useLiveModeSocket } from '@/hooks/useLiveModeSocket';
 import { LibraryPanel, type LibraryCardInstance } from './LibraryPanel';
 import { PlayerHand } from './PlayerHand';
 import { PlayerState } from './PlayerState';
 import { Annotation } from './Annotation';
 import { CardChip } from './CardChip';
+import { CardDisplay } from './CardDisplay';
 
 type Side = 'left' | 'right';
 type Zone = 'hand' | 'graveyard' | 'topDeck';
@@ -151,6 +158,7 @@ const ZONE_DROP_ID: Record<Zone, (side: Side) => string> = {
 };
 const ZONES = Object.keys(ZONE_DROP_ID) as Zone[];
 const ANNOTATION_ZONES = ZONES.filter((z): z is AnnotationZone => z !== 'hand');
+const CARD_DISPLAY_DROP_ID = (side: Side) => `card-display-${side}`;
 
 // Optional per-zone override for the title broadcast to the overlay; falls
 // back to the humanized field name (e.g. "topDeck" -> "Top Deck") when unset.
@@ -164,11 +172,13 @@ interface SideState {
     name: string;
     deckName: string;
     life: number;
+    wins: number;
     decklist: Decklist | null;
     library: LibraryCardInstance[];
     hand: LibraryCardInstance[];
     graveyard: LibraryCardInstance[];
     topDeck: LibraryCardInstance[];
+    displayCard: LibraryCardInstance | null;
 }
 
 function makeId() {
@@ -180,11 +190,13 @@ function emptySide(side: Side): SideState {
         name: side === 'left' ? 'Player 1' : 'Player 2',
         deckName: '',
         life: 20,
+        wins: 0,
         decklist: null,
         library: [],
         hand: [],
         graveyard: [],
         topDeck: [],
+        displayCard: null,
     };
 }
 
@@ -222,6 +234,13 @@ function LiveMode() {
     const [config] = useState(() => loadLiveModeConfig());
     const sendRef = useRef<(msg: LiveMessage) => void>(() => {});
 
+    const playerInfo = (side: Side): LivePlayerInfo => ({
+        name: sides[side].name,
+        deckName: sides[side].deckName,
+        life: sides[side].life,
+        wins: sides[side].wins,
+    });
+
     const handleSocketMessage = (msg: LiveMessage) => {
         if (msg.type === 'request-state') {
             sendRef.current({
@@ -236,6 +255,13 @@ function LiveMode() {
                     state: { left: sides.left[zone], right: sides.right[zone] },
                 });
             }
+            sendRef.current({
+                type: 'card-display-state',
+                left: sides.left.displayCard,
+                right: sides.right.displayCard,
+            });
+            sendRef.current({ type: 'template-state', template: loadLiveTemplateState() });
+            sendRef.current({ type: 'player-info-state', left: playerInfo('left'), right: playerInfo('right') });
         }
     };
 
@@ -271,6 +297,14 @@ function LiveMode() {
         else broadcastAnnotation(zone, side, cards);
     };
 
+    const broadcastDisplayCard = (side: Side, card: LibraryCardInstance | null) => {
+        sendRef.current({
+            type: 'card-display-state',
+            left: side === 'left' ? card : sides.left.displayCard,
+            right: side === 'right' ? card : sides.right.displayCard,
+        });
+    };
+
     const activeCard = useMemo(() => {
         if (!activeId) return null;
         const [prefix, key, instanceId] = activeId.split(':');
@@ -283,6 +317,14 @@ function LiveMode() {
         }
         return null;
     }, [activeId, sides]);
+
+    const activeSide = useMemo(() => {
+        if (!activeId) return null;
+        const [prefix, key] = activeId.split(':');
+        if (prefix === 'lib' || prefix === 'hand') return key as Side;
+        if (prefix === 'annotation') return key.endsWith('-left') ? 'left' : 'right';
+        return null;
+    }, [activeId]);
 
     const handleDragStart = (e: DragStartEvent) => {
         setActiveId(String(e.active.id));
@@ -318,13 +360,19 @@ function LiveMode() {
                 const s = key as Side;
                 const entry = sides[s].library.find((c) => c.id === instanceId);
                 if (entry) {
-                    for (const zone of ZONES) {
-                        if (over.id === ZONE_DROP_ID[zone](s)) {
-                            const newZoneCards = [...sides[s][zone], { id: makeId(), card: entry.card }];
-                            setSides((prev) => ({ ...prev, [s]: { ...prev[s], [zone]: newZoneCards } }));
-                            broadcastZone(zone, s, newZoneCards);
-                            success = true;
-                            break;
+                    if (over.id === CARD_DISPLAY_DROP_ID(s)) {
+                        setSides((prev) => ({ ...prev, [s]: { ...prev[s], displayCard: entry } }));
+                        broadcastDisplayCard(s, entry);
+                        success = true;
+                    } else {
+                        for (const zone of ZONES) {
+                            if (over.id === ZONE_DROP_ID[zone](s)) {
+                                const newZoneCards = [...sides[s][zone], { id: makeId(), card: entry.card }];
+                                setSides((prev) => ({ ...prev, [s]: { ...prev[s], [zone]: newZoneCards } }));
+                                broadcastZone(zone, s, newZoneCards);
+                                success = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -334,7 +382,11 @@ function LiveMode() {
                 const entry = sides[side][sourceZone].find((c) => c.id === instanceId);
 
                 if (entry) {
-                    if (over.id === `lib-${side}`) {
+                    if (over.id === CARD_DISPLAY_DROP_ID(side)) {
+                        setSides((prev) => ({ ...prev, [side]: { ...prev[side], displayCard: entry } }));
+                        broadcastDisplayCard(side, entry);
+                        success = true;
+                    } else if (over.id === `lib-${side}`) {
                         const newSourceCards = sides[side][sourceZone].filter((c) => c.id !== instanceId);
                         setSides((prev) => ({ ...prev, [side]: { ...prev[side], [sourceZone]: newSourceCards } }));
                         broadcastZone(sourceZone, side, newSourceCards);
@@ -373,8 +425,26 @@ function LiveMode() {
         broadcastAnnotation(zone, side, []);
     };
 
-    const handleUpdateSide = (side: Side, patch: Partial<Pick<SideState, 'name' | 'deckName' | 'life'>>) => {
-        setSides((prev) => ({ ...prev, [side]: { ...prev[side], ...patch } }));
+    const handleClearDisplayCard = (side: Side) => {
+        setSides((prev) => ({ ...prev, [side]: { ...prev[side], displayCard: null } }));
+        broadcastDisplayCard(side, null);
+    };
+
+    const handleUpdateSide = (side: Side, patch: Partial<Pick<SideState, 'name' | 'deckName' | 'life' | 'wins'>>) => {
+        setSides((prev) => {
+            const next = { ...prev, [side]: { ...prev[side], ...patch } };
+            sendRef.current({
+                type: 'player-info-state',
+                left: { name: next.left.name, deckName: next.left.deckName, life: next.left.life, wins: next.left.wins },
+                right: {
+                    name: next.right.name,
+                    deckName: next.right.deckName,
+                    life: next.right.life,
+                    wins: next.right.wins,
+                },
+            });
+            return next;
+        });
     };
 
     return (
@@ -398,21 +468,26 @@ function LiveMode() {
                         onImport={(d) => handleImport('left', d)}
                     />
                 </div>
-                <div className="flex flex-col min-h-0 gap-2 rounded-lg border p-2">
+                <div className="flex flex-col min-h-0 gap-2">
                     <PlayerState
                         name={sides.left.name}
                         deckName={sides.left.deckName}
                         life={sides.left.life}
+                        wins={sides.left.wins}
                         onChangeName={(name) => handleUpdateSide('left', { name })}
                         onChangeDeckName={(deckName) => handleUpdateSide('left', { deckName })}
                         onLifeChange={(life) => handleUpdateSide('left', { life })}
+                        onWinsChange={(wins) => handleUpdateSide('left', { wins })}
                     />
                     <div className="grid grid-cols-2 gap-2 flex-1 min-h-0">
                         <PlayerHand side="left" cards={sides.left.hand} onClear={() => handleClearHand('left')} />
                         <div className="flex flex-col gap-2 min-h-0">
-                            <div className="flex w-full aspect-[5/7] items-center justify-center rounded-lg border p-2 text-xs text-muted-foreground">
-                                Card display
-                            </div>
+                            <CardDisplay
+                                side="left"
+                                card={sides.left.displayCard}
+                                disabled={activeSide !== null && activeSide !== 'left'}
+                                onClear={() => handleClearDisplayCard('left')}
+                            />
                             <Annotation
                                 id="graveyard-left"
                                 title="Graveyard"
@@ -434,20 +509,25 @@ function LiveMode() {
                         </div>
                     </div>
                 </div>
-                <div className="flex flex-col min-h-0 gap-2 rounded-lg border p-2">
+                <div className="flex flex-col min-h-0 gap-2">
                     <PlayerState
                         name={sides.right.name}
                         deckName={sides.right.deckName}
                         life={sides.right.life}
+                        wins={sides.right.wins}
                         onChangeName={(name) => handleUpdateSide('right', { name })}
                         onChangeDeckName={(deckName) => handleUpdateSide('right', { deckName })}
                         onLifeChange={(life) => handleUpdateSide('right', { life })}
+                        onWinsChange={(wins) => handleUpdateSide('right', { wins })}
                     />
                     <div className="grid grid-cols-2 gap-2 flex-1 min-h-0">
                         <div className="flex flex-col gap-2 min-h-0">
-                            <div className="flex w-full aspect-[5/7] items-center justify-center rounded-lg border p-2 text-xs text-muted-foreground">
-                                Card display
-                            </div>
+                            <CardDisplay
+                                side="right"
+                                card={sides.right.displayCard}
+                                disabled={activeSide !== null && activeSide !== 'right'}
+                                onClear={() => handleClearDisplayCard('right')}
+                            />
                             <Annotation
                                 id="graveyard-right"
                                 title="Graveyard"

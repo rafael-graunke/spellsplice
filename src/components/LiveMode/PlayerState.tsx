@@ -8,18 +8,22 @@ interface PlayerStateProps {
     name: string;
     deckName: string;
     life: number;
+    wins: number;
     onChangeName: (name: string) => void;
     onChangeDeckName: (deckName: string) => void;
     onLifeChange: (life: number) => void;
+    onWinsChange: (wins: number) => void;
 }
 
 export function PlayerState({
     name,
     deckName,
     life,
+    wins,
     onChangeName,
     onChangeDeckName,
     onLifeChange,
+    onWinsChange,
 }: PlayerStateProps) {
     const [editing, setEditing] = useState(false);
     const [lifeDraft, setLifeDraft] = useState(String(life));
@@ -98,6 +102,28 @@ export function PlayerState({
                     variant="outline"
                     size="icon-sm"
                     onClick={() => onLifeChange(life + 1)}
+                >
+                    <PlusIcon />
+                </Button>
+            </div>
+
+            <div className="flex items-center justify-center gap-2">
+                <span className="text-xs text-muted-foreground">Wins</span>
+                <Button
+                    className="cursor-pointer"
+                    variant="outline"
+                    size="icon-xs"
+                    disabled={wins <= 0}
+                    onClick={() => onWinsChange(wins - 1)}
+                >
+                    <MinusIcon />
+                </Button>
+                <span className="w-4 text-center text-sm font-semibold tabular-nums">{wins}</span>
+                <Button
+                    className="cursor-pointer"
+                    variant="outline"
+                    size="icon-xs"
+                    onClick={() => onWinsChange(wins + 1)}
                 >
                     <PlusIcon />
                 </Button>

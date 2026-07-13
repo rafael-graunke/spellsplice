@@ -1,6 +1,6 @@
 import type { Card } from '@/components/types/card';
 import type { LiveHandCard } from '@/lib/liveMode';
-import { STRIP_W, getStripH, drawCardStrip } from './renderCardStrips';
+import { getStripH, drawCardStrip } from './renderCardStrips';
 
 const CONT_PAD_Y = 10;
 const TITLE_FONT_SIZE = 20;
@@ -14,13 +14,13 @@ export interface LiveAnnotationData {
     right: LiveHandCard[];
 }
 
-const stackH = (cards: Card[], upTo = cards.length) =>
-    cards.slice(0, upTo).reduce((s, c) => s + getStripH(c), 0);
+const stackH = (cards: Card[], stripW: number, upTo = cards.length) =>
+    cards.slice(0, upTo).reduce((s, c) => s + getStripH(c, stripW), 0);
 
-function contDims(cards: Card[]) {
+function contDims(cards: Card[], stripW: number) {
     return {
-        contW: STRIP_W,
-        contH: CONT_PAD_Y + TITLE_AREA_H + stackH(cards),
+        contW: stripW,
+        contH: CONT_PAD_Y + TITLE_AREA_H + stackH(cards, stripW),
     };
 }
 
@@ -59,13 +59,13 @@ interface Box {
     contH: number;
 }
 
-function buildBoxes(annotations: LiveAnnotationData[], isLeft: boolean): Box[] {
+function buildBoxes(annotations: LiveAnnotationData[], isLeft: boolean, stripW: number): Box[] {
     const boxes: Box[] = [];
     for (const { title, left, right } of annotations) {
         const liveCards = isLeft ? left : right;
         if (liveCards.length === 0) continue;
         const cards: Card[] = liveCards.map(({ card }) => ({ name: card.name }));
-        const { contW, contH } = contDims(cards);
+        const { contW, contH } = contDims(cards, stripW);
         boxes.push({ title, liveCards, cards, contW, contH });
     }
     return boxes;
@@ -77,12 +77,13 @@ export function renderLiveAnnotations(
     offsetX: number,
     drawW: number,
     anchorBottomY: { left: number; right: number },
+    stripW: number,
 ) {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
     for (const isLeft of [true, false]) {
-        const boxes = buildBoxes(annotations, isLeft);
+        const boxes = buildBoxes(annotations, isLeft, stripW);
         if (boxes.length === 0) continue;
 
         const totalH = boxes.reduce((s, b) => s + b.contH, 0) + GAP * (boxes.length - 1);
@@ -96,8 +97,19 @@ export function renderLiveAnnotations(
             const stripX = contX;
             const firstStripY = y + CONT_PAD_Y + TITLE_AREA_H;
             for (let j = 0; j < box.cards.length; j++) {
-                const sy = firstStripY + stackH(box.cards, j);
-                drawCardStrip(ctx, box.cards[j], stripX, sy, isLeft, null, 1, box.liveCards[j].card.mana_cost, box.liveCards[j].card.colors);
+                const sy = firstStripY + stackH(box.cards, stripW, j);
+                drawCardStrip(
+                    ctx,
+                    box.cards[j],
+                    stripX,
+                    sy,
+                    isLeft,
+                    null,
+                    1,
+                    box.liveCards[j].card.mana_cost,
+                    box.liveCards[j].card.colors,
+                    stripW,
+                );
             }
 
             y += box.contH + GAP;

@@ -82,12 +82,12 @@ export function getCardCrop(card: Card): CropConfig {
     );
 }
 
-export function getStripH(card: Card): number {
+export function getStripH(card: Card, stripW: number = STRIP_W): number {
     const crop = getCardCrop(card);
     // Rotating the crop 90deg swaps which source dimension maps to strip width vs height.
     let stripH = crop.rotate
-        ? Math.round((STRIP_W * crop.sw) / crop.sh)
-        : Math.round((STRIP_W * crop.sh) / crop.sw);
+        ? Math.round((stripW * crop.sw) / crop.sh)
+        : Math.round((stripW * crop.sh) / crop.sw);
     if (crop.scaleHeight) {
         stripH = Math.round(stripH * STRIP_H_SCALE);
     }
@@ -126,39 +126,40 @@ export function drawCardStrip(
     alpha = 1,
     manaCost?: string,
     colors?: string[],
+    stripW: number = STRIP_W,
 ) {
     const { img } = ensureBorderCrop(card.name, card.edition);
     const crop = getCardCrop(card);
-    const stripH = getStripH(card);
+    const stripH = getStripH(card, stripW);
     const iconSize = Math.round(stripH * 0.7);
     const placeholderBg = CARD_COLOR_HEX[getCardColorKey(colors)];
     if (manaCost && !(img instanceof HTMLImageElement)) ensureManaFontLoaded();
 
     if (crop.curveClip) {
         // fill() is anti-aliased; clip() is not. Use an offscreen canvas + destination-in mask.
-        const tmp = new OffscreenCanvas(STRIP_W, stripH);
+        const tmp = new OffscreenCanvas(stripW, stripH);
         const tmpCtx = tmp.getContext('2d')!;
         tmpCtx.imageSmoothingEnabled = true;
         tmpCtx.imageSmoothingQuality = 'high';
 
         if (img instanceof HTMLImageElement) {
-            drawStripImage(tmpCtx, img, crop, 0, 0, STRIP_W, stripH);
+            drawStripImage(tmpCtx, img, crop, 0, 0, stripW, stripH);
         } else {
             tmpCtx.fillStyle = placeholderBg;
-            tmpCtx.fillRect(0, 0, STRIP_W, stripH);
+            tmpCtx.fillRect(0, 0, stripW, stripH);
             tmpCtx.fillStyle = PLACEHOLDER_TEXT;
             tmpCtx.font = 'bold 22px sans-serif';
             tmpCtx.textBaseline = 'middle';
             tmpCtx.textAlign = 'left';
             tmpCtx.fillText(card.name, 10, Math.round(stripH / 2));
             if (manaCost) {
-                drawManaCostRow(tmpCtx, manaCost, STRIP_W - 10, Math.round(stripH / 2), stripH * 0.32);
+                drawManaCostRow(tmpCtx, manaCost, stripW - 10, Math.round(stripH / 2), stripH * 0.32);
             }
         }
 
         tmpCtx.globalCompositeOperation = 'destination-in';
         tmpCtx.beginPath();
-        clipStripPath(tmpCtx, 0, 0, STRIP_W, stripH, STRIP_CURVE_W);
+        clipStripPath(tmpCtx, 0, 0, stripW, stripH, STRIP_CURVE_W);
         tmpCtx.fill();
 
         ctx.save();
@@ -169,11 +170,11 @@ export function drawCardStrip(
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.beginPath();
-        ctx.rect(x, y, STRIP_W, stripH);
+        ctx.rect(x, y, stripW, stripH);
         ctx.clip();
 
         if (img instanceof HTMLImageElement) {
-            drawStripImage(ctx, img, crop, x, y, STRIP_W, stripH);
+            drawStripImage(ctx, img, crop, x, y, stripW, stripH);
         } else {
             ctx.fillStyle = placeholderBg;
             ctx.fill();
@@ -183,7 +184,7 @@ export function drawCardStrip(
             ctx.textAlign = 'left';
             ctx.fillText(card.name, x + 10, Math.round(y + stripH / 2));
             if (manaCost) {
-                drawManaCostRow(ctx, manaCost, x + STRIP_W - 10, Math.round(y + stripH / 2), stripH * 0.32);
+                drawManaCostRow(ctx, manaCost, x + stripW - 10, Math.round(y + stripH / 2), stripH * 0.32);
             }
         }
 
@@ -191,7 +192,7 @@ export function drawCardStrip(
     }
 
     if (card.revealed && eyeIcon) {
-        const iconX = isLeft ? x + STRIP_W + ICON_GAP : x - ICON_GAP - iconSize;
+        const iconX = isLeft ? x + stripW + ICON_GAP : x - ICON_GAP - iconSize;
         const iconY = y + Math.round((stripH - iconSize) / 2);
         ctx.save();
         ctx.globalAlpha = 0.6 * alpha;

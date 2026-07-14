@@ -95,6 +95,12 @@ function OverlayPage() {
     useEffect(() => {
         redrawRef.current = redraw;
     });
+    // Paint immediately on mount using the locally-seeded template/state refs
+    // (see templateRef above) - otherwise the canvas stays blank until the
+    // first socket message arrives, even though a default is already loaded.
+    useEffect(() => {
+        redraw();
+    }, [redraw]);
 
     const handleMessage = useCallback(
         (msg: LiveMessage) => {

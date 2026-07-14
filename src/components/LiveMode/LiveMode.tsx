@@ -291,10 +291,19 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
         }
     };
 
-    const { send } = useLiveModeSocket(config?.websocketUrl ?? null, handleSocketMessage);
+    const { send, status: socketStatus } = useLiveModeSocket(config?.websocketUrl ?? null, handleSocketMessage);
     useEffect(() => {
         sendRef.current = send;
     }, [send]);
+
+    // Push the current template as soon as control connects (session start),
+    // rather than waiting for the overlay to ask via 'request-state' - a
+    // persistent OBS Browser Source stays connected across sessions and never
+    // sends that request on its own, so it would otherwise need a manual
+    // browser-source refresh to pick up a new/default template.
+    useEffect(() => {
+        if (socketStatus === 'open') sendRef.current({ type: 'template-state', template: loadLiveTemplateState() });
+    }, [socketStatus]);
 
     useImperativeHandle(ref, () => ({
         resetOverlay: () => {

@@ -123,29 +123,26 @@ export function defaultLiveTemplateState(): LiveTemplateState {
     };
 }
 
-// First-run seed only: shows the bundled sample template's field-id scheme
-// (left.life, right.wins, etc.) matches 'shared' mode only, so per-player
-// configs stay blank until the user uploads their own.
-function builtinLiveTemplateState(): LiveTemplateState {
-    const state = defaultLiveTemplateState();
-    return { ...state, shared: { ...state.shared, svg: defaultTemplateSvg } };
-}
-
 export function loadLiveTemplateState(): LiveTemplateState {
+    const defaults = defaultLiveTemplateState();
+    let parsed: Partial<LiveTemplateState> = {};
     try {
         const raw = localStorage.getItem(LIVE_TEMPLATE_KEY);
-        if (!raw) return builtinLiveTemplateState();
-        const parsed = JSON.parse(raw) as Partial<LiveTemplateState>;
-        const defaults = defaultLiveTemplateState();
-        return {
-            mode: parsed.mode ?? defaults.mode,
-            shared: { ...defaults.shared, ...parsed.shared },
-            left: { ...defaults.left, ...parsed.left },
-            right: { ...defaults.right, ...parsed.right },
-        };
+        if (raw) parsed = JSON.parse(raw) as Partial<LiveTemplateState>;
     } catch {
-        return builtinLiveTemplateState();
+        parsed = {};
     }
+    const shared = { ...defaults.shared, ...parsed.shared };
+    return {
+        mode: parsed.mode ?? defaults.mode,
+        // No custom upload on record (key missing, or explicitly null) -
+        // fall back to the bundled sample so every session shows something
+        // instead of blank. Only matches 'shared' mode's field-id scheme,
+        // so per-player configs are left as-is (blank until uploaded).
+        shared: { ...shared, svg: shared.svg ?? defaultTemplateSvg },
+        left: { ...defaults.left, ...parsed.left },
+        right: { ...defaults.right, ...parsed.right },
+    };
 }
 
 export function saveLiveTemplateState(state: LiveTemplateState) {

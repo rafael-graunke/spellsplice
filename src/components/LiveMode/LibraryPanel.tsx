@@ -34,51 +34,47 @@ export function LibraryPanel({ side, decklist, library, ready, onImport }: Libra
         <div
             ref={setNodeRef}
             className={cn(
-                'flex flex-col h-full min-h-0 gap-2 p-2 border rounded-md overflow-hidden transition-colors',
+                'flex flex-col h-full min-h-0 gap-2 p-2 border rounded-md bg-muted overflow-hidden transition-colors',
                 isOver && 'border-ring bg-input/50',
             )}
         >
             <p className="text-sm font-medium">Library</p>
 
-            {!decklist ? (
-                <div className="flex flex-1 items-center justify-center">
-                    <Button size="sm" onClick={() => setDialogOpen(true)}>
-                        Import decklist
-                    </Button>
-                </div>
-            ) : (
-                <>
-                    <InputGroup>
-                        <InputGroupInput
-                            placeholder="Search deck…"
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                        />
-                        {query && (
-                            <InputGroupAddon align="inline-end">
-                                <InputGroupButton
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    onClick={() => setQuery('')}
-                                >
-                                    <XIcon />
-                                </InputGroupButton>
-                            </InputGroupAddon>
-                        )}
-                    </InputGroup>
+            <InputGroup>
+                <InputGroupInput
+                    placeholder="Search deck…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                />
+                {query && (
+                    <InputGroupAddon align="inline-end">
+                        <InputGroupButton
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => setQuery('')}
+                        >
+                            <XIcon />
+                        </InputGroupButton>
+                    </InputGroupAddon>
+                )}
+            </InputGroup>
 
-                    <div className="flex flex-1 min-h-0 flex-col overflow-y-auto rounded-md gap-1">
-                        {visibleCards.length === 0 ? (
-                            <p className="text-xs text-muted-foreground text-center py-2">
-                                {library.length === 0 ? 'Library empty' : 'No matches'}
-                            </p>
-                        ) : (
-                            visibleCards.map(({ id, card }) => (
-                                <DraggableCard key={id} id={`lib:${side}:${id}`} card={card} />
-                            ))
-                        )}
-                    </div>
-                </>
+            {!decklist ? (
+                <Button className="w-full" onClick={() => setDialogOpen(true)}>
+                    Import decklist
+                </Button>
+            ) : (
+                <div className="flex flex-1 min-h-0 flex-col overflow-y-auto rounded-md gap-1">
+                    {visibleCards.length === 0 ? (
+                        <p className="text-xs text-muted-foreground text-center py-2">
+                            {library.length === 0 ? 'Library empty' : 'No matches'}
+                        </p>
+                    ) : (
+                        visibleCards.map(({ id, card }) => (
+                            <DraggableCard key={id} id={`lib:${side}:${id}`} card={card} />
+                        ))
+                    )}
+                </div>
             )}
 
             <ImportDecklistDialog

@@ -1,4 +1,5 @@
 import type { OracleCard } from './oracleCards';
+import defaultTemplateSvg from '@/assets/live-templates/default-template.svg?raw';
 
 export const LIVE_MODE_KEY = 'spellsplice-live-mode';
 export const LIVE_PROJECT_KEY = 'spellsplice-live-project';
@@ -111,6 +112,8 @@ export function defaultTemplateConfig(kind: 'shared' | 'left' | 'right'): Single
     };
 }
 
+// Blank slate - used for File > New / overlay reset, so those always clear
+// back to no template rather than reintroducing the bundled sample.
 export function defaultLiveTemplateState(): LiveTemplateState {
     return {
         mode: 'shared',
@@ -120,10 +123,18 @@ export function defaultLiveTemplateState(): LiveTemplateState {
     };
 }
 
+// First-run seed only: shows the bundled sample template's field-id scheme
+// (left.life, right.wins, etc.) matches 'shared' mode only, so per-player
+// configs stay blank until the user uploads their own.
+function builtinLiveTemplateState(): LiveTemplateState {
+    const state = defaultLiveTemplateState();
+    return { ...state, shared: { ...state.shared, svg: defaultTemplateSvg } };
+}
+
 export function loadLiveTemplateState(): LiveTemplateState {
     try {
         const raw = localStorage.getItem(LIVE_TEMPLATE_KEY);
-        if (!raw) return defaultLiveTemplateState();
+        if (!raw) return builtinLiveTemplateState();
         const parsed = JSON.parse(raw) as Partial<LiveTemplateState>;
         const defaults = defaultLiveTemplateState();
         return {
@@ -133,7 +144,7 @@ export function loadLiveTemplateState(): LiveTemplateState {
             right: { ...defaults.right, ...parsed.right },
         };
     } catch {
-        return defaultLiveTemplateState();
+        return builtinLiveTemplateState();
     }
 }
 

@@ -8,7 +8,7 @@ import {
     saveLiveModeConfig,
     type LiveMessage,
     type LiveOverlayState,
-    type LiveHandCard,
+    type LiveDisplayCard,
     type LiveTemplateState,
     type LivePlayerInfo,
     type SingleTemplateConfig,
@@ -34,7 +34,7 @@ function OverlayPage() {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const stateRef = useRef<LiveOverlayState>(createDefaultLiveState());
     const annotationsRef = useRef<Record<string, LiveAnnotationData>>({});
-    const displayCardRef = useRef<{ left: LiveHandCard | null; right: LiveHandCard | null }>({
+    const displayCardRef = useRef<{ left: LiveDisplayCard | null; right: LiveDisplayCard | null }>({
         left: null,
         right: null,
     });

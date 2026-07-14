@@ -1,21 +1,25 @@
-import { ensureImage } from '@/lib/cardCache';
-import type { LiveHandCard } from '@/lib/liveMode';
+import { ensureBackImage, ensureImage } from '@/lib/cardCache';
+import { isMultiFaceLayout } from '@/lib/oracleCards';
+import type { LiveDisplayCard } from '@/lib/liveMode';
 
 const TOP_GAP = 24;
 const SIDE_GAP = 8; // matches the hand/annotation card strips' side padding
-const CORNER_SCALE = 0.045;
+const CORNER_SCALE = 0.05;
 const CARD_ASPECT = 223 / 310;
 
 function drawCard(
     ctx: CanvasRenderingContext2D,
-    liveCard: LiveHandCard | null,
+    liveCard: LiveDisplayCard | null,
     x: number,
     y: number,
     w: number,
     h: number,
 ) {
     if (!liveCard) return;
-    const img = ensureImage(liveCard.card.name);
+    const img =
+        liveCard.flipped && isMultiFaceLayout(liveCard.card.layout)
+            ? (ensureBackImage(liveCard.card.name) ?? ensureImage(liveCard.card.name))
+            : ensureImage(liveCard.card.name);
 
     ctx.save();
     ctx.beginPath();
@@ -37,8 +41,8 @@ function drawCard(
 
 export function renderLiveCardDisplay(
     ctx: CanvasRenderingContext2D,
-    left: LiveHandCard | null,
-    right: LiveHandCard | null,
+    left: LiveDisplayCard | null,
+    right: LiveDisplayCard | null,
     offsetX: number,
     offsetY: number,
     drawW: number,

@@ -6,12 +6,19 @@ const BULK_DATA_INFO_URL = 'https://api.scryfall.com/bulk-data/oracle-cards';
 
 // Bump when the shape of stored card records changes, to force a re-sync
 // even though the remote bulk data's updated_at hasn't changed.
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 4;
 
 export interface OracleCard {
     name: string;
     colors?: string[];
     mana_cost?: string;
+    layout?: string;
+}
+
+// Transform and modal DFC cards store colors/mana_cost/images per-face
+// instead of at the top level, and have two separately-illustrated faces.
+export function isMultiFaceLayout(layout: string | undefined): boolean {
+    return layout === 'transform' || layout === 'modal_dfc';
 }
 
 interface BulkMeta {
@@ -118,12 +125,26 @@ export function ensureOracleCards(onStatus?: (status: OracleCardsStatus) => void
 
             onStatus?.('downloading');
             const cardsRes = await fetch(downloadUri);
-            const raw: Array<{ name: string; colors?: string[]; mana_cost?: string }> = await cardsRes.json();
+            const raw: Array<{
+                name: string;
+                layout?: string;
+                colors?: string[];
+                mana_cost?: string;
+                card_faces?: Array<{ colors?: string[]; mana_cost?: string }>;
+            }> = await cardsRes.json();
 
             const byName = new Map<string, OracleCard>();
             for (const c of raw) {
                 if (!byName.has(c.name)) {
-                    byName.set(c.name, { name: c.name, colors: c.colors, mana_cost: c.mana_cost });
+                    // Transform/modal-DFC cards omit top-level colors/mana_cost;
+                    // fall back to the front face's values.
+                    const front = c.card_faces?.[0];
+                    byName.set(c.name, {
+                        name: c.name,
+                        colors: c.colors ?? front?.colors,
+                        mana_cost: c.mana_cost ?? front?.mana_cost,
+                        layout: c.layout,
+                    });
                 }
             }
             const cards = [...byName.values()];
@@ -145,6 +166,19 @@ export function ensureOracleCards(onStatus?: (status: OracleCardsStatus) => void
     return loadPromise;
 }
 
+export async function forceRefreshOracleCards(onStatus?: (status: OracleCardsStatus) => void): Promise<OracleCard[]> {
+    cardsCache = null;
+    loadPromise = null;
+    const db = await openDb();
+    await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE_META, 'readwrite');
+        tx.objectStore(STORE_META).delete('bulk');
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+    return ensureOracleCards(onStatus);
+}
+
 function normalizeCardName(s: string): string {
     return s
         .normalize('NFD')
@@ -156,7 +190,11 @@ function normalizeCardName(s: string): string {
 export function findOracleCard(name: string): OracleCard | undefined {
     if (!cardsCache) return undefined;
     const q = normalizeCardName(name);
-    return cardsCache.find((c) => normalizeCardName(c.name) === q);
+    const exact = cardsCache.find((c) => normalizeCardName(c.name) === q);
+    if (exact) return exact;
+    return cardsCache.find((c) =>
+        c.name.split(' // ').some((face) => normalizeCardName(face) === q),
+    );
 }
 
 export function searchOracleCards(query: string, limit = 20): OracleCard[] {

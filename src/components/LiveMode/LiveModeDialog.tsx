@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useLiveModeSocket } from '@/hooks/useLiveModeSocket';
+import { useOracleCards } from '@/hooks/useOracleCards';
 import {
     loadLiveModeConfig,
     saveLiveModeConfig,
@@ -10,16 +11,18 @@ import {
     type LiveTemplateState,
 } from '@/lib/liveMode';
 import { cn } from '@/lib/utils';
+import CardDatabaseSection from './sections/CardDatabaseSection';
 import ConnectionSection from './sections/ConnectionSection';
 import OverlaySection from './sections/OverlaySection';
 import TemplateSection from './sections/TemplateSection';
 
-type Section = 'connection' | 'overlay' | 'template';
+type Section = 'connection' | 'overlay' | 'template' | 'card-database';
 
 const NAV_ITEMS: { id: Section; label: string }[] = [
     { id: 'connection', label: 'Connection' },
     { id: 'overlay', label: 'Overlay Appearance' },
     { id: 'template', label: 'Template' },
+    { id: 'card-database', label: 'Card Database' },
 ];
 
 interface LiveModeDialogProps {
@@ -43,6 +46,7 @@ function LiveModeDialogContent({ onStart }: { onStart: () => void }) {
         () => loadLiveModeConfig()?.cardStripWidth ?? DEFAULT_CARD_STRIP_WIDTH,
     );
     const [templateState, setTemplateState] = useState(() => loadLiveTemplateState());
+    const { status: oracleCardsStatus, forceRefresh: forceRefreshOracleCards } = useOracleCards();
 
     // Own connection scoped to the dialog's lifetime, used only to broadcast
     // live config changes (e.g. card strip width) to any connected overlay
@@ -107,6 +111,9 @@ function LiveModeDialogContent({ onStart }: { onStart: () => void }) {
                     )}
                     {selectedSection === 'template' && (
                         <TemplateSection state={templateState} onChange={handleTemplateChange} />
+                    )}
+                    {selectedSection === 'card-database' && (
+                        <CardDatabaseSection status={oracleCardsStatus} onForceRefresh={forceRefreshOracleCards} />
                     )}
                 </div>
             </div>

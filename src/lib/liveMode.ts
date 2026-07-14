@@ -18,6 +18,10 @@ export interface LiveHandCard {
     card: OracleCard;
 }
 
+export interface LiveDisplayCard extends LiveHandCard {
+    flipped: boolean;
+}
+
 export interface LiveOverlayState {
     left: LiveHandCard[];
     right: LiveHandCard[];
@@ -140,7 +144,7 @@ export function saveLiveTemplateState(state: LiveTemplateState) {
 export type LiveMessage =
     | { type: 'live-state'; state: LiveOverlayState }
     | { type: 'annotation-state'; annotationId: string; title: string; state: LiveOverlayState }
-    | { type: 'card-display-state'; left: LiveHandCard | null; right: LiveHandCard | null }
+    | { type: 'card-display-state'; left: LiveDisplayCard | null; right: LiveDisplayCard | null }
     | { type: 'config-state'; cardStripWidth: number }
     | { type: 'template-state'; template: LiveTemplateState }
     | { type: 'player-info-state'; left: LivePlayerInfo; right: LivePlayerInfo }

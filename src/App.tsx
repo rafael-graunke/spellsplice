@@ -30,9 +30,9 @@ import { DEFAULT_PROJECT_CONFIG } from './components/types/config';
 import { Sources } from './components/Sources';
 import type { MediaSource } from './components/types/source';
 import WelcomeScreen from './components/Welcome';
-import LiveMode from './components/LiveMode/LiveMode';
+import LiveMode, { type LiveModeHandle } from './components/LiveMode/LiveMode';
 import LiveModeDialog from './components/LiveMode/LiveModeDialog';
-import { LIVE_PROJECT_KEY } from '@/lib/liveMode';
+import { LIVE_PROJECT_KEY, LIVE_TEMPLATE_KEY } from '@/lib/liveMode';
 
 type PlayerInit = Omit<Player, 'track'>;
 
@@ -115,6 +115,7 @@ const [savedStateInit] = useState(loadSavedState);
         savedStateInit?.config ? { ...DEFAULT_PROJECT_CONFIG, ...savedStateInit.config } : DEFAULT_PROJECT_CONFIG,
     );
     const [newEventId, setNewEventId] = useState<number | null>(null);
+    const liveModeRef = useRef<LiveModeHandle>(null);
     const isFirstPlayersRender = useRef(true);
     const skipDirtyRef = useRef(false);
     const clearAutosaveRef = useRef(false);
@@ -261,7 +262,11 @@ const [savedStateInit] = useState(loadSavedState);
 
     const handleFileNew = useCallback(() => {
         if (mode === 'timeline') resetToFresh();
-        else if (mode === 'live') localStorage.removeItem(LIVE_PROJECT_KEY);
+        else if (mode === 'live') {
+            liveModeRef.current?.resetOverlay();
+            localStorage.removeItem(LIVE_PROJECT_KEY);
+            localStorage.removeItem(LIVE_TEMPLATE_KEY);
+        }
         setMode('welcome');
     }, [mode, resetToFresh]);
 
@@ -715,7 +720,7 @@ const [savedStateInit] = useState(loadSavedState);
                     deletedSourceNames={deletedSourceNames}
                 />
                 {mode === 'live' ? (
-                    <LiveMode />
+                    <LiveMode ref={liveModeRef} />
                 ) : mode === 'welcome' ? (
                     <WelcomeScreen
                         onCreateNew={handleNew}

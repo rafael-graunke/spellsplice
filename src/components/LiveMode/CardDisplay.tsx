@@ -1,19 +1,22 @@
 import { useDroppable } from '@dnd-kit/core';
-import { XIcon } from 'lucide-react';
+import { RefreshCwIcon, XIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { LibraryCardInstance } from './LibraryPanel';
-import { ensureImage, subscribeImageLoad } from '@/lib/cardCache';
+import { ensureBackImage, ensureImage, subscribeImageLoad } from '@/lib/cardCache';
+import { isMultiFaceLayout } from '@/lib/oracleCards';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface CardDisplayProps {
     side: 'left' | 'right';
     card: LibraryCardInstance | null;
+    flipped: boolean;
     disabled: boolean;
     onClear: () => void;
+    onFlip: () => void;
 }
 
-export function CardDisplay({ side, card, disabled, onClear }: CardDisplayProps) {
+export function CardDisplay({ side, card, flipped, disabled, onClear, onFlip }: CardDisplayProps) {
     const { setNodeRef, isOver } = useDroppable({
         id: `card-display-${side}`,
         disabled,
@@ -21,13 +24,18 @@ export function CardDisplay({ side, card, disabled, onClear }: CardDisplayProps)
     const [, forceUpdate] = useState(0);
     useEffect(() => subscribeImageLoad(() => forceUpdate((n) => n + 1)), []);
 
-    const img = card ? ensureImage(card.card.name) : null;
+    const canFlip = isMultiFaceLayout(card?.card.layout);
+    const img = card
+        ? flipped && canFlip
+            ? ensureBackImage(card.card.name)
+            : ensureImage(card.card.name)
+        : null;
 
     return (
         <div
             ref={setNodeRef}
             className={cn(
-                'relative flex w-full aspect-[5/7] items-center justify-center overflow-hidden rounded-lg border p-2 text-xs text-muted-foreground transition-colors',
+                'relative flex w-full aspect-[5/7] items-center justify-center overflow-hidden rounded-lg border bg-muted p-2 text-xs text-muted-foreground transition-colors',
                 isOver && 'border-ring bg-input/50',
             )}
         >
@@ -43,6 +51,16 @@ export function CardDisplay({ side, card, disabled, onClear }: CardDisplayProps)
                     onClick={onClear}
                 >
                     <XIcon />
+                </Button>
+            )}
+            {card && canFlip && (
+                <Button
+                    className="absolute bottom-1 left-1/2 -translate-x-1/2 cursor-pointer"
+                    variant="secondary"
+                    size="icon-lg"
+                    onClick={onFlip}
+                >
+                    <RefreshCwIcon />
                 </Button>
             )}
         </div>

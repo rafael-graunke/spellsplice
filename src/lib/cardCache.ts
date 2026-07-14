@@ -1,4 +1,5 @@
 import { slowFetch } from './scryfallQueue';
+import { isMultiFaceLayout } from './oracleCards';
 
 type SetData = { image_uris: Record<string, string>; frame?: string; layout?: string };
 
@@ -80,10 +81,14 @@ function ensureCardData(cardName: string, edition?: string): void {
         .then((r) => r.json())
         .then((data) => {
             const face = data.card_faces?.[0];
+            const backFace = data.card_faces?.[1];
             const allUris: Record<string, string> = face?.image_uris ?? data.image_uris ?? {};
+            const backUris: Record<string, string> = backFace?.image_uris ?? {};
             const uris: Record<string, string> = {};
             if (allUris.normal) uris.normal = allUris.normal;
             if (allUris.border_crop) uris.border_crop = allUris.border_crop;
+            if (backUris.normal) uris.normal_back = backUris.normal;
+            if (backUris.border_crop) uris.border_crop_back = backUris.border_crop;
             const setData: SetData = {
                 image_uris: uris,
                 ...(data.frame && { frame: data.frame }),
@@ -132,6 +137,19 @@ export function ensureImage(
     const setCode = edition ?? '*';
     const img = cardImageCache[cardName]?.[setCode]?.['normal'];
     if (img !== undefined) return img;
+    ensureCardData(cardName, edition);
+    return 'loading';
+}
+
+export function ensureBackImage(
+    cardName: string,
+    edition?: string,
+): HTMLImageElement | 'loading' | 'error' | null {
+    const setCode = edition ?? '*';
+    const img = cardImageCache[cardName]?.[setCode]?.['normal_back'];
+    if (img !== undefined) return img;
+    const setData = cardDataCache[cardName]?.[setCode];
+    if (setData && !isMultiFaceLayout(setData.layout)) return null;
     ensureCardData(cardName, edition);
     return 'loading';
 }

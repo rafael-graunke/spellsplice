@@ -1,5 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
-import { ensureOracleCards, searchOracleCards, type OracleCardsStatus } from '@/lib/oracleCards';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+    ensureOracleCards,
+    forceRefreshOracleCards,
+    searchOracleCards,
+    type OracleCardsStatus,
+} from '@/lib/oracleCards';
 
 export function useOracleCards() {
     const [status, setStatus] = useState<OracleCardsStatus>('idle');
@@ -11,5 +16,7 @@ export function useOracleCards() {
         ensureOracleCards(setStatus).catch(() => {});
     }, []);
 
-    return { status, search: searchOracleCards };
+    const forceRefresh = useCallback(() => forceRefreshOracleCards(setStatus).catch(() => {}), []);
+
+    return { status, search: searchOracleCards, forceRefresh };
 }

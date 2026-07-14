@@ -26,8 +26,9 @@ function WelcomeScreen({ onCreateNew, onOpenProject, onStartLiveMode }: WelcomeS
                     e.target.value = '';
                 }}
             />
-            <div className="text-center space-y-1">
-                <h1 className="text-2xl font-semibold">Spellsplice</h1>
+            <div className="flex flex-col items-center text-center space-y-1">
+                <img src="/logo.svg" alt="Spellsplice" className="h-26 mb-2" />
+                <h1 className="text-6xl font-regular font-forque">SpellsplicE</h1>
                 <p className="text-sm text-muted-foreground">Magic: The Gathering video overlay editor</p>
             </div>
             <div className="flex flex-col gap-3 w-64">

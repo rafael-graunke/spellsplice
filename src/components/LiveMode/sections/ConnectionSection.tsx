@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { CheckCircle2, Copy, Loader2, XCircle } from 'lucide-react';
+import { CheckCircle2, Copy, Download, Loader2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
@@ -77,6 +77,23 @@ function ConnectionSection({ url, onUrlChange, cardStripWidth, onStart }: Props)
             <div>
                 <h2 className="text-base font-medium mb-4">Connection</h2>
                 <div className="flex flex-col gap-4">
+                    <div className="rounded-md border p-3 bg-muted/40 text-xs text-muted-foreground space-y-1.5">
+                        <p>
+                            Need a relay server? Download the script below, run{' '}
+                            <code className="font-mono">python3 spellsplice-relay.py</code>, then point the field
+                            below at <code className="font-mono">ws://localhost:8765</code> (use your LAN IP
+                            instead of <code className="font-mono">localhost</code> if OBS is on another machine).
+                        </p>
+                        <a
+                            href="/spellsplice-relay.py"
+                            download
+                            className="inline-flex items-center gap-1.5 text-foreground hover:underline"
+                        >
+                            <Download className="size-3.5" />
+                            Download relay script (.py, requires Python 3)
+                        </a>
+                    </div>
+
                     <div className="flex flex-col gap-1.5">
                         <label htmlFor="live-ws-url" className="text-sm font-medium">WebSocket URL</label>
                         <Input

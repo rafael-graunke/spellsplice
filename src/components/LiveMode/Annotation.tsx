@@ -61,7 +61,7 @@ export function Annotation({ id, title, description, cards, maxCards, onClear, o
                 <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <Button
                         className="cursor-pointer"
-                        variant="outline"
+                        variant="ghost"
                         size="icon-sm"
                         onClick={() => setDialogOpen(true)}
                     >

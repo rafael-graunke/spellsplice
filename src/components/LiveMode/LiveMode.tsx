@@ -429,6 +429,12 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
         library.sort((a, b) => {
             const colorDiff = CARD_COLOR_ORDER[getCardColorKey(a.card.colors)] - CARD_COLOR_ORDER[getCardColorKey(b.card.colors)];
             if (colorDiff !== 0) return colorDiff;
+            // Cards with a mana cost sort before cards without one (e.g. lands),
+            // so zero-cost artifacts don't intermix with lands and colorless
+            // high-CMC cards don't sink to the bottom.
+            const aHasCost = !!a.card.mana_cost;
+            const bHasCost = !!b.card.mana_cost;
+            if (aHasCost !== bHasCost) return aHasCost ? -1 : 1;
             return getManaValue(a.card.mana_cost) - getManaValue(b.card.mana_cost);
         });
         setSides((prev) => ({ ...prev, [side]: { ...prev[side], decklist, library, hand: [] } }));
@@ -602,8 +608,8 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
                 setActiveWidth(null);
             }}
         >
-            <div className="flex-1 min-h-0 grid grid-cols-2 p-2 gap-2">
-                <div className="flex flex-col min-h-0 gap-2">
+            <div className="flex-1 min-h-0 grid grid-cols-6 grid-rows-[auto_1fr] p-2 gap-2">
+                <div className="col-span-3">
                     <PlayerState
                         name={sides.left.name}
                         deckName={sides.left.deckName}
@@ -614,51 +620,8 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
                         onLifeChange={(life) => handleUpdateSide('left', { life })}
                         onWinsChange={(wins) => handleUpdateSide('left', { wins })}
                     />
-                    <div className="grid grid-cols-3 gap-2 flex-1 min-h-0">
-                        <div className="flex flex-col min-h-0 overflow-hidden">
-                            <LibraryPanel
-                                side="left"
-                                decklist={sides.left.decklist}
-                                library={sides.left.library}
-                                ready={status === 'ready'}
-                                onImport={(d) => handleImport('left', d)}
-                            />
-                        </div>
-                        <div className="flex flex-col gap-2 min-h-0">
-                            <PlayerHand side="left" cards={sides.left.hand} onClear={() => handleClearHand('left')} />
-                            <CardDisplay
-                                side="left"
-                                card={sides.left.displayCard}
-                                flipped={sides.left.displayCardFlipped}
-                                disabled={activeSide !== null && activeSide !== 'left'}
-                                onClear={() => handleClearDisplayCard('left')}
-                                onFlip={() => handleFlipDisplayCard('left')}
-                            />
-                        </div>
-                        <div className="flex flex-col gap-2 min-h-0">
-                            <div className="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto">
-                                {sides.left.annotations.map((a) => (
-                                    <Annotation
-                                        key={a.id}
-                                        id={annotationSlug(a.id, 'left')}
-                                        title={a.title}
-                                        description={a.description}
-                                        cards={a.cards}
-                                        onClear={() => handleClearAnnotation('left', a.id)}
-                                        onSave={(title, description) =>
-                                            handleUpdateAnnotation('left', a.id, title, description)
-                                        }
-                                        onDelete={() => handleDeleteAnnotation('left', a.id)}
-                                    />
-                                ))}
-                                <CreateAnnotationControl
-                                    onCreate={(title, description) => handleCreateAnnotation('left', title, description)}
-                                />
-                            </div>
-                        </div>
-                    </div>
                 </div>
-                <div className="flex flex-col min-h-0 gap-2">
+                <div className="col-span-3">
                     <PlayerState
                         name={sides.right.name}
                         deckName={sides.right.deckName}
@@ -668,50 +631,90 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
                         onChangeDeckName={(deckName) => handleUpdateSide('right', { deckName })}
                         onLifeChange={(life) => handleUpdateSide('right', { life })}
                         onWinsChange={(wins) => handleUpdateSide('right', { wins })}
+                        reverse
                     />
-                    <div className="grid grid-cols-3 gap-2 flex-1 min-h-0">
-                        <div className="flex flex-col gap-2 min-h-0">
-                            <div className="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto">
-                                {sides.right.annotations.map((a) => (
-                                    <Annotation
-                                        key={a.id}
-                                        id={annotationSlug(a.id, 'right')}
-                                        title={a.title}
-                                        description={a.description}
-                                        cards={a.cards}
-                                        onClear={() => handleClearAnnotation('right', a.id)}
-                                        onSave={(title, description) =>
-                                            handleUpdateAnnotation('right', a.id, title, description)
-                                        }
-                                        onDelete={() => handleDeleteAnnotation('right', a.id)}
-                                    />
-                                ))}
-                                <CreateAnnotationControl
-                                    onCreate={(title, description) => handleCreateAnnotation('right', title, description)}
-                                />
-                            </div>
-                        </div>
-                        <div className="flex flex-col gap-2 min-h-0">
-                            <PlayerHand side="right" cards={sides.right.hand} onClear={() => handleClearHand('right')} />
-                            <CardDisplay
-                                side="right"
-                                card={sides.right.displayCard}
-                                flipped={sides.right.displayCardFlipped}
-                                disabled={activeSide !== null && activeSide !== 'right'}
-                                onClear={() => handleClearDisplayCard('right')}
-                                onFlip={() => handleFlipDisplayCard('right')}
+                </div>
+                <div className="flex flex-col min-h-0 overflow-hidden">
+                    <LibraryPanel
+                        side="left"
+                        decklist={sides.left.decklist}
+                        library={sides.left.library}
+                        ready={status === 'ready'}
+                        onImport={(d) => handleImport('left', d)}
+                    />
+                </div>
+                <div className="flex flex-col gap-2 min-h-0">
+                    <PlayerHand side="left" cards={sides.left.hand} onClear={() => handleClearHand('left')} />
+                    <CardDisplay
+                        side="left"
+                        card={sides.left.displayCard}
+                        flipped={sides.left.displayCardFlipped}
+                        disabled={activeSide !== null && activeSide !== 'left'}
+                        onClear={() => handleClearDisplayCard('left')}
+                        onFlip={() => handleFlipDisplayCard('left')}
+                    />
+                </div>
+                <div className="flex flex-col gap-2 min-h-0">
+                    <div className="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto">
+                        {sides.left.annotations.map((a) => (
+                            <Annotation
+                                key={a.id}
+                                id={annotationSlug(a.id, 'left')}
+                                title={a.title}
+                                description={a.description}
+                                cards={a.cards}
+                                onClear={() => handleClearAnnotation('left', a.id)}
+                                onSave={(title, description) =>
+                                    handleUpdateAnnotation('left', a.id, title, description)
+                                }
+                                onDelete={() => handleDeleteAnnotation('left', a.id)}
                             />
-                        </div>
-                        <div className="flex flex-col min-h-0 overflow-hidden">
-                            <LibraryPanel
-                                side="right"
-                                decklist={sides.right.decklist}
-                                library={sides.right.library}
-                                ready={status === 'ready'}
-                                onImport={(d) => handleImport('right', d)}
-                            />
-                        </div>
+                        ))}
+                        <CreateAnnotationControl
+                            onCreate={(title, description) => handleCreateAnnotation('left', title, description)}
+                        />
                     </div>
+                </div>
+                <div className="flex flex-col gap-2 min-h-0">
+                    <div className="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto">
+                        {sides.right.annotations.map((a) => (
+                            <Annotation
+                                key={a.id}
+                                id={annotationSlug(a.id, 'right')}
+                                title={a.title}
+                                description={a.description}
+                                cards={a.cards}
+                                onClear={() => handleClearAnnotation('right', a.id)}
+                                onSave={(title, description) =>
+                                    handleUpdateAnnotation('right', a.id, title, description)
+                                }
+                                onDelete={() => handleDeleteAnnotation('right', a.id)}
+                            />
+                        ))}
+                        <CreateAnnotationControl
+                            onCreate={(title, description) => handleCreateAnnotation('right', title, description)}
+                        />
+                    </div>
+                </div>
+                <div className="flex flex-col gap-2 min-h-0">
+                    <PlayerHand side="right" cards={sides.right.hand} onClear={() => handleClearHand('right')} />
+                    <CardDisplay
+                        side="right"
+                        card={sides.right.displayCard}
+                        flipped={sides.right.displayCardFlipped}
+                        disabled={activeSide !== null && activeSide !== 'right'}
+                        onClear={() => handleClearDisplayCard('right')}
+                        onFlip={() => handleFlipDisplayCard('right')}
+                    />
+                </div>
+                <div className="flex flex-col min-h-0 overflow-hidden">
+                    <LibraryPanel
+                        side="right"
+                        decklist={sides.right.decklist}
+                        library={sides.right.library}
+                        ready={status === 'ready'}
+                        onImport={(d) => handleImport('right', d)}
+                    />
                 </div>
             </div>
 

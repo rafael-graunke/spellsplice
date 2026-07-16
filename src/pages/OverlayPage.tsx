@@ -3,22 +3,28 @@ import {
     resolveOverlayWebsocketUrl,
     resolveOverlayCardStripWidth,
     createDefaultLiveState,
-    loadLiveTemplateState,
-    saveLiveTemplateState,
+    loadLiveScoreboardState,
+    saveLiveScoreboardState,
     saveLiveModeConfig,
     type LiveMessage,
     type LiveOverlayState,
     type LiveDisplayCard,
-    type LiveTemplateState,
+    type LiveScoreboardState,
     type LivePlayerInfo,
-    type SingleTemplateConfig,
+    type SingleScoreboardConfig,
 } from '@/lib/liveMode';
 import { useLiveModeSocket } from '@/hooks/useLiveModeSocket';
 import { subscribeImageLoad } from '@/lib/cardCache';
 import { renderLiveHand, getHandStackTopY } from '@/renders/renderLiveHand';
-import { renderLiveAnnotations, type LiveAnnotationData } from '@/renders/renderLiveAnnotation';
+import {
+    renderLiveAnnotations,
+    type LiveAnnotationData,
+} from '@/renders/renderLiveAnnotation';
 import { renderLiveCardDisplay } from '@/renders/renderLiveCardDisplay';
-import { getLiveTemplateImage, renderLiveTemplate } from '@/renders/renderLiveTemplate';
+import {
+    getLiveScoreboardImage,
+    renderLiveScoreboard,
+} from '@/renders/renderLiveScoreboard';
 
 function defaultPlayerInfo(): LivePlayerInfo {
     return { name: '', deckName: '', life: 20, wins: 0 };
@@ -29,20 +35,32 @@ const HEIGHT = 1080;
 const ANNOTATION_HAND_GAP = 50;
 
 function OverlayPage() {
-    const [wsUrl] = useState(() => resolveOverlayWebsocketUrl(window.location.search));
-    const stripWRef = useRef(resolveOverlayCardStripWidth(window.location.search));
+    const [wsUrl] = useState(() =>
+        resolveOverlayWebsocketUrl(window.location.search)
+    );
+    const stripWRef = useRef(
+        resolveOverlayCardStripWidth(window.location.search)
+    );
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const stateRef = useRef<LiveOverlayState>(createDefaultLiveState());
     const annotationsRef = useRef<Record<string, LiveAnnotationData>>({});
-    const displayCardRef = useRef<{ left: LiveDisplayCard | null; right: LiveDisplayCard | null }>({
+    const displayCardRef = useRef<{
+        left: LiveDisplayCard | null;
+        right: LiveDisplayCard | null;
+    }>({
         left: null,
         right: null,
     });
     // Hydrated from localStorage (this page's own, OBS-isolated profile) so a
-    // reload before the controller reconnects keeps the last known template
+    // reload before the controller reconnects keeps the last known scoreboard
     // instead of resetting to an empty one.
-    const templateRef = useRef<LiveTemplateState>(loadLiveTemplateState());
-    const playerInfoRef = useRef<{ left: LivePlayerInfo; right: LivePlayerInfo }>({
+    const scoreboardRef = useRef<LiveScoreboardState>(
+        loadLiveScoreboardState()
+    );
+    const playerInfoRef = useRef<{
+        left: LivePlayerInfo;
+        right: LivePlayerInfo;
+    }>({
         left: defaultPlayerInfo(),
         right: defaultPlayerInfo(),
     });
@@ -58,45 +76,82 @@ function OverlayPage() {
         if (!ctx) return;
         ctx.clearRect(0, 0, WIDTH, HEIGHT);
         const stripW = stripWRef.current;
-        renderLiveCardDisplay(ctx, displayCardRef.current.left, displayCardRef.current.right, 0, 0, WIDTH, stripW);
-        renderLiveHand(ctx, stateRef.current.left, stateRef.current.right, 0, 0, WIDTH, HEIGHT, stripW);
+        renderLiveCardDisplay(
+            ctx,
+            displayCardRef.current.left,
+            displayCardRef.current.right,
+            0,
+            0,
+            WIDTH,
+            stripW
+        );
+        renderLiveHand(
+            ctx,
+            stateRef.current.left,
+            stateRef.current.right,
+            0,
+            0,
+            WIDTH,
+            HEIGHT,
+            stripW
+        );
         renderLiveAnnotations(
             ctx,
             Object.values(annotationsRef.current),
             0,
             WIDTH,
             {
-                left: getHandStackTopY(stateRef.current.left, 0, HEIGHT, stripW) - ANNOTATION_HAND_GAP,
-                right: getHandStackTopY(stateRef.current.right, 0, HEIGHT, stripW) - ANNOTATION_HAND_GAP,
+                left:
+                    getHandStackTopY(stateRef.current.left, 0, HEIGHT, stripW) -
+                    ANNOTATION_HAND_GAP,
+                right:
+                    getHandStackTopY(
+                        stateRef.current.right,
+                        0,
+                        HEIGHT,
+                        stripW
+                    ) - ANNOTATION_HAND_GAP,
             },
-            stripW,
+            stripW
         );
 
-        const drawTemplate = (slot: string, config: SingleTemplateConfig) => {
+        const drawScoreboard = (
+            slot: string,
+            config: SingleScoreboardConfig
+        ) => {
             if (!config.svg) return;
-            const img = getLiveTemplateImage(
+            const img = getLiveScoreboardImage(
                 slot,
                 config.svg,
                 config.fieldMappings,
                 playerInfoRef.current.left,
                 playerInfoRef.current.right,
-                () => redrawRef.current(),
+                () => redrawRef.current()
             );
-            if (img) renderLiveTemplate(ctx, img, config.anchor, config.scale, config.margins, WIDTH, HEIGHT);
+            if (img)
+                renderLiveScoreboard(
+                    ctx,
+                    img,
+                    config.anchor,
+                    config.scale,
+                    config.margins,
+                    WIDTH,
+                    HEIGHT
+                );
         };
-        const template = templateRef.current;
-        if (template.mode === 'shared') {
-            drawTemplate('shared', template.shared);
+        const scoreboard = scoreboardRef.current;
+        if (scoreboard.mode === 'shared') {
+            drawScoreboard('shared', scoreboard.shared);
         } else {
-            drawTemplate('left', template.left);
-            drawTemplate('right', template.right);
+            drawScoreboard('left', scoreboard.left);
+            drawScoreboard('right', scoreboard.right);
         }
     }, []);
     useEffect(() => {
         redrawRef.current = redraw;
     });
-    // Paint immediately on mount using the locally-seeded template/state refs
-    // (see templateRef above) - otherwise the canvas stays blank until the
+    // Paint immediately on mount using the locally-seeded scoreboard/state refs
+    // (see scoreboardRef above) - otherwise the canvas stays blank until the
     // first socket message arrives, even though a default is already loaded.
     useEffect(() => {
         redraw();
@@ -110,7 +165,11 @@ function OverlayPage() {
             } else if (msg.type === 'annotation-state') {
                 annotationsRef.current = {
                     ...annotationsRef.current,
-                    [msg.annotationId]: { title: msg.title, left: msg.state.left, right: msg.state.right },
+                    [msg.annotationId]: {
+                        title: msg.title,
+                        left: msg.state.left,
+                        right: msg.state.right,
+                    },
                 };
                 redraw();
             } else if (msg.type === 'card-display-state') {
@@ -118,18 +177,22 @@ function OverlayPage() {
                 redraw();
             } else if (msg.type === 'config-state') {
                 stripWRef.current = msg.cardStripWidth;
-                if (wsUrl) saveLiveModeConfig({ websocketUrl: wsUrl, cardStripWidth: msg.cardStripWidth });
+                if (wsUrl)
+                    saveLiveModeConfig({
+                        websocketUrl: wsUrl,
+                        cardStripWidth: msg.cardStripWidth,
+                    });
                 redraw();
-            } else if (msg.type === 'template-state') {
-                templateRef.current = msg.template;
-                saveLiveTemplateState(msg.template);
+            } else if (msg.type === 'scoreboard-state') {
+                scoreboardRef.current = msg.scoreboard;
+                saveLiveScoreboardState(msg.scoreboard);
                 redraw();
             } else if (msg.type === 'player-info-state') {
                 playerInfoRef.current = { left: msg.left, right: msg.right };
                 redraw();
             }
         },
-        [redraw, wsUrl],
+        [redraw, wsUrl]
     );
 
     const { send, status } = useLiveModeSocket(wsUrl, handleMessage);
@@ -143,7 +206,9 @@ function OverlayPage() {
     if (!wsUrl) {
         return (
             <div className="h-screen flex items-center justify-center bg-background text-foreground">
-                <p className="text-muted-foreground">Live Mode not configured</p>
+                <p className="text-muted-foreground">
+                    Live Mode not configured
+                </p>
             </div>
         );
     }

@@ -1,10 +1,10 @@
-import type { LivePlayerInfo, TemplateFieldMapping } from './liveMode';
+import type { LivePlayerInfo, ScoreboardFieldMapping } from './liveMode';
 
-export function substituteTemplate(
+export function substituteScoreboard(
     svg: string,
-    mappings: TemplateFieldMapping[],
+    mappings: ScoreboardFieldMapping[],
     left: LivePlayerInfo,
-    right: LivePlayerInfo,
+    right: LivePlayerInfo
 ): string {
     if (mappings.length === 0) return svg;
 

@@ -1,9 +1,12 @@
 import type { OracleCard } from './oracleCards';
-import defaultTemplateSvg from '@/assets/live-templates/default-template.svg?raw';
+import defaultScoreboardSvg from '@/assets/scoreboards/default-scoreboard.svg?raw';
 
 export const LIVE_MODE_KEY = 'spellsplice-live-mode';
 export const LIVE_PROJECT_KEY = 'spellsplice-live-project';
-export const LIVE_TEMPLATE_KEY = 'spellsplice-live-template';
+export const LIVE_SCOREBOARD_KEY = 'spellsplice-live-scoreboard';
+// Pre-rename key ('template' era). Read once on load so existing saved
+// scoreboards migrate forward; cleared after the first successful migration.
+const LEGACY_LIVE_TEMPLATE_KEY = 'spellsplice-live-template';
 
 // Matches renderCardStrips.ts's STRIP_W default. Duplicated (not imported) to
 // keep this lib module decoupled from the canvas-rendering layer.
@@ -32,17 +35,17 @@ export function createDefaultLiveState(): LiveOverlayState {
     return { left: [], right: [] };
 }
 
-export type TemplateMode = 'shared' | 'per-player';
-export type TemplateAnchor =
+export type ScoreboardMode = 'shared' | 'per-player';
+export type ScoreboardAnchor =
     | 'top-left'
     | 'top-center'
     | 'top-right'
     | 'bottom-left'
     | 'bottom-center'
     | 'bottom-right';
-export type TemplateField = 'name' | 'deckName' | 'life' | 'wins';
+export type ScoreboardField = 'name' | 'deckName' | 'life' | 'wins';
 
-export interface TemplateMargins {
+export interface ScoreboardMargins {
     top: number;
     right: number;
     bottom: number;
@@ -52,28 +55,28 @@ export interface TemplateMargins {
 // Binds one SVG element (by id) to a tracked player field, resolved at
 // render time via getElementById - robust against SVG exporters that
 // fragment text into per-character tspans, unlike text-based substitution.
-export interface TemplateFieldMapping {
+export interface ScoreboardFieldMapping {
     id: string;
-    field: TemplateField;
+    field: ScoreboardField;
     side: 'left' | 'right';
 }
 
-export interface SingleTemplateConfig {
+export interface SingleScoreboardConfig {
     svg: string | null;
-    anchor: TemplateAnchor;
+    anchor: ScoreboardAnchor;
     scale: number;
-    margins: TemplateMargins;
-    fieldMappings: TemplateFieldMapping[];
+    margins: ScoreboardMargins;
+    fieldMappings: ScoreboardFieldMapping[];
 }
 
 // mode: 'shared' renders `shared` once; 'per-player' renders `left` and
 // `right` independently. Kept as one object so the overlay always receives
 // a single consistent snapshot instead of merging partial updates.
-export interface LiveTemplateState {
-    mode: TemplateMode;
-    shared: SingleTemplateConfig;
-    left: SingleTemplateConfig;
-    right: SingleTemplateConfig;
+export interface LiveScoreboardState {
+    mode: ScoreboardMode;
+    shared: SingleScoreboardConfig;
+    left: SingleScoreboardConfig;
+    right: SingleScoreboardConfig;
 }
 
 export interface LivePlayerInfo {
@@ -83,26 +86,38 @@ export interface LivePlayerInfo {
     wins: number;
 }
 
-const DEFAULT_FIELD_IDS: { id: string; field: TemplateField }[] = [
+const DEFAULT_FIELD_IDS: { id: string; field: ScoreboardField }[] = [
     { id: 'name', field: 'name' },
     { id: 'deck', field: 'deckName' },
     { id: 'life', field: 'life' },
     { id: 'wins', field: 'wins' },
 ];
 
-// Shared templates address both players from one SVG, so default mapping ids
-// are side-prefixed (e.g. "left.life"); per-player templates only ever bind
+// Shared scoreboards address both players from one SVG, so default mapping ids
+// are side-prefixed (e.g. "left.life"); per-player scoreboards only ever bind
 // their own player, so the prefix is dropped (e.g. "life").
-export function defaultFieldMappings(kind: 'shared' | 'left' | 'right'): TemplateFieldMapping[] {
+export function defaultFieldMappings(
+    kind: 'shared' | 'left' | 'right'
+): ScoreboardFieldMapping[] {
     if (kind === 'shared') {
         return (['left', 'right'] as const).flatMap((side) =>
-            DEFAULT_FIELD_IDS.map(({ id, field }) => ({ id: `${side}.${id}`, field, side })),
+            DEFAULT_FIELD_IDS.map(({ id, field }) => ({
+                id: `${side}.${id}`,
+                field,
+                side,
+            }))
         );
     }
-    return DEFAULT_FIELD_IDS.map(({ id, field }) => ({ id, field, side: kind }));
+    return DEFAULT_FIELD_IDS.map(({ id, field }) => ({
+        id,
+        field,
+        side: kind,
+    }));
 }
 
-export function defaultTemplateConfig(kind: 'shared' | 'left' | 'right'): SingleTemplateConfig {
+export function defaultScoreboardConfig(
+    kind: 'shared' | 'left' | 'right'
+): SingleScoreboardConfig {
     return {
         svg: null,
         anchor: 'top-center',
@@ -113,22 +128,36 @@ export function defaultTemplateConfig(kind: 'shared' | 'left' | 'right'): Single
 }
 
 // Blank slate - used for File > New / overlay reset, so those always clear
-// back to no template rather than reintroducing the bundled sample.
-export function defaultLiveTemplateState(): LiveTemplateState {
+// back to no scoreboard rather than reintroducing the bundled sample.
+export function defaultLiveScoreboardState(): LiveScoreboardState {
     return {
         mode: 'shared',
-        shared: defaultTemplateConfig('shared'),
-        left: defaultTemplateConfig('left'),
-        right: defaultTemplateConfig('right'),
+        shared: defaultScoreboardConfig('shared'),
+        left: defaultScoreboardConfig('left'),
+        right: defaultScoreboardConfig('right'),
     };
 }
 
-export function loadLiveTemplateState(): LiveTemplateState {
-    const defaults = defaultLiveTemplateState();
-    let parsed: Partial<LiveTemplateState> = {};
+// Reads the current key, falling back to the pre-rename 'template' key so a
+// user's saved scoreboard survives the rename. Migrated entries are rewritten
+// under the new key and the legacy one is removed.
+function readStoredScoreboard(): string | null {
+    const current = localStorage.getItem(LIVE_SCOREBOARD_KEY);
+    if (current !== null) return current;
+    const legacy = localStorage.getItem(LEGACY_LIVE_TEMPLATE_KEY);
+    if (legacy !== null) {
+        localStorage.setItem(LIVE_SCOREBOARD_KEY, legacy);
+        localStorage.removeItem(LEGACY_LIVE_TEMPLATE_KEY);
+    }
+    return legacy;
+}
+
+export function loadLiveScoreboardState(): LiveScoreboardState {
+    const defaults = defaultLiveScoreboardState();
+    let parsed: Partial<LiveScoreboardState> = {};
     try {
-        const raw = localStorage.getItem(LIVE_TEMPLATE_KEY);
-        if (raw) parsed = JSON.parse(raw) as Partial<LiveTemplateState>;
+        const raw = readStoredScoreboard();
+        if (raw) parsed = JSON.parse(raw) as Partial<LiveScoreboardState>;
     } catch {
         parsed = {};
     }
@@ -139,22 +168,31 @@ export function loadLiveTemplateState(): LiveTemplateState {
         // fall back to the bundled sample so every session shows something
         // instead of blank. Only matches 'shared' mode's field-id scheme,
         // so per-player configs are left as-is (blank until uploaded).
-        shared: { ...shared, svg: shared.svg ?? defaultTemplateSvg },
+        shared: { ...shared, svg: shared.svg ?? defaultScoreboardSvg },
         left: { ...defaults.left, ...parsed.left },
         right: { ...defaults.right, ...parsed.right },
     };
 }
 
-export function saveLiveTemplateState(state: LiveTemplateState) {
-    localStorage.setItem(LIVE_TEMPLATE_KEY, JSON.stringify(state));
+export function saveLiveScoreboardState(state: LiveScoreboardState) {
+    localStorage.setItem(LIVE_SCOREBOARD_KEY, JSON.stringify(state));
 }
 
 export type LiveMessage =
     | { type: 'live-state'; state: LiveOverlayState }
-    | { type: 'annotation-state'; annotationId: string; title: string; state: LiveOverlayState }
-    | { type: 'card-display-state'; left: LiveDisplayCard | null; right: LiveDisplayCard | null }
+    | {
+          type: 'annotation-state';
+          annotationId: string;
+          title: string;
+          state: LiveOverlayState;
+      }
+    | {
+          type: 'card-display-state';
+          left: LiveDisplayCard | null;
+          right: LiveDisplayCard | null;
+      }
     | { type: 'config-state'; cardStripWidth: number }
-    | { type: 'template-state'; template: LiveTemplateState }
+    | { type: 'scoreboard-state'; scoreboard: LiveScoreboardState }
     | { type: 'player-info-state'; left: LivePlayerInfo; right: LivePlayerInfo }
     | { type: 'request-state' };
 
@@ -189,7 +227,10 @@ export function resolveOverlayCardStripWidth(search: string): number {
     return loadLiveModeConfig()?.cardStripWidth ?? DEFAULT_CARD_STRIP_WIDTH;
 }
 
-export function buildOverlayUrl(websocketUrl: string, cardStripWidth?: number): string {
+export function buildOverlayUrl(
+    websocketUrl: string,
+    cardStripWidth?: number
+): string {
     const url = new URL('/overlay', window.location.origin);
     url.searchParams.set('ws', websocketUrl);
     if (cardStripWidth) url.searchParams.set('stripW', String(cardStripWidth));

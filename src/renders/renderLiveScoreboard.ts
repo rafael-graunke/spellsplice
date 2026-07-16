@@ -1,5 +1,10 @@
-import type { LivePlayerInfo, TemplateAnchor, TemplateFieldMapping, TemplateMargins } from '@/lib/liveMode';
-import { substituteTemplate } from '@/lib/liveTemplate';
+import type {
+    LivePlayerInfo,
+    ScoreboardAnchor,
+    ScoreboardFieldMapping,
+    ScoreboardMargins,
+} from '@/lib/liveMode';
+import { substituteScoreboard } from '@/lib/liveScoreboard';
 
 interface CacheEntry {
     cachedKey: string | null;
@@ -7,17 +12,17 @@ interface CacheEntry {
     pendingKey: string | null;
 }
 
-// Keyed by template slot ('shared' | 'left' | 'right') so per-player mode
-// can decode/cache two independent templates without clobbering each other.
+// Keyed by scoreboard slot ('shared' | 'left' | 'right') so per-player mode
+// can decode/cache two independent scoreboards without clobbering each other.
 const cache = new Map<string, CacheEntry>();
 
-export function getLiveTemplateImage(
+export function getLiveScoreboardImage(
     slot: string,
     svg: string,
-    mappings: TemplateFieldMapping[],
+    mappings: ScoreboardFieldMapping[],
     left: LivePlayerInfo,
     right: LivePlayerInfo,
-    onReady: () => void,
+    onReady: () => void
 ): HTMLImageElement | null {
     let entry = cache.get(slot);
     if (!entry) {
@@ -25,8 +30,9 @@ export function getLiveTemplateImage(
         cache.set(slot, entry);
     }
 
-    const substituted = substituteTemplate(svg, mappings, left, right);
-    if (entry.cachedKey === substituted || entry.pendingKey === substituted) return entry.cachedImg;
+    const substituted = substituteScoreboard(svg, mappings, left, right);
+    if (entry.cachedKey === substituted || entry.pendingKey === substituted)
+        return entry.cachedImg;
 
     entry.pendingKey = substituted;
     const img = new Image();
@@ -44,14 +50,14 @@ export function getLiveTemplateImage(
     return entry.cachedImg;
 }
 
-export function renderLiveTemplate(
+export function renderLiveScoreboard(
     ctx: CanvasRenderingContext2D,
     img: HTMLImageElement,
-    anchor: TemplateAnchor,
+    anchor: ScoreboardAnchor,
     scale: number,
-    margins: TemplateMargins,
+    margins: ScoreboardMargins,
     canvasWidth: number,
-    canvasHeight: number,
+    canvasHeight: number
 ): void {
     const width = img.naturalWidth * (scale / 100);
     const aspect = img.naturalWidth ? img.naturalHeight / img.naturalWidth : 1;
@@ -62,7 +68,9 @@ export function renderLiveTemplate(
         : anchor.endsWith('right')
           ? canvasWidth - width - margins.right
           : (canvasWidth - width) / 2;
-    const y = anchor.startsWith('top') ? margins.top : canvasHeight - height - margins.bottom;
+    const y = anchor.startsWith('top')
+        ? margins.top
+        : canvasHeight - height - margins.bottom;
 
     ctx.drawImage(img, x, y, width, height);
 }

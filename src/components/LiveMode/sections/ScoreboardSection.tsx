@@ -1,34 +1,44 @@
-import type { LiveTemplateState, TemplateMode } from '@/lib/liveMode';
+import type { LiveScoreboardState, ScoreboardMode } from '@/lib/liveMode';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import TemplateConfigEditor from './TemplateConfigEditor';
+import ScoreboardConfigEditor from './ScoreboardConfigEditor';
 
 interface Props {
-    state: LiveTemplateState;
-    onChange: (next: LiveTemplateState) => void;
+    state: LiveScoreboardState;
+    onChange: (next: LiveScoreboardState) => void;
 }
 
-const MODE_OPTIONS: { id: TemplateMode; label: string }[] = [
+const MODE_OPTIONS: { id: ScoreboardMode; label: string }[] = [
     { id: 'shared', label: 'Shared' },
     { id: 'per-player', label: 'Per Player' },
 ];
 
-function TemplateSection({ state, onChange }: Props) {
+function ScoreboardSection({ state, onChange }: Props) {
     return (
         <div className="flex flex-col gap-6">
             <div>
-                <h2 className="text-base font-medium mb-4">Template</h2>
+                <h2 className="text-base font-medium mb-4">Scoreboard</h2>
                 <div className="flex flex-col gap-1.5">
-                    <span className="text-sm font-medium">Template mode</span>
+                    <span className="text-sm font-medium">Scoreboard mode</span>
                     <div className="flex gap-1">
                         {MODE_OPTIONS.map((option) => (
                             <Button
                                 key={option.id}
                                 type="button"
                                 size="sm"
-                                variant={state.mode === option.id ? 'default' : 'outline'}
-                                className={cn('cursor-pointer', state.mode === option.id && 'pointer-events-none')}
-                                onClick={() => onChange({ ...state, mode: option.id })}
+                                variant={
+                                    state.mode === option.id
+                                        ? 'default'
+                                        : 'outline'
+                                }
+                                className={cn(
+                                    'cursor-pointer',
+                                    state.mode === option.id &&
+                                        'pointer-events-none'
+                                )}
+                                onClick={() =>
+                                    onChange({ ...state, mode: option.id })
+                                }
                             >
                                 {option.label}
                             </Button>
@@ -38,7 +48,7 @@ function TemplateSection({ state, onChange }: Props) {
             </div>
 
             {state.mode === 'shared' ? (
-                <TemplateConfigEditor
+                <ScoreboardConfigEditor
                     config={state.shared}
                     onChange={(shared) => onChange({ ...state, shared })}
                     allowSidePicker
@@ -46,8 +56,10 @@ function TemplateSection({ state, onChange }: Props) {
             ) : (
                 <div className="flex flex-col gap-6">
                     <div>
-                        <h3 className="text-sm font-semibold mb-3">Left Player</h3>
-                        <TemplateConfigEditor
+                        <h3 className="text-sm font-semibold mb-3">
+                            Left Player
+                        </h3>
+                        <ScoreboardConfigEditor
                             config={state.left}
                             onChange={(left) => onChange({ ...state, left })}
                             allowSidePicker={false}
@@ -55,8 +67,10 @@ function TemplateSection({ state, onChange }: Props) {
                         />
                     </div>
                     <div>
-                        <h3 className="text-sm font-semibold mb-3">Right Player</h3>
-                        <TemplateConfigEditor
+                        <h3 className="text-sm font-semibold mb-3">
+                            Right Player
+                        </h3>
+                        <ScoreboardConfigEditor
                             config={state.right}
                             onChange={(right) => onChange({ ...state, right })}
                             allowSidePicker={false}
@@ -69,4 +83,4 @@ function TemplateSection({ state, onChange }: Props) {
     );
 }
 
-export default TemplateSection;
+export default ScoreboardSection;

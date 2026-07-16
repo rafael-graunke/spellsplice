@@ -178,6 +178,15 @@ function makeHandEvent(
     return { type, side, time: Date.now(), card };
 }
 
+function makeAnnotationEvent(
+    type: 'ANNOTATE_CARD' | 'UNANNOTATE_CARD',
+    side: Side,
+    annotationId: string,
+    card: LibraryCardInstance
+): LiveEvent {
+    return { type, side, time: Date.now(), card, annotationId };
+}
+
 const CARD_DISPLAY_DROP_ID = (side: Side) => `card-display-${side}`;
 const isCardDisplayDrop = (overId: string | number, side: Side) =>
     String(overId).startsWith(CARD_DISPLAY_DROP_ID(side));
@@ -493,11 +502,55 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
         });
     };
 
+    // Mirrors emitHandDeltas for a single annotation slot: emits one
+    // ANNOTATE_CARD / UNANNOTATE_CARD per changed card so /overlay can animate
+    // it. `prev` comes from the committed `sides` closure (findAnnotation),
+    // which still holds the pre-change cards since setSides has not flushed.
+    const emitAnnotationDeltas = (
+        side: Side,
+        annotationId: string,
+        prevCards: LibraryCardInstance[],
+        nextCards: LibraryCardInstance[]
+    ) => {
+        const prevIds = new Set(prevCards.map((c) => c.id));
+        const nextIds = new Set(nextCards.map((c) => c.id));
+        for (const card of nextCards) {
+            if (!prevIds.has(card.id))
+                sendRef.current({
+                    type: 'live-event',
+                    event: makeAnnotationEvent(
+                        'ANNOTATE_CARD',
+                        side,
+                        annotationId,
+                        card
+                    ),
+                });
+        }
+        for (const card of prevCards) {
+            if (!nextIds.has(card.id))
+                sendRef.current({
+                    type: 'live-event',
+                    event: makeAnnotationEvent(
+                        'UNANNOTATE_CARD',
+                        side,
+                        annotationId,
+                        card
+                    ),
+                });
+        }
+    };
+
     const broadcastAnnotation = (
         annotationId: string,
         side: Side,
         cards: LibraryCardInstance[]
     ) => {
+        emitAnnotationDeltas(
+            side,
+            annotationId,
+            findAnnotation(side, annotationId)?.cards ?? [],
+            cards
+        );
         const title =
             findAnnotation(side, annotationId)?.title ??
             findAnnotation(side === 'left' ? 'right' : 'left', annotationId)

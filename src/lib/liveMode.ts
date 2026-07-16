@@ -35,13 +35,16 @@ export interface LiveDisplayCard extends LiveHandCard {
 // A semantic, single-card change emitted alongside the full-state snapshot as
 // an animation trigger for /overlay (which cannot tell what changed from a
 // snapshot alone). `type` reuses the timeline EventType enum so a future
-// live-session log maps 1:1 onto Timeline TrackEvents. The hand cut only emits
-// ADD_TO_HAND / REMOVE_FROM_HAND. `time` is wall-clock (Date.now()) for that log.
+// live-session log maps 1:1 onto Timeline TrackEvents. Hand cuts emit
+// ADD_TO_HAND / REMOVE_FROM_HAND; annotation cuts emit
+// ANNOTATE_CARD / UNANNOTATE_CARD with `annotationId` set to the target slot.
+// `time` is wall-clock (Date.now()) for that log.
 export interface LiveEvent {
     type: EventType;
     side: 'left' | 'right';
     time: number;
     card: LiveHandCard;
+    annotationId?: string;
 }
 
 export interface LiveOverlayState {

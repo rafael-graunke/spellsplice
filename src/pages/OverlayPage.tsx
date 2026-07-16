@@ -26,7 +26,9 @@ import {
 } from '@/renders/renderLiveHand';
 import {
     renderLiveAnnotations,
+    ANNOTATION_ANIM_DURATION,
     type LiveAnnotationData,
+    type AnnotationAnim,
 } from '@/renders/renderLiveAnnotation';
 import {
     renderLiveCardDisplay,
@@ -92,6 +94,10 @@ function OverlayPage() {
     // Active hand card animations, keyed by card instance id. Populated by
     // 'live-event' messages; drained by the rAF loop once each anim elapses.
     const handAnimRef = useRef<Map<string, HandAnim>>(new Map());
+    // Active annotation card animations, keyed by card instance id. Populated by
+    // 'live-event' messages (ANNOTATE_CARD / UNANNOTATE_CARD); drained by the
+    // rAF loop once each anim elapses.
+    const annotationAnimRef = useRef<Map<string, AnnotationAnim>>(new Map());
     // Per-side enter/exit animation for the featured display card.
     const displayAnimRef = useRef<{
         left: DisplayAnim | null;
@@ -151,7 +157,7 @@ function OverlayPage() {
         );
         renderLiveAnnotations(
             ctx,
-            Object.values(annotationsRef.current),
+            annotationsRef.current,
             0,
             WIDTH,
             {
@@ -166,7 +172,9 @@ function OverlayPage() {
                         stripW
                     ) - ANNOTATION_HAND_GAP,
             },
-            stripW
+            stripW,
+            annotationAnimRef.current,
+            performance.now()
         );
 
         const drawScoreboard = (
@@ -280,6 +288,10 @@ function OverlayPage() {
         for (const [id, a] of map) {
             if (now - a.start >= HAND_ANIM_DURATION) map.delete(id);
         }
+        const annMap = annotationAnimRef.current;
+        for (const [id, a] of annMap) {
+            if (now - a.start >= ANNOTATION_ANIM_DURATION) annMap.delete(id);
+        }
         const disp = displayAnimRef.current;
         for (const side of ['left', 'right'] as const) {
             const a = disp[side];
@@ -287,7 +299,10 @@ function OverlayPage() {
         }
         redrawRef.current();
         const active =
-            map.size > 0 || disp.left !== null || disp.right !== null;
+            map.size > 0 ||
+            annMap.size > 0 ||
+            disp.left !== null ||
+            disp.right !== null;
         rafRef.current = active ? requestAnimationFrame(tick) : null;
     }, []);
 
@@ -331,6 +346,40 @@ function OverlayPage() {
                         card: event.card,
                         side: event.side,
                         oldIndex: preHand.findIndex(
+                            (c) => c.id === event.card.id
+                        ),
+                    });
+                    startAnimLoop();
+                } else if (
+                    event.type === 'ANNOTATE_CARD' &&
+                    event.annotationId
+                ) {
+                    annotationAnimRef.current.set(event.card.id, {
+                        phase: 'enter',
+                        start: performance.now(),
+                        card: event.card,
+                        side: event.side,
+                        annotationId: event.annotationId,
+                    });
+                    startAnimLoop();
+                } else if (
+                    event.type === 'UNANNOTATE_CARD' &&
+                    event.annotationId
+                ) {
+                    // Snapshot for this removal has not arrived yet, so
+                    // annotationsRef still holds the pre-removal slot: capture
+                    // the card's index so the renderer can close the gap.
+                    const slot = annotationsRef.current[event.annotationId];
+                    const preCards =
+                        (event.side === 'left' ? slot?.left : slot?.right) ??
+                        [];
+                    annotationAnimRef.current.set(event.card.id, {
+                        phase: 'exit',
+                        start: performance.now(),
+                        card: event.card,
+                        side: event.side,
+                        annotationId: event.annotationId,
+                        oldIndex: preCards.findIndex(
                             (c) => c.id === event.card.id
                         ),
                     });

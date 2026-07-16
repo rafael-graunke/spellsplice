@@ -54,11 +54,9 @@ export function CardDisplay({
     if (card && card !== rendered) setRendered(card);
 
     const canFlip = isMultiFaceLayout(rendered?.card.layout);
-    const img = rendered
-        ? flipped && canFlip
-            ? ensureBackImage(rendered.card.name)
-            : ensureImage(rendered.card.name)
-        : null;
+    // Both faces stay mounted so the container can rotateY between them.
+    const frontImg = rendered ? ensureImage(rendered.card.name) : null;
+    const backImg = rendered && canFlip ? ensureBackImage(rendered.card.name) : null;
 
     // Play-timer countdown bar. Keyed on playUntil so each play restarts the
     // animation; playUntil is cleared when the timer fires or the card clears.
@@ -77,19 +75,52 @@ export function CardDisplay({
                     <Settings />
                 </Button>
             </div>
-            <div className="relative flex w-full aspect-[5/7] items-center justify-center bg-black/20 rounded-lg overflow-hidden text-xs text-muted-foreground transition-colors">
-                {img instanceof HTMLImageElement && (
-                    <img
-                        src={img.src}
-                        alt={rendered!.card.name}
+            <div className={cn(
+                "relative flex w-full aspect-[5/7] items-center justify-center rounded-lg text-xs text-muted-foreground transition-colors",
+                card ? "bg-muted" : "bg-black/20",
+            )}>
+                {rendered && (
+                    <div
                         onTransitionEnd={() => {
                             if (!card) setRendered(null);
                         }}
                         className={cn(
-                            'absolute inset-0 h-full w-full rounded-xl object-cover transition-opacity',
+                            'absolute inset-0 transition-opacity',
                             card ? 'opacity-100' : 'opacity-0'
                         )}
-                    />
+                        style={{ perspective: '1000px' }}
+                    >
+                        <div
+                            className="relative h-full w-full transition-transform duration-400"
+                            style={{
+                                transformStyle: 'preserve-3d',
+                                transform:
+                                    flipped && canFlip
+                                        ? 'rotateY(180deg)'
+                                        : 'none',
+                            }}
+                        >
+                            {frontImg instanceof HTMLImageElement && (
+                                <img
+                                    src={frontImg.src}
+                                    alt={rendered.card.name}
+                                    className="absolute inset-0 h-full w-full rounded-xl object-cover"
+                                    style={{ backfaceVisibility: 'hidden' }}
+                                />
+                            )}
+                            {backImg instanceof HTMLImageElement && (
+                                <img
+                                    src={backImg.src}
+                                    alt={rendered.card.name}
+                                    className="absolute inset-0 h-full w-full rounded-xl object-cover"
+                                    style={{
+                                        backfaceVisibility: 'hidden',
+                                        transform: 'rotateY(180deg)',
+                                    }}
+                                />
+                            )}
+                        </div>
+                    </div>
                 )}
                 {!card && (
                     <div className="pointer-events-none absolute flex flex-col items-center gap-1 text-center">

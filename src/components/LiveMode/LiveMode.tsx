@@ -916,7 +916,7 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                 setActiveWidth(null);
             }}
         >
-            <div className="flex-1 min-h-0 grid grid-cols-6 grid-rows-[auto_1fr] p-2 gap-2">
+            <div className="flex-1 min-h-0 grid grid-cols-6 grid-rows-[auto_1fr] p-2 gap-2 overflow-hidden">
                 <div className="col-span-3">
                     <PlayerState
                         name={sides.left.name}

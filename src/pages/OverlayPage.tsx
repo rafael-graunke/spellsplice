@@ -6,25 +6,37 @@ import {
     loadLiveScoreboardState,
     saveLiveScoreboardState,
     saveLiveModeConfig,
+    loadLiveCardDisplayConfig,
+    saveLiveCardDisplayConfig,
     type LiveMessage,
     type LiveOverlayState,
     type LiveDisplayCard,
     type LiveScoreboardState,
+    type LiveCardDisplayConfig,
     type LivePlayerInfo,
     type SingleScoreboardConfig,
 } from '@/lib/liveMode';
 import { useLiveModeSocket } from '@/hooks/useLiveModeSocket';
 import { subscribeImageLoad } from '@/lib/cardCache';
-import { renderLiveHand, getHandStackTopY } from '@/renders/renderLiveHand';
+import {
+    renderLiveHand,
+    getHandStackTopY,
+    HAND_ANIM_DURATION,
+    type HandAnim,
+} from '@/renders/renderLiveHand';
 import {
     renderLiveAnnotations,
     type LiveAnnotationData,
 } from '@/renders/renderLiveAnnotation';
-import { renderLiveCardDisplay } from '@/renders/renderLiveCardDisplay';
+import {
+    renderLiveCardDisplay,
+    type DisplayAnim,
+} from '@/renders/renderLiveCardDisplay';
 import {
     getLiveScoreboardImage,
     renderLiveScoreboard,
 } from '@/renders/renderLiveScoreboard';
+import { OverlayPresenter } from '@/renders/overlayPresenter';
 
 function defaultPlayerInfo(): LivePlayerInfo {
     return { name: '', deckName: '', life: 20, wins: 0 };
@@ -57,6 +69,11 @@ function OverlayPage() {
     const scoreboardRef = useRef<LiveScoreboardState>(
         loadLiveScoreboardState()
     );
+    // Seeded from this page's own localStorage so placement is correct on the
+    // very first paint, before the controller sends 'card-display-config'.
+    const cardDisplayConfigRef = useRef<LiveCardDisplayConfig>(
+        loadLiveCardDisplayConfig()
+    );
     const playerInfoRef = useRef<{
         left: LivePlayerInfo;
         right: LivePlayerInfo;
@@ -65,6 +82,21 @@ function OverlayPage() {
         right: defaultPlayerInfo(),
     });
     const redrawRef = useRef<() => void>(() => {});
+    // Active hand card animations, keyed by card instance id. Populated by
+    // 'live-event' messages; drained by the rAF loop once each anim elapses.
+    const handAnimRef = useRef<Map<string, HandAnim>>(new Map());
+    // Per-side enter/exit animation for the featured display card.
+    const displayAnimRef = useRef<{
+        left: DisplayAnim | null;
+        right: DisplayAnim | null;
+    }>({ left: null, right: null });
+    const rafRef = useRef<number | null>(null);
+    // Overlay content is rasterized on this 2D offscreen canvas, then presented
+    // to the visible WebGL canvas via OverlayPresenter (GPU). Falls back to a
+    // plain 2D blit if WebGL is unavailable.
+    const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
+    const presenterRef = useRef<OverlayPresenter | null>(null);
+    const webglFailedRef = useRef(false);
 
     useEffect(() => {
         document.documentElement.style.background = 'transparent';
@@ -72,7 +104,16 @@ function OverlayPage() {
     }, []);
 
     const redraw = useCallback(() => {
-        const ctx = canvasRef.current?.getContext('2d');
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        let overlay = overlayCanvasRef.current;
+        if (!overlay) {
+            overlay = document.createElement('canvas');
+            overlay.width = WIDTH;
+            overlay.height = HEIGHT;
+            overlayCanvasRef.current = overlay;
+        }
+        const ctx = overlay.getContext('2d');
         if (!ctx) return;
         ctx.clearRect(0, 0, WIDTH, HEIGHT);
         const stripW = stripWRef.current;
@@ -83,7 +124,11 @@ function OverlayPage() {
             0,
             0,
             WIDTH,
-            stripW
+            HEIGHT,
+            stripW,
+            cardDisplayConfigRef.current,
+            displayAnimRef.current,
+            performance.now()
         );
         renderLiveHand(
             ctx,
@@ -93,7 +138,9 @@ function OverlayPage() {
             0,
             WIDTH,
             HEIGHT,
-            stripW
+            stripW,
+            handAnimRef.current,
+            performance.now()
         );
         renderLiveAnnotations(
             ctx,
@@ -146,10 +193,39 @@ function OverlayPage() {
             drawScoreboard('left', scoreboard.left);
             drawScoreboard('right', scoreboard.right);
         }
+
+        // Present the rasterized overlay: GPU quad when WebGL is available,
+        // else a plain 2D blit onto the visible canvas.
+        const presenter = presenterRef.current;
+        if (presenter) {
+            presenter.present(overlay);
+        } else if (webglFailedRef.current) {
+            const vctx = canvas.getContext('2d');
+            if (vctx) {
+                vctx.clearRect(0, 0, WIDTH, HEIGHT);
+                vctx.drawImage(overlay, 0, 0);
+            }
+        }
     }, []);
     useEffect(() => {
         redrawRef.current = redraw;
     });
+    // Acquire the WebGL present context once, before the first paint (so the
+    // visible canvas isn't locked to a 2D context). Falls back to 2D if WebGL
+    // is unavailable.
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas || presenterRef.current || webglFailedRef.current) return;
+        try {
+            presenterRef.current = new OverlayPresenter(canvas, WIDTH, HEIGHT);
+        } catch {
+            webglFailedRef.current = true;
+        }
+        return () => {
+            presenterRef.current?.dispose();
+            presenterRef.current = null;
+        };
+    }, []);
     // Paint immediately on mount using the locally-seeded scoreboard/state refs
     // (see scoreboardRef above) - otherwise the canvas stays blank until the
     // first socket message arrives, even though a default is already loaded.
@@ -157,11 +233,71 @@ function OverlayPage() {
         redraw();
     }, [redraw]);
 
+    // Drives hand + display-card animations: redraws every frame while any anim
+    // is live, pruning elapsed ones, then stops (the overlay is otherwise
+    // redraw-on-message). Reads redrawRef so it always calls the latest redraw.
+    const animTick = useCallback(function tick() {
+        const now = performance.now();
+        const map = handAnimRef.current;
+        for (const [id, a] of map) {
+            if (now - a.start >= HAND_ANIM_DURATION) map.delete(id);
+        }
+        const disp = displayAnimRef.current;
+        for (const side of ['left', 'right'] as const) {
+            const a = disp[side];
+            if (a && now - a.start >= a.anim.duration) disp[side] = null;
+        }
+        redrawRef.current();
+        const active =
+            map.size > 0 || disp.left !== null || disp.right !== null;
+        rafRef.current = active ? requestAnimationFrame(tick) : null;
+    }, []);
+
+    const startAnimLoop = useCallback(() => {
+        if (rafRef.current == null)
+            rafRef.current = requestAnimationFrame(animTick);
+    }, [animTick]);
+
+    useEffect(() => {
+        return () => {
+            if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+        };
+    }, []);
+
     const handleMessage = useCallback(
         (msg: LiveMessage) => {
             if (msg.type === 'live-state') {
                 stateRef.current = msg.state;
                 redraw();
+            } else if (msg.type === 'live-event') {
+                const { event } = msg;
+                if (event.type === 'ADD_TO_HAND') {
+                    handAnimRef.current.set(event.card.id, {
+                        phase: 'enter',
+                        start: performance.now(),
+                        card: event.card,
+                        side: event.side,
+                    });
+                    startAnimLoop();
+                } else if (event.type === 'REMOVE_FROM_HAND') {
+                    // The snapshot for this removal has not arrived yet, so
+                    // stateRef still holds the pre-removal hand: capture the
+                    // card's slot so the renderer can close the gap.
+                    const preHand =
+                        event.side === 'left'
+                            ? stateRef.current.left
+                            : stateRef.current.right;
+                    handAnimRef.current.set(event.card.id, {
+                        phase: 'exit',
+                        start: performance.now(),
+                        card: event.card,
+                        side: event.side,
+                        oldIndex: preHand.findIndex(
+                            (c) => c.id === event.card.id
+                        ),
+                    });
+                    startAnimLoop();
+                }
             } else if (msg.type === 'annotation-state') {
                 annotationsRef.current = {
                     ...annotationsRef.current,
@@ -173,7 +309,33 @@ function OverlayPage() {
                 };
                 redraw();
             } else if (msg.type === 'card-display-state') {
-                displayCardRef.current = { left: msg.left, right: msg.right };
+                const prev = displayCardRef.current;
+                const next = { left: msg.left, right: msg.right };
+                for (const side of ['left', 'right'] as const) {
+                    const p = prev[side];
+                    const n = next[side];
+                    const cfg = cardDisplayConfigRef.current[side].animation;
+                    // appear or swap -> enter the new card; clear -> exit the
+                    // old one (kept in the anim so it can draw while leaving).
+                    // Same card (e.g. a flip) leaves any running anim alone.
+                    if (n && (!p || p.id !== n.id)) {
+                        displayAnimRef.current[side] = {
+                            phase: 'enter',
+                            start: performance.now(),
+                            card: n,
+                            anim: cfg,
+                        };
+                    } else if (p && !n) {
+                        displayAnimRef.current[side] = {
+                            phase: 'exit',
+                            start: performance.now(),
+                            card: p,
+                            anim: cfg,
+                        };
+                    }
+                }
+                displayCardRef.current = next;
+                startAnimLoop();
                 redraw();
             } else if (msg.type === 'config-state') {
                 stripWRef.current = msg.cardStripWidth;
@@ -182,6 +344,10 @@ function OverlayPage() {
                         websocketUrl: wsUrl,
                         cardStripWidth: msg.cardStripWidth,
                     });
+                redraw();
+            } else if (msg.type === 'card-display-config') {
+                cardDisplayConfigRef.current = msg.config;
+                saveLiveCardDisplayConfig(msg.config);
                 redraw();
             } else if (msg.type === 'scoreboard-state') {
                 scoreboardRef.current = msg.scoreboard;
@@ -192,7 +358,7 @@ function OverlayPage() {
                 redraw();
             }
         },
-        [redraw, wsUrl]
+        [redraw, wsUrl, startAnimLoop]
     );
 
     const { send, status } = useLiveModeSocket(wsUrl, handleMessage);

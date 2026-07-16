@@ -10,6 +10,14 @@ interface CacheEntry {
     cachedKey: string | null;
     cachedImg: HTMLImageElement | null;
     pendingKey: string | null;
+    // Last inputs to substituteScoreboard, held by reference. They only change
+    // on socket messages (scoreboard-state / player-info-state), never per
+    // frame, so ref-equality lets animation frames skip the (expensive)
+    // DOMParser reparse of the whole SVG entirely.
+    lastSvg: string | null;
+    lastMappings: ScoreboardFieldMapping[] | null;
+    lastLeft: LivePlayerInfo | null;
+    lastRight: LivePlayerInfo | null;
 }
 
 // Keyed by scoreboard slot ('shared' | 'left' | 'right') so per-player mode
@@ -26,9 +34,32 @@ export function getLiveScoreboardImage(
 ): HTMLImageElement | null {
     let entry = cache.get(slot);
     if (!entry) {
-        entry = { cachedKey: null, cachedImg: null, pendingKey: null };
+        entry = {
+            cachedKey: null,
+            cachedImg: null,
+            pendingKey: null,
+            lastSvg: null,
+            lastMappings: null,
+            lastLeft: null,
+            lastRight: null,
+        };
         cache.set(slot, entry);
     }
+
+    // Fast path: inputs unchanged since last call (the common case on animation
+    // frames) - reuse the decoded image without reparsing the SVG.
+    if (
+        entry.lastSvg === svg &&
+        entry.lastMappings === mappings &&
+        entry.lastLeft === left &&
+        entry.lastRight === right
+    )
+        return entry.cachedImg;
+
+    entry.lastSvg = svg;
+    entry.lastMappings = mappings;
+    entry.lastLeft = left;
+    entry.lastRight = right;
 
     const substituted = substituteScoreboard(svg, mappings, left, right);
     if (entry.cachedKey === substituted || entry.pendingKey === substituted)

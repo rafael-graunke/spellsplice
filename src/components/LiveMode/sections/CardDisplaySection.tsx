@@ -1,19 +1,23 @@
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
+import type { LiveCardDisplayConfig } from '@/lib/liveMode';
+import CardDisplayConfigEditor from './CardDisplayConfigEditor';
 
 interface Props {
     cardDisplayDuration: number;
     onCardDisplayDurationChange: (value: number) => void;
+    cardDisplayConfig: LiveCardDisplayConfig;
+    onCardDisplayConfigChange: (next: LiveCardDisplayConfig) => void;
 }
 
 // Stored as ms; edited in whole seconds.
 function CardDisplaySection({
     cardDisplayDuration,
     onCardDisplayDurationChange,
+    cardDisplayConfig,
+    onCardDisplayConfigChange,
 }: Props) {
-    const [text, setText] = useState(() =>
-        String(cardDisplayDuration / 1000)
-    );
+    const [text, setText] = useState(() => String(cardDisplayDuration / 1000));
 
     const clamp = (seconds: number) => Math.max(1, Math.min(60, seconds));
 
@@ -63,6 +67,33 @@ function CardDisplaySection({
                         </p>
                     </div>
                 </div>
+            </div>
+
+            <div>
+                <h3 className="text-sm font-semibold mb-3">Left Player</h3>
+                <CardDisplayConfigEditor
+                    config={cardDisplayConfig.left}
+                    onChange={(left) =>
+                        onCardDisplayConfigChange({
+                            ...cardDisplayConfig,
+                            left,
+                        })
+                    }
+                    ownSide="left"
+                />
+            </div>
+            <div>
+                <h3 className="text-sm font-semibold mb-3">Right Player</h3>
+                <CardDisplayConfigEditor
+                    config={cardDisplayConfig.right}
+                    onChange={(right) =>
+                        onCardDisplayConfigChange({
+                            ...cardDisplayConfig,
+                            right,
+                        })
+                    }
+                    ownSide="right"
+                />
             </div>
         </div>
     );

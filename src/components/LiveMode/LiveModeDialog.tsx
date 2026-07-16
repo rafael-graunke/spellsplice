@@ -8,9 +8,12 @@ import {
     saveLiveModeConfig,
     loadLiveScoreboardState,
     saveLiveScoreboardState,
+    loadLiveCardDisplayConfig,
+    saveLiveCardDisplayConfig,
     DEFAULT_CARD_STRIP_WIDTH,
     DEFAULT_CARD_DISPLAY_DURATION_MS,
     type LiveScoreboardState,
+    type LiveCardDisplayConfig,
 } from '@/lib/liveMode';
 import { cn } from '@/lib/utils';
 import CardDatabaseSection from './sections/CardDatabaseSection';
@@ -102,6 +105,9 @@ function LiveModeDialogContent({
     const [scoreboardState, setScoreboardState] = useState(() =>
         loadLiveScoreboardState()
     );
+    const [cardDisplayConfig, setCardDisplayConfig] = useState(() =>
+        loadLiveCardDisplayConfig()
+    );
     const { status: oracleCardsStatus, forceRefresh: forceRefreshOracleCards } =
         useOracleCards();
 
@@ -139,6 +145,15 @@ function LiveModeDialogContent({
             saveLiveScoreboardState(next);
             setScoreboardState(next);
             send({ type: 'scoreboard-state', scoreboard: next });
+        },
+        [send]
+    );
+
+    const handleCardDisplayConfigChange = useCallback(
+        (next: LiveCardDisplayConfig) => {
+            saveLiveCardDisplayConfig(next);
+            setCardDisplayConfig(next);
+            send({ type: 'card-display-config', config: next });
         },
         [send]
     );
@@ -233,6 +248,10 @@ function LiveModeDialogContent({
                             cardDisplayDuration={cardDisplayDuration}
                             onCardDisplayDurationChange={
                                 handleCardDisplayDurationChange
+                            }
+                            cardDisplayConfig={cardDisplayConfig}
+                            onCardDisplayConfigChange={
+                                handleCardDisplayConfigChange
                             }
                         />
                     )}

@@ -1,9 +1,11 @@
 import type { OracleCard } from './oracleCards';
+import type { EventType } from '@/components/types/event';
 import defaultScoreboardSvg from '@/assets/scoreboards/default-scoreboard.svg?raw';
 
 export const LIVE_MODE_KEY = 'spellsplice-live-mode';
 export const LIVE_PROJECT_KEY = 'spellsplice-live-project';
 export const LIVE_SCOREBOARD_KEY = 'spellsplice-live-scoreboard';
+export const LIVE_CARD_DISPLAY_KEY = 'spellsplice-live-card-display';
 // Pre-rename key ('template' era). Read once on load so existing saved
 // scoreboards migrate forward; cleared after the first successful migration.
 const LEGACY_LIVE_TEMPLATE_KEY = 'spellsplice-live-template';
@@ -30,6 +32,18 @@ export interface LiveDisplayCard extends LiveHandCard {
     flipped: boolean;
 }
 
+// A semantic, single-card change emitted alongside the full-state snapshot as
+// an animation trigger for /overlay (which cannot tell what changed from a
+// snapshot alone). `type` reuses the timeline EventType enum so a future
+// live-session log maps 1:1 onto Timeline TrackEvents. The hand cut only emits
+// ADD_TO_HAND / REMOVE_FROM_HAND. `time` is wall-clock (Date.now()) for that log.
+export interface LiveEvent {
+    type: EventType;
+    side: 'left' | 'right';
+    time: number;
+    card: LiveHandCard;
+}
+
 export interface LiveOverlayState {
     left: LiveHandCard[];
     right: LiveHandCard[];
@@ -48,6 +62,19 @@ export type ScoreboardAnchor =
     | 'bottom-center'
     | 'bottom-right';
 export type ScoreboardField = 'name' | 'deckName' | 'life' | 'wins';
+
+// 9-anchor grid (top/middle/bottom X left/center/right) for the featured card
+// display. Unlike ScoreboardAnchor this includes a vertical-center row.
+export type CardDisplayAnchor =
+    | 'top-left'
+    | 'top-center'
+    | 'top-right'
+    | 'middle-left'
+    | 'middle-center'
+    | 'middle-right'
+    | 'bottom-left'
+    | 'bottom-center'
+    | 'bottom-right';
 
 export interface ScoreboardMargins {
     top: number;
@@ -182,8 +209,79 @@ export function saveLiveScoreboardState(state: LiveScoreboardState) {
     localStorage.setItem(LIVE_SCOREBOARD_KEY, JSON.stringify(state));
 }
 
+export type CardDisplayAnimType = 'fade' | 'slide';
+
+// Edge the card slides from on enter (and back out to on exit). Independent of
+// the anchor: the card always starts fully off that edge regardless of where it
+// ends up, so e.g. top-right anchor + 'left' direction enters from screen-left.
+export type SlideDirection = 'left' | 'right' | 'top' | 'bottom';
+
+export interface CardDisplayAnimation {
+    type: CardDisplayAnimType;
+    duration: number; // ms
+    direction: SlideDirection; // only meaningful when type === 'slide'
+}
+
+// Per-side placement + animation of the featured display card. Kept in its own
+// object (and localStorage key + websocket message) so it follows the same
+// snapshot + hydrate flow as the scoreboard, which is what lets an OBS Browser
+// Source with its own isolated storage stay in sync.
+export interface SingleCardDisplayConfig {
+    anchor: CardDisplayAnchor;
+    margins: ScoreboardMargins;
+    animation: CardDisplayAnimation;
+}
+
+export interface LiveCardDisplayConfig {
+    left: SingleCardDisplayConfig;
+    right: SingleCardDisplayConfig;
+}
+
+// Defaults reproduce the previous hardcoded placement (top corners, 24px top
+// gap, 8px side gap) so existing overlays look unchanged until reconfigured.
+export function defaultCardDisplayConfig(
+    side: 'left' | 'right'
+): SingleCardDisplayConfig {
+    return {
+        anchor: side === 'left' ? 'top-left' : 'top-right',
+        margins: { top: 24, right: 8, bottom: 24, left: 8 },
+        animation: {
+            type: 'fade',
+            duration: 250,
+            direction: side === 'left' ? 'left' : 'right',
+        },
+    };
+}
+
+export function defaultLiveCardDisplayConfig(): LiveCardDisplayConfig {
+    return {
+        left: defaultCardDisplayConfig('left'),
+        right: defaultCardDisplayConfig('right'),
+    };
+}
+
+export function loadLiveCardDisplayConfig(): LiveCardDisplayConfig {
+    const defaults = defaultLiveCardDisplayConfig();
+    let parsed: Partial<LiveCardDisplayConfig> = {};
+    try {
+        const raw = localStorage.getItem(LIVE_CARD_DISPLAY_KEY);
+        if (raw) parsed = JSON.parse(raw) as Partial<LiveCardDisplayConfig>;
+    } catch {
+        parsed = {};
+    }
+    return {
+        left: { ...defaults.left, ...parsed.left },
+        right: { ...defaults.right, ...parsed.right },
+    };
+}
+
+export function saveLiveCardDisplayConfig(config: LiveCardDisplayConfig) {
+    localStorage.setItem(LIVE_CARD_DISPLAY_KEY, JSON.stringify(config));
+}
+
 export type LiveMessage =
     | { type: 'live-state'; state: LiveOverlayState }
+    | { type: 'live-event'; event: LiveEvent }
     | {
           type: 'annotation-state';
           annotationId: string;
@@ -196,6 +294,7 @@ export type LiveMessage =
           right: LiveDisplayCard | null;
       }
     | { type: 'config-state'; cardStripWidth: number }
+    | { type: 'card-display-config'; config: LiveCardDisplayConfig }
     | { type: 'scoreboard-state'; scoreboard: LiveScoreboardState }
     | { type: 'player-info-state'; left: LivePlayerInfo; right: LivePlayerInfo }
     | { type: 'request-state' };

@@ -144,7 +144,9 @@ import {
     defaultLiveScoreboardState,
     loadLiveModeConfig,
     loadLiveScoreboardState,
+    loadLiveCardDisplayConfig,
     type LiveMessage,
+    type LiveEvent,
     type LivePlayerInfo,
     LIVE_PROJECT_KEY,
 } from '@/lib/liveMode';
@@ -164,6 +166,16 @@ interface AnnotationState {
     title: string;
     description?: string;
     cards: LibraryCardInstance[];
+}
+
+// Module-scope so the wall-clock read (Date.now(), impure) is not analyzed as
+// a render-phase call. Only ever invoked from event handlers via emitHandDeltas.
+function makeHandEvent(
+    type: 'ADD_TO_HAND' | 'REMOVE_FROM_HAND',
+    side: Side,
+    card: LibraryCardInstance
+): LiveEvent {
+    return { type, side, time: Date.now(), card };
 }
 
 const CARD_DISPLAY_DROP_ID = (side: Side) => `card-display-${side}`;
@@ -359,6 +371,10 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                 scoreboard: loadLiveScoreboardState(),
             });
             sendRef.current({
+                type: 'card-display-config',
+                config: loadLiveCardDisplayConfig(),
+            });
+            sendRef.current({
                 type: 'player-info-state',
                 left: playerInfo('left'),
                 right: playerInfo('right'),
@@ -380,11 +396,16 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
     // sends that request on its own, so it would otherwise need a manual
     // browser-source refresh to pick up a new/default scoreboard.
     useEffect(() => {
-        if (socketStatus === 'open')
+        if (socketStatus === 'open') {
             sendRef.current({
                 type: 'scoreboard-state',
                 scoreboard: loadLiveScoreboardState(),
             });
+            sendRef.current({
+                type: 'card-display-config',
+                config: loadLiveCardDisplayConfig(),
+            });
+        }
     }, [socketStatus]);
 
     useImperativeHandle(ref, () => ({
@@ -435,7 +456,34 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
         },
     }));
 
+    // Emits a semantic ADD_TO_HAND / REMOVE_FROM_HAND per changed card so
+    // /overlay can animate it. Diffs by stable instance id. `prev` comes from
+    // sidesRef (committed state) since setSides has not flushed yet at call time.
+    const emitHandDeltas = (
+        side: Side,
+        prevHand: LibraryCardInstance[],
+        nextHand: LibraryCardInstance[]
+    ) => {
+        const prevIds = new Set(prevHand.map((c) => c.id));
+        const nextIds = new Set(nextHand.map((c) => c.id));
+        for (const card of nextHand) {
+            if (!prevIds.has(card.id))
+                sendRef.current({
+                    type: 'live-event',
+                    event: makeHandEvent('ADD_TO_HAND', side, card),
+                });
+        }
+        for (const card of prevHand) {
+            if (!nextIds.has(card.id))
+                sendRef.current({
+                    type: 'live-event',
+                    event: makeHandEvent('REMOVE_FROM_HAND', side, card),
+                });
+        }
+    };
+
     const broadcastHand = (side: Side, hand: LibraryCardInstance[]) => {
+        emitHandDeltas(side, sidesRef.current[side].hand, hand);
         sendRef.current({
             type: 'live-state',
             state: {

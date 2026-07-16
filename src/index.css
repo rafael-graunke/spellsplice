@@ -177,3 +177,13 @@
         }
     }
 }
+
+/* Play-card countdown bar: drains right-to-left over the timer duration. */
+@keyframes play-countdown {
+    from {
+        transform: scaleX(1);
+    }
+    to {
+        transform: scaleX(0);
+    }
+}

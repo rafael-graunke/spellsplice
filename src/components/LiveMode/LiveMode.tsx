@@ -117,7 +117,14 @@ function LiveMode() {
 }
 */
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import {
+    forwardRef,
+    useEffect,
+    useImperativeHandle,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
 import {
     DndContext,
     DragOverlay,
@@ -134,9 +141,9 @@ import { CARD_COLOR_ORDER, getCardColorKey } from '@/lib/cardColors';
 import { getManaValue } from '@/lib/manaCost';
 import type { Decklist } from '@/components/types/player';
 import {
-    defaultLiveTemplateState,
+    defaultLiveScoreboardState,
     loadLiveModeConfig,
-    loadLiveTemplateState,
+    loadLiveScoreboardState,
     type LiveMessage,
     type LivePlayerInfo,
     LIVE_PROJECT_KEY,
@@ -160,17 +167,31 @@ interface AnnotationState {
 }
 
 const CARD_DISPLAY_DROP_ID = (side: Side) => `card-display-${side}`;
-const HAND_DROP_ID = (side: Side) => `hand-${side}`;
-const annotationDropId = (annotationId: string, side: Side) => `annotation-${annotationId}-${side}`;
-const annotationSlug = (annotationId: string, side: Side) => `${annotationId}-${side}`;
+const isCardDisplayDrop = (overId: string | number, side: Side) =>
+    String(overId).startsWith(CARD_DISPLAY_DROP_ID(side));
+const isPlayDrop = (overId: string | number, side: Side) =>
+    String(overId) === `${CARD_DISPLAY_DROP_ID(side)}-play`;
 
-function parseAnnotationSlug(slug: string): { side: Side; annotationId: string } {
+// Play = show card then auto-clear after this many ms.
+const PLAY_DURATION_MS = 5000;
+const HAND_DROP_ID = (side: Side) => `hand-${side}`;
+const annotationDropId = (annotationId: string, side: Side) =>
+    `annotation-${annotationId}-${side}`;
+const annotationSlug = (annotationId: string, side: Side) =>
+    `${annotationId}-${side}`;
+
+function parseAnnotationSlug(slug: string): {
+    side: Side;
+    annotationId: string;
+} {
     const side: Side = slug.endsWith('-left') ? 'left' : 'right';
     return { side, annotationId: slug.slice(0, -(side.length + 1)) };
 }
 
 function humanizeFieldName(field: string): string {
-    return field.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
+    return field
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(/^./, (c) => c.toUpperCase());
 }
 
 interface SideState {
@@ -184,6 +205,8 @@ interface SideState {
     annotations: AnnotationState[];
     displayCard: LibraryCardInstance | null;
     displayCardFlipped: boolean;
+    // Epoch ms when a played card auto-clears; drives the countdown bar. null = no timer.
+    displayCardPlayUntil: number | null;
 }
 
 function makeId() {
@@ -205,6 +228,7 @@ function emptySide(side: Side): SideState {
         ],
         displayCard: null,
         displayCardFlipped: false,
+        displayCardPlayUntil: null,
     };
 }
 
@@ -218,8 +242,17 @@ function loadLiveProject(): Record<Side, SideState> | null {
         if (!raw) return null;
         const parsed = JSON.parse(raw) as Record<Side, Partial<SideState>>;
         return {
-            left: { ...emptySide('left'), ...parsed.left },
-            right: { ...emptySide('right'), ...parsed.right },
+            // Drop any stale play timer: the setTimeout isn't restored across reloads.
+            left: {
+                ...emptySide('left'),
+                ...parsed.left,
+                displayCardPlayUntil: null,
+            },
+            right: {
+                ...emptySide('right'),
+                ...parsed.right,
+                displayCardPlayUntil: null,
+            },
         };
     } catch {
         return null;
@@ -234,10 +267,20 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
     const { status } = useOracleCards();
     const sensors = useSensors(useSensor(PointerSensor));
     const [sides, setSides] = useState<Record<Side, SideState>>(
-        () => loadLiveProject() ?? { left: emptySide('left'), right: emptySide('right') },
+        () =>
+            loadLiveProject() ?? {
+                left: emptySide('left'),
+                right: emptySide('right'),
+            }
     );
     useEffect(() => {
         saveLiveProject(sides);
+    }, [sides]);
+    // Mirror of `sides` for reads inside deferred callbacks (e.g. the play timer),
+    // where the render closure would otherwise be stale.
+    const sidesRef = useRef(sides);
+    useEffect(() => {
+        sidesRef.current = sides;
     }, [sides]);
     const [activeId, setActiveId] = useState<string | null>(null);
     const [activeWidth, setActiveWidth] = useState<number | null>(null);
@@ -245,6 +288,12 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
 
     const [config] = useState(() => loadLiveModeConfig());
     const sendRef = useRef<(msg: LiveMessage) => void>(() => {});
+    const playTimersRef = useRef<
+        Record<Side, ReturnType<typeof setTimeout> | null>
+    >({
+        left: null,
+        right: null,
+    });
 
     const playerInfo = (side: Side): LivePlayerInfo => ({
         name: sides[side].name,
@@ -262,7 +311,11 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
                 type: 'live-state',
                 state: { left: sides.left.hand, right: sides.right.hand },
             });
-            const annotationIds = new Set([...sides.left.annotations, ...sides.right.annotations].map((a) => a.id));
+            const annotationIds = new Set(
+                [...sides.left.annotations, ...sides.right.annotations].map(
+                    (a) => a.id
+                )
+            );
             for (const annotationId of annotationIds) {
                 sendRef.current({
                     type: 'annotation-state',
@@ -273,42 +326,70 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
                         humanizeFieldName(annotationId),
                     state: {
                         left: findAnnotation('left', annotationId)?.cards ?? [],
-                        right: findAnnotation('right', annotationId)?.cards ?? [],
+                        right:
+                            findAnnotation('right', annotationId)?.cards ?? [],
                     },
                 });
             }
             sendRef.current({
                 type: 'card-display-state',
                 left: sides.left.displayCard
-                    ? { ...sides.left.displayCard, flipped: sides.left.displayCardFlipped }
+                    ? {
+                          ...sides.left.displayCard,
+                          flipped: sides.left.displayCardFlipped,
+                      }
                     : null,
                 right: sides.right.displayCard
-                    ? { ...sides.right.displayCard, flipped: sides.right.displayCardFlipped }
+                    ? {
+                          ...sides.right.displayCard,
+                          flipped: sides.right.displayCardFlipped,
+                      }
                     : null,
             });
-            sendRef.current({ type: 'template-state', template: loadLiveTemplateState() });
-            sendRef.current({ type: 'player-info-state', left: playerInfo('left'), right: playerInfo('right') });
+            sendRef.current({
+                type: 'scoreboard-state',
+                scoreboard: loadLiveScoreboardState(),
+            });
+            sendRef.current({
+                type: 'player-info-state',
+                left: playerInfo('left'),
+                right: playerInfo('right'),
+            });
         }
     };
 
-    const { send, status: socketStatus } = useLiveModeSocket(config?.websocketUrl ?? null, handleSocketMessage);
+    const { send, status: socketStatus } = useLiveModeSocket(
+        config?.websocketUrl ?? null,
+        handleSocketMessage
+    );
     useEffect(() => {
         sendRef.current = send;
     }, [send]);
 
-    // Push the current template as soon as control connects (session start),
+    // Push the current scoreboard as soon as control connects (session start),
     // rather than waiting for the overlay to ask via 'request-state' - a
     // persistent OBS Browser Source stays connected across sessions and never
     // sends that request on its own, so it would otherwise need a manual
-    // browser-source refresh to pick up a new/default template.
+    // browser-source refresh to pick up a new/default scoreboard.
     useEffect(() => {
-        if (socketStatus === 'open') sendRef.current({ type: 'template-state', template: loadLiveTemplateState() });
+        if (socketStatus === 'open')
+            sendRef.current({
+                type: 'scoreboard-state',
+                scoreboard: loadLiveScoreboardState(),
+            });
     }, [socketStatus]);
 
     useImperativeHandle(ref, () => ({
         resetOverlay: () => {
-            sendRef.current({ type: 'live-state', state: { left: [], right: [] } });
-            const annotationIds = new Set([...sides.left.annotations, ...sides.right.annotations].map((a) => a.id));
+            sendRef.current({
+                type: 'live-state',
+                state: { left: [], right: [] },
+            });
+            const annotationIds = new Set(
+                [...sides.left.annotations, ...sides.right.annotations].map(
+                    (a) => a.id
+                )
+            );
             for (const annotationId of annotationIds) {
                 sendRef.current({
                     type: 'annotation-state',
@@ -320,13 +401,29 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
                     state: { left: [], right: [] },
                 });
             }
-            sendRef.current({ type: 'card-display-state', left: null, right: null });
-            sendRef.current({ type: 'template-state', template: defaultLiveTemplateState() });
+            sendRef.current({
+                type: 'card-display-state',
+                left: null,
+                right: null,
+            });
+            sendRef.current({
+                type: 'scoreboard-state',
+                scoreboard: defaultLiveScoreboardState(),
+            });
             const freshInfo = (side: Side): LivePlayerInfo => {
                 const fresh = emptySide(side);
-                return { name: fresh.name, deckName: fresh.deckName, life: fresh.life, wins: fresh.wins };
+                return {
+                    name: fresh.name,
+                    deckName: fresh.deckName,
+                    life: fresh.life,
+                    wins: fresh.wins,
+                };
             };
-            sendRef.current({ type: 'player-info-state', left: freshInfo('left'), right: freshInfo('right') });
+            sendRef.current({
+                type: 'player-info-state',
+                left: freshInfo('left'),
+                right: freshInfo('right'),
+            });
         },
     }));
 
@@ -340,58 +437,107 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
         });
     };
 
-    const broadcastAnnotation = (annotationId: string, side: Side, cards: LibraryCardInstance[]) => {
+    const broadcastAnnotation = (
+        annotationId: string,
+        side: Side,
+        cards: LibraryCardInstance[]
+    ) => {
         const title =
             findAnnotation(side, annotationId)?.title ??
-            findAnnotation(side === 'left' ? 'right' : 'left', annotationId)?.title ??
+            findAnnotation(side === 'left' ? 'right' : 'left', annotationId)
+                ?.title ??
             humanizeFieldName(annotationId);
         sendRef.current({
             type: 'annotation-state',
             annotationId,
             title,
             state: {
-                left: side === 'left' ? cards : (findAnnotation('left', annotationId)?.cards ?? []),
-                right: side === 'right' ? cards : (findAnnotation('right', annotationId)?.cards ?? []),
+                left:
+                    side === 'left'
+                        ? cards
+                        : (findAnnotation('left', annotationId)?.cards ?? []),
+                right:
+                    side === 'right'
+                        ? cards
+                        : (findAnnotation('right', annotationId)?.cards ?? []),
             },
         });
     };
 
-    const setAnnotationCards = (side: Side, annotationId: string, cards: LibraryCardInstance[]) => {
-        setSides((prev) => ({
-            ...prev,
-            [side]: {
-                ...prev[side],
-                annotations: prev[side].annotations.map((a) => (a.id === annotationId ? { ...a, cards } : a)),
-            },
-        }));
-    };
-
-    const setAnnotationMeta = (side: Side, annotationId: string, title: string, description: string) => {
+    const setAnnotationCards = (
+        side: Side,
+        annotationId: string,
+        cards: LibraryCardInstance[]
+    ) => {
         setSides((prev) => ({
             ...prev,
             [side]: {
                 ...prev[side],
                 annotations: prev[side].annotations.map((a) =>
-                    a.id === annotationId ? { ...a, title, description: description || undefined } : a,
+                    a.id === annotationId ? { ...a, cards } : a
                 ),
             },
         }));
     };
 
-    const broadcastDisplayCard = (side: Side, card: LibraryCardInstance | null, flipped = false) => {
-        const toLive = (c: LibraryCardInstance | null, f: boolean) => (c ? { ...c, flipped: f } : null);
+    const setAnnotationMeta = (
+        side: Side,
+        annotationId: string,
+        title: string,
+        description: string
+    ) => {
+        setSides((prev) => ({
+            ...prev,
+            [side]: {
+                ...prev[side],
+                annotations: prev[side].annotations.map((a) =>
+                    a.id === annotationId
+                        ? { ...a, title, description: description || undefined }
+                        : a
+                ),
+            },
+        }));
+    };
+
+    const broadcastDisplayCard = (
+        side: Side,
+        card: LibraryCardInstance | null,
+        flipped = false
+    ) => {
+        const toLive = (c: LibraryCardInstance | null, f: boolean) =>
+            c ? { ...c, flipped: f } : null;
         sendRef.current({
             type: 'card-display-state',
-            left: side === 'left' ? toLive(card, flipped) : toLive(sides.left.displayCard, sides.left.displayCardFlipped),
-            right: side === 'right' ? toLive(card, flipped) : toLive(sides.right.displayCard, sides.right.displayCardFlipped),
+            left:
+                side === 'left'
+                    ? toLive(card, flipped)
+                    : toLive(
+                          sidesRef.current.left.displayCard,
+                          sidesRef.current.left.displayCardFlipped
+                      ),
+            right:
+                side === 'right'
+                    ? toLive(card, flipped)
+                    : toLive(
+                          sidesRef.current.right.displayCard,
+                          sidesRef.current.right.displayCardFlipped
+                      ),
         });
     };
 
     const activeCard = useMemo(() => {
         if (!activeId) return null;
         const [prefix, key, instanceId] = activeId.split(':');
-        if (prefix === 'lib') return sides[key as Side].library.find((c) => c.id === instanceId)?.card ?? null;
-        if (prefix === 'hand') return sides[key as Side].hand.find((c) => c.id === instanceId)?.card ?? null;
+        if (prefix === 'lib')
+            return (
+                sides[key as Side].library.find((c) => c.id === instanceId)
+                    ?.card ?? null
+            );
+        if (prefix === 'hand')
+            return (
+                sides[key as Side].hand.find((c) => c.id === instanceId)
+                    ?.card ?? null
+            );
         if (prefix === 'annotation') {
             const { side, annotationId } = parseAnnotationSlug(key);
             return (
@@ -427,7 +573,9 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
             library.push({ id: makeId(), card: oracleCard });
         }
         library.sort((a, b) => {
-            const colorDiff = CARD_COLOR_ORDER[getCardColorKey(a.card.colors)] - CARD_COLOR_ORDER[getCardColorKey(b.card.colors)];
+            const colorDiff =
+                CARD_COLOR_ORDER[getCardColorKey(a.card.colors)] -
+                CARD_COLOR_ORDER[getCardColorKey(b.card.colors)];
             if (colorDiff !== 0) return colorDiff;
             // Cards with a mana cost sort before cards without one (e.g. lands),
             // so zero-cost artifacts don't intermix with lands and colorless
@@ -435,9 +583,14 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
             const aHasCost = !!a.card.mana_cost;
             const bHasCost = !!b.card.mana_cost;
             if (aHasCost !== bHasCost) return aHasCost ? -1 : 1;
-            return getManaValue(a.card.mana_cost) - getManaValue(b.card.mana_cost);
+            return (
+                getManaValue(a.card.mana_cost) - getManaValue(b.card.mana_cost)
+            );
         });
-        setSides((prev) => ({ ...prev, [side]: { ...prev[side], decklist, library, hand: [] } }));
+        setSides((prev) => ({
+            ...prev,
+            [side]: { ...prev[side], decklist, library, hand: [] },
+        }));
     };
 
     const handleDragEnd = (e: DragEndEvent) => {
@@ -451,19 +604,41 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
                 const s = key as Side;
                 const entry = sides[s].library.find((c) => c.id === instanceId);
                 if (entry) {
-                    if (over.id === CARD_DISPLAY_DROP_ID(s)) {
-                        setSides((prev) => ({ ...prev, [s]: { ...prev[s], displayCard: entry, displayCardFlipped: false } }));
+                    if (isCardDisplayDrop(over.id, s)) {
+                        setSides((prev) => ({
+                            ...prev,
+                            [s]: {
+                                ...prev[s],
+                                displayCard: entry,
+                                displayCardFlipped: false,
+                                displayCardPlayUntil: null,
+                            },
+                        }));
                         broadcastDisplayCard(s, entry);
+                        // Library is a persistent source, so play/display differ only by the timer.
+                        if (isPlayDrop(over.id, s)) startPlayTimer(s);
+                        else cancelPlayTimer(s);
                         success = true;
                     } else if (over.id === HAND_DROP_ID(s)) {
-                        const newHand = [...sides[s].hand, { id: makeId(), card: entry.card }];
-                        setSides((prev) => ({ ...prev, [s]: { ...prev[s], hand: newHand } }));
+                        const newHand = [
+                            ...sides[s].hand,
+                            { id: makeId(), card: entry.card },
+                        ];
+                        setSides((prev) => ({
+                            ...prev,
+                            [s]: { ...prev[s], hand: newHand },
+                        }));
                         broadcastHand(s, newHand);
                         success = true;
                     } else {
                         for (const annotation of sides[s].annotations) {
-                            if (over.id === annotationDropId(annotation.id, s)) {
-                                const newCards = [...annotation.cards, { id: makeId(), card: entry.card }];
+                            if (
+                                over.id === annotationDropId(annotation.id, s)
+                            ) {
+                                const newCards = [
+                                    ...annotation.cards,
+                                    { id: makeId(), card: entry.card },
+                                ];
                                 setAnnotationCards(s, annotation.id, newCards);
                                 broadcastAnnotation(annotation.id, s, newCards);
                                 success = true;
@@ -473,50 +648,108 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
                     }
                 }
             } else if (prefix === 'hand' || prefix === 'annotation') {
-                const side: Side = prefix === 'hand' ? (key as Side) : parseAnnotationSlug(key).side;
-                const sourceAnnotationId = prefix === 'annotation' ? parseAnnotationSlug(key).annotationId : null;
+                const side: Side =
+                    prefix === 'hand'
+                        ? (key as Side)
+                        : parseAnnotationSlug(key).side;
+                const sourceAnnotationId =
+                    prefix === 'annotation'
+                        ? parseAnnotationSlug(key).annotationId
+                        : null;
                 const entry =
                     prefix === 'hand'
                         ? sides[side].hand.find((c) => c.id === instanceId)
-                        : findAnnotation(side, sourceAnnotationId!)?.cards.find((c) => c.id === instanceId);
+                        : findAnnotation(side, sourceAnnotationId!)?.cards.find(
+                              (c) => c.id === instanceId
+                          );
 
                 if (entry) {
                     const removeFromSource = () => {
                         if (prefix === 'hand') {
-                            const newHand = sides[side].hand.filter((c) => c.id !== instanceId);
-                            setSides((prev) => ({ ...prev, [side]: { ...prev[side], hand: newHand } }));
+                            const newHand = sides[side].hand.filter(
+                                (c) => c.id !== instanceId
+                            );
+                            setSides((prev) => ({
+                                ...prev,
+                                [side]: { ...prev[side], hand: newHand },
+                            }));
                             broadcastHand(side, newHand);
                         } else {
-                            const newCards = findAnnotation(side, sourceAnnotationId!)!.cards.filter(
-                                (c) => c.id !== instanceId,
+                            const newCards = findAnnotation(
+                                side,
+                                sourceAnnotationId!
+                            )!.cards.filter((c) => c.id !== instanceId);
+                            setAnnotationCards(
+                                side,
+                                sourceAnnotationId!,
+                                newCards
                             );
-                            setAnnotationCards(side, sourceAnnotationId!, newCards);
-                            broadcastAnnotation(sourceAnnotationId!, side, newCards);
+                            broadcastAnnotation(
+                                sourceAnnotationId!,
+                                side,
+                                newCards
+                            );
                         }
                     };
 
-                    if (over.id === CARD_DISPLAY_DROP_ID(side)) {
-                        setSides((prev) => ({ ...prev, [side]: { ...prev[side], displayCard: entry, displayCardFlipped: false } }));
+                    if (isCardDisplayDrop(over.id, side)) {
+                        setSides((prev) => ({
+                            ...prev,
+                            [side]: {
+                                ...prev[side],
+                                displayCard: entry,
+                                displayCardFlipped: false,
+                                displayCardPlayUntil: null,
+                            },
+                        }));
                         broadcastDisplayCard(side, entry);
+                        // Play consumes the card from its origin (hand/annotation) and
+                        // auto-clears after the timer; Display just shows it, untouched.
+                        // Must run after the setSides above so startPlayTimer's
+                        // displayCardPlayUntil isn't overwritten back to null.
+                        if (isPlayDrop(over.id, side)) {
+                            removeFromSource();
+                            startPlayTimer(side);
+                        } else {
+                            cancelPlayTimer(side);
+                        }
                         success = true;
                     } else if (over.id === `lib-${side}`) {
                         removeFromSource();
                         success = true;
-                    } else if (over.id === HAND_DROP_ID(side) && prefix !== 'hand') {
+                    } else if (
+                        over.id === HAND_DROP_ID(side) &&
+                        prefix !== 'hand'
+                    ) {
                         removeFromSource();
                         const newHand = [...sides[side].hand, entry];
-                        setSides((prev) => ({ ...prev, [side]: { ...prev[side], hand: newHand } }));
+                        setSides((prev) => ({
+                            ...prev,
+                            [side]: { ...prev[side], hand: newHand },
+                        }));
                         broadcastHand(side, newHand);
                         success = true;
                     } else {
                         for (const annotation of sides[side].annotations) {
-                            if (annotation.id === sourceAnnotationId || over.id !== annotationDropId(annotation.id, side)) {
+                            if (
+                                annotation.id === sourceAnnotationId ||
+                                over.id !==
+                                    annotationDropId(annotation.id, side)
+                            ) {
                                 continue;
                             }
                             removeFromSource();
                             const newTargetCards = [...annotation.cards, entry];
-                            setAnnotationCards(side, annotation.id, newTargetCards);
-                            broadcastAnnotation(annotation.id, side, newTargetCards);
+                            setAnnotationCards(
+                                side,
+                                annotation.id,
+                                newTargetCards
+                            );
+                            broadcastAnnotation(
+                                annotation.id,
+                                side,
+                                newTargetCards
+                            );
                             success = true;
                             break;
                         }
@@ -540,20 +773,34 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
         broadcastAnnotation(annotationId, side, []);
     };
 
-    const handleCreateAnnotation = (side: Side, title: string, description: string) => {
+    const handleCreateAnnotation = (
+        side: Side,
+        title: string,
+        description: string
+    ) => {
         setSides((prev) => ({
             ...prev,
             [side]: {
                 ...prev[side],
                 annotations: [
                     ...prev[side].annotations,
-                    { id: makeId(), title, description: description || undefined, cards: [] },
+                    {
+                        id: makeId(),
+                        title,
+                        description: description || undefined,
+                        cards: [],
+                    },
                 ],
             },
         }));
     };
 
-    const handleUpdateAnnotation = (side: Side, annotationId: string, title: string, description: string) => {
+    const handleUpdateAnnotation = (
+        side: Side,
+        annotationId: string,
+        title: string,
+        description: string
+    ) => {
         setAnnotationMeta(side, annotationId, title, description);
     };
 
@@ -563,28 +810,81 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
             ...prev,
             [side]: {
                 ...prev[side],
-                annotations: prev[side].annotations.filter((a) => a.id !== annotationId),
+                annotations: prev[side].annotations.filter(
+                    (a) => a.id !== annotationId
+                ),
             },
         }));
     };
 
+    const cancelPlayTimer = (side: Side) => {
+        if (playTimersRef.current[side] != null) {
+            clearTimeout(playTimersRef.current[side]!);
+            playTimersRef.current[side] = null;
+        }
+    };
+
     const handleClearDisplayCard = (side: Side) => {
-        setSides((prev) => ({ ...prev, [side]: { ...prev[side], displayCard: null, displayCardFlipped: false } }));
+        cancelPlayTimer(side);
+        setSides((prev) => ({
+            ...prev,
+            [side]: {
+                ...prev[side],
+                displayCard: null,
+                displayCardFlipped: false,
+                displayCardPlayUntil: null,
+            },
+        }));
         broadcastDisplayCard(side, null);
     };
 
+    const startPlayTimer = (side: Side) => {
+        cancelPlayTimer(side);
+        setSides((prev) => ({
+            ...prev,
+            [side]: {
+                ...prev[side],
+                displayCardPlayUntil: Date.now() + PLAY_DURATION_MS,
+            },
+        }));
+        playTimersRef.current[side] = setTimeout(() => {
+            playTimersRef.current[side] = null;
+            handleClearDisplayCard(side);
+        }, PLAY_DURATION_MS);
+    };
+
+    // Cancel pending play timers on unmount.
+    useEffect(
+        () => () => {
+            cancelPlayTimer('left');
+            cancelPlayTimer('right');
+        },
+        []
+    );
+
     const handleFlipDisplayCard = (side: Side) => {
         const flipped = !sides[side].displayCardFlipped;
-        setSides((prev) => ({ ...prev, [side]: { ...prev[side], displayCardFlipped: flipped } }));
+        setSides((prev) => ({
+            ...prev,
+            [side]: { ...prev[side], displayCardFlipped: flipped },
+        }));
         broadcastDisplayCard(side, sides[side].displayCard, flipped);
     };
 
-    const handleUpdateSide = (side: Side, patch: Partial<Pick<SideState, 'name' | 'deckName' | 'life' | 'wins'>>) => {
+    const handleUpdateSide = (
+        side: Side,
+        patch: Partial<Pick<SideState, 'name' | 'deckName' | 'life' | 'wins'>>
+    ) => {
         setSides((prev) => {
             const next = { ...prev, [side]: { ...prev[side], ...patch } };
             sendRef.current({
                 type: 'player-info-state',
-                left: { name: next.left.name, deckName: next.left.deckName, life: next.left.life, wins: next.left.wins },
+                left: {
+                    name: next.left.name,
+                    deckName: next.left.deckName,
+                    life: next.left.life,
+                    wins: next.left.wins,
+                },
                 right: {
                     name: next.right.name,
                     deckName: next.right.deckName,
@@ -615,10 +915,18 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
                         deckName={sides.left.deckName}
                         life={sides.left.life}
                         wins={sides.left.wins}
-                        onChangeName={(name) => handleUpdateSide('left', { name })}
-                        onChangeDeckName={(deckName) => handleUpdateSide('left', { deckName })}
-                        onLifeChange={(life) => handleUpdateSide('left', { life })}
-                        onWinsChange={(wins) => handleUpdateSide('left', { wins })}
+                        onChangeName={(name) =>
+                            handleUpdateSide('left', { name })
+                        }
+                        onChangeDeckName={(deckName) =>
+                            handleUpdateSide('left', { deckName })
+                        }
+                        onLifeChange={(life) =>
+                            handleUpdateSide('left', { life })
+                        }
+                        onWinsChange={(wins) =>
+                            handleUpdateSide('left', { wins })
+                        }
                     />
                 </div>
                 <div className="col-span-3">
@@ -627,10 +935,18 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
                         deckName={sides.right.deckName}
                         life={sides.right.life}
                         wins={sides.right.wins}
-                        onChangeName={(name) => handleUpdateSide('right', { name })}
-                        onChangeDeckName={(deckName) => handleUpdateSide('right', { deckName })}
-                        onLifeChange={(life) => handleUpdateSide('right', { life })}
-                        onWinsChange={(wins) => handleUpdateSide('right', { wins })}
+                        onChangeName={(name) =>
+                            handleUpdateSide('right', { name })
+                        }
+                        onChangeDeckName={(deckName) =>
+                            handleUpdateSide('right', { deckName })
+                        }
+                        onLifeChange={(life) =>
+                            handleUpdateSide('right', { life })
+                        }
+                        onWinsChange={(wins) =>
+                            handleUpdateSide('right', { wins })
+                        }
                         reverse
                     />
                 </div>
@@ -644,11 +960,17 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
                     />
                 </div>
                 <div className="flex flex-col gap-2 min-h-0">
-                    <PlayerHand side="left" cards={sides.left.hand} onClear={() => handleClearHand('left')} />
+                    <PlayerHand
+                        side="left"
+                        cards={sides.left.hand}
+                        onClear={() => handleClearHand('left')}
+                    />
                     <CardDisplay
                         side="left"
                         card={sides.left.displayCard}
                         flipped={sides.left.displayCardFlipped}
+                        playUntil={sides.left.displayCardPlayUntil}
+                        playDuration={PLAY_DURATION_MS}
                         disabled={activeSide !== null && activeSide !== 'left'}
                         onClear={() => handleClearDisplayCard('left')}
                         onFlip={() => handleFlipDisplayCard('left')}
@@ -663,15 +985,30 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
                                 title={a.title}
                                 description={a.description}
                                 cards={a.cards}
-                                onClear={() => handleClearAnnotation('left', a.id)}
-                                onSave={(title, description) =>
-                                    handleUpdateAnnotation('left', a.id, title, description)
+                                onClear={() =>
+                                    handleClearAnnotation('left', a.id)
                                 }
-                                onDelete={() => handleDeleteAnnotation('left', a.id)}
+                                onSave={(title, description) =>
+                                    handleUpdateAnnotation(
+                                        'left',
+                                        a.id,
+                                        title,
+                                        description
+                                    )
+                                }
+                                onDelete={() =>
+                                    handleDeleteAnnotation('left', a.id)
+                                }
                             />
                         ))}
                         <CreateAnnotationControl
-                            onCreate={(title, description) => handleCreateAnnotation('left', title, description)}
+                            onCreate={(title, description) =>
+                                handleCreateAnnotation(
+                                    'left',
+                                    title,
+                                    description
+                                )
+                            }
                         />
                     </div>
                 </div>
@@ -684,24 +1021,45 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
                                 title={a.title}
                                 description={a.description}
                                 cards={a.cards}
-                                onClear={() => handleClearAnnotation('right', a.id)}
-                                onSave={(title, description) =>
-                                    handleUpdateAnnotation('right', a.id, title, description)
+                                onClear={() =>
+                                    handleClearAnnotation('right', a.id)
                                 }
-                                onDelete={() => handleDeleteAnnotation('right', a.id)}
+                                onSave={(title, description) =>
+                                    handleUpdateAnnotation(
+                                        'right',
+                                        a.id,
+                                        title,
+                                        description
+                                    )
+                                }
+                                onDelete={() =>
+                                    handleDeleteAnnotation('right', a.id)
+                                }
                             />
                         ))}
                         <CreateAnnotationControl
-                            onCreate={(title, description) => handleCreateAnnotation('right', title, description)}
+                            onCreate={(title, description) =>
+                                handleCreateAnnotation(
+                                    'right',
+                                    title,
+                                    description
+                                )
+                            }
                         />
                     </div>
                 </div>
                 <div className="flex flex-col gap-2 min-h-0">
-                    <PlayerHand side="right" cards={sides.right.hand} onClear={() => handleClearHand('right')} />
+                    <PlayerHand
+                        side="right"
+                        cards={sides.right.hand}
+                        onClear={() => handleClearHand('right')}
+                    />
                     <CardDisplay
                         side="right"
                         card={sides.right.displayCard}
                         flipped={sides.right.displayCardFlipped}
+                        playUntil={sides.right.displayCardPlayUntil}
+                        playDuration={PLAY_DURATION_MS}
                         disabled={activeSide !== null && activeSide !== 'right'}
                         onClear={() => handleClearDisplayCard('right')}
                         onFlip={() => handleFlipDisplayCard('right')}

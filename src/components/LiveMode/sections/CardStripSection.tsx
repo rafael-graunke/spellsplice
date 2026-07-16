@@ -6,7 +6,7 @@ interface Props {
     onCardStripWidthChange: (value: number) => void;
 }
 
-function OverlaySection({ cardStripWidth, onCardStripWidthChange }: Props) {
+function CardStripSection({ cardStripWidth, onCardStripWidthChange }: Props) {
     const [text, setText] = useState(() => String(cardStripWidth));
 
     const clamp = (value: number) => Math.max(100, Math.min(1000, value));
@@ -21,7 +21,8 @@ function OverlaySection({ cardStripWidth, onCardStripWidthChange }: Props) {
 
     const handleBlur = () => {
         const num = Number(text);
-        const committed = text !== '' && Number.isFinite(num) ? clamp(num) : cardStripWidth;
+        const committed =
+            text !== '' && Number.isFinite(num) ? clamp(num) : cardStripWidth;
         setText(String(committed));
         onCardStripWidthChange(committed);
     };
@@ -29,10 +30,15 @@ function OverlaySection({ cardStripWidth, onCardStripWidthChange }: Props) {
     return (
         <div className="flex flex-col gap-6">
             <div>
-                <h2 className="text-base font-medium mb-4">Overlay Appearance</h2>
+                <h2 className="text-base font-medium mb-4">Card Strip</h2>
                 <div className="flex flex-col gap-4">
                     <div className="flex flex-col gap-1.5">
-                        <label htmlFor="card-strip-width" className="text-sm font-medium">Card strip width (px)</label>
+                        <label
+                            htmlFor="card-strip-width"
+                            className="text-sm font-medium"
+                        >
+                            Card strip width (px)
+                        </label>
                         <Input
                             id="card-strip-width"
                             type="number"
@@ -44,7 +50,8 @@ function OverlaySection({ cardStripWidth, onCardStripWidthChange }: Props) {
                             className="w-28"
                         />
                         <p className="text-xs text-muted-foreground">
-                            Updates the live overlay immediately (sent over the websocket).
+                            Updates the live overlay immediately (sent over the
+                            websocket).
                         </p>
                     </div>
                 </div>
@@ -53,4 +60,4 @@ function OverlaySection({ cardStripWidth, onCardStripWidthChange }: Props) {
     );
 }
 
-export default OverlaySection;
+export default CardStripSection;

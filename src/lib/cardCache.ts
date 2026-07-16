@@ -19,7 +19,9 @@ export function subscribeImageLoad(cb: () => void): () => void {
 }
 
 function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
-    return fetch(url, { mode: 'cors', cache: 'reload' })
+    // force-cache: Scryfall image URLs are content-addressed/immutable, so a
+    // cached blob is always valid. Avoids refetching every card on each load.
+    return fetch(url, { mode: 'cors', cache: 'force-cache' })
         .then((r) => r.blob())
         .then(
             (blob) =>
@@ -130,6 +132,17 @@ export function storePrinting(
     try { localStorage.setItem(CARD_CACHE_KEY, JSON.stringify(cardDataCache)); } catch {}
 }
 
+// Load images on demand. If URLs are already cached (e.g. restored from
+// localStorage) load blobs directly; otherwise fetch card data from the API.
+function triggerImageLoad(cardName: string, setCode: string, edition?: string): void {
+    const setData = cardDataCache[cardName]?.[setCode];
+    if (setData && Object.keys(setData.image_uris).length) {
+        loadImagesForSet(cardName, setCode, setData.image_uris);
+    } else {
+        ensureCardData(cardName, edition);
+    }
+}
+
 export function ensureImage(
     cardName: string,
     edition?: string,
@@ -137,7 +150,7 @@ export function ensureImage(
     const setCode = edition ?? '*';
     const img = cardImageCache[cardName]?.[setCode]?.['normal'];
     if (img !== undefined) return img;
-    ensureCardData(cardName, edition);
+    triggerImageLoad(cardName, setCode, edition);
     return 'loading';
 }
 
@@ -150,7 +163,7 @@ export function ensureBackImage(
     if (img !== undefined) return img;
     const setData = cardDataCache[cardName]?.[setCode];
     if (setData && !isMultiFaceLayout(setData.layout)) return null;
-    ensureCardData(cardName, edition);
+    triggerImageLoad(cardName, setCode, edition);
     return 'loading';
 }
 
@@ -168,7 +181,7 @@ export function ensureBorderCrop(
         if (setData && setData.layout === undefined) ensureCardData(cardName, edition);
         return { img, frame };
     }
-    ensureCardData(cardName, edition);
+    triggerImageLoad(cardName, setCode, edition);
     return { img: 'loading', frame: null };
 }
 
@@ -210,11 +223,10 @@ export function serializeCardDataCache(): Record<string, Record<string, SetData>
 }
 
 export function restoreCardDataCache(data: Record<string, Record<string, SetData>>): void {
+    // Only restore URL/metadata. Blobs load lazily via ensureImage/ensureBorderCrop
+    // when a card is actually rendered, not eagerly for every card ever cached.
     for (const [name, sets] of Object.entries(data)) {
         cardDataCache[name] = sets;
-        for (const [setCode, setData] of Object.entries(sets)) {
-            loadImagesForSet(name, setCode, setData.image_uris);
-        }
     }
     try { localStorage.setItem(CARD_CACHE_KEY, JSON.stringify(cardDataCache)); } catch {}
 }

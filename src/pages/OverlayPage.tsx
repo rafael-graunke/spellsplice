@@ -103,6 +103,12 @@ function OverlayPage() {
         left: DisplayAnim | null;
         right: DisplayAnim | null;
     }>({ left: null, right: null });
+    // Pending enter to start once the current exit finishes: a replace slides
+    // the old card out, then queues the new card's slide-in.
+    const displayAnimQueueRef = useRef<{
+        left: DisplayAnim | null;
+        right: DisplayAnim | null;
+    }>({ left: null, right: null });
     const rafRef = useRef<number | null>(null);
     // Overlay content is rasterized on this 2D offscreen canvas, then presented
     // to the visible WebGL canvas via OverlayPresenter (GPU). Falls back to a
@@ -293,16 +299,29 @@ function OverlayPage() {
             if (now - a.start >= ANNOTATION_ANIM_DURATION) annMap.delete(id);
         }
         const disp = displayAnimRef.current;
+        const queue = displayAnimQueueRef.current;
         for (const side of ['left', 'right'] as const) {
             const a = disp[side];
-            if (a && now - a.start >= a.anim.duration) disp[side] = null;
+            if (a && now - a.start >= a.anim.duration) {
+                // Promote a queued enter (replace: exit done -> slide new in)
+                // in the same frame so the static new card never flashes.
+                const q = queue[side];
+                if (q) {
+                    disp[side] = { ...q, start: now };
+                    queue[side] = null;
+                } else {
+                    disp[side] = null;
+                }
+            }
         }
         redrawRef.current();
         const active =
             map.size > 0 ||
             annMap.size > 0 ||
             disp.left !== null ||
-            disp.right !== null;
+            disp.right !== null ||
+            queue.left !== null ||
+            queue.right !== null;
         rafRef.current = active ? requestAnimationFrame(tick) : null;
     }, []);
 
@@ -402,10 +421,25 @@ function OverlayPage() {
                     const p = prev[side];
                     const n = next[side];
                     const cfg = cardDisplayConfigRef.current[side].animation;
-                    // appear or swap -> enter the new card; clear -> exit the
-                    // old one (kept in the anim so it can draw while leaving).
-                    // Same card (e.g. a flip) leaves any running anim alone.
-                    if (n && (!p || p.id !== n.id)) {
+                    // appear -> enter the new card; clear -> exit the old one
+                    // (kept in the anim so it can draw while leaving); replace
+                    // -> exit the old card, then queue the new card's enter so
+                    // it slides in only after the old one has slid out. Same
+                    // card (e.g. a flip) leaves any running anim alone.
+                    if (p && n && p.id !== n.id) {
+                        displayAnimRef.current[side] = {
+                            phase: 'exit',
+                            start: performance.now(),
+                            card: p,
+                            anim: cfg,
+                        };
+                        displayAnimQueueRef.current[side] = {
+                            phase: 'enter',
+                            start: performance.now(),
+                            card: n,
+                            anim: cfg,
+                        };
+                    } else if (n && !p) {
                         displayAnimRef.current[side] = {
                             phase: 'enter',
                             start: performance.now(),

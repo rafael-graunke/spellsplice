@@ -556,7 +556,7 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
     const handleImport = (side: Side, decklist: Decklist) => {
         const seen = new Set<string>();
         const library: LibraryCardInstance[] = [];
-        for (const { card } of decklist.maindeck) {
+        for (const { card } of [...decklist.maindeck, ...(decklist.sideboard ?? [])]) {
             if (seen.has(card.name)) continue;
             const oracleCard = findOracleCard(card.name);
             if (!oracleCard) continue;

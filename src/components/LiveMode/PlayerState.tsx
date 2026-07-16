@@ -75,11 +75,10 @@ export function PlayerState({
                         />
                     </div>
                 ) : (
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex flex-col items-start min-w-0">
                         <p className="text-md font-medium truncate">
                             {name || 'Player name'}
                         </p>
-                        <span className="text-muted-foreground">•</span>
                         <p className="text-sm font-medium text-muted-foreground truncate">
                             {deckName || 'Deck name'}
                         </p>
@@ -101,13 +100,13 @@ export function PlayerState({
                     reverse ? 'flex-row-reverse' : 'flex-row'
                 )}
             >
-                <div className="flex items-center justify-center gap-4 p-2 pl-4 rounded-md border bg-black/20">
+                <div className="flex items-center justify-center gap-3 p-1 pl-2 rounded-md border bg-black/20">
                     <div className="flex items-center justify-start gap-2">
                         <Heart className="w-4 h-4" />
                         <p className="text-sm text-muted-foreground tabular-nums">Life</p>
                     </div>
                     <Separator orientation="vertical" className="w-full"/>
-                    <div className="flex items-center justify-center gap-2">
+                    <div className="flex items-center justify-center gap-1">
                         <Button
                             className="cursor-pointer"
                             variant="ghost"
@@ -139,7 +138,7 @@ export function PlayerState({
                         </Button>
                     </div>
                 </div>
-                <div className="flex items-center justify-center gap-4 p-2 pl-4 rounded-md border bg-black/20">
+                <div className="flex items-center justify-center gap-3 p-1 pl-2 rounded-md border bg-black/20">
                     <div className="flex items-center w-full justify-start gap-2">
                         <Trophy className="w-4 h-4" />
                         <p className="text-sm text-muted-foreground tabular-nums">Wins</p>

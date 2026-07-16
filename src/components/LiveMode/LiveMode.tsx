@@ -1,122 +1,3 @@
-/*
-import { useState } from 'react';
-import {
-    DndContext,
-    closestCenter,
-    PointerSensor,
-    useSensor,
-    useSensors,
-    type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-    SortableContext,
-    verticalListSortingStrategy,
-    arrayMove,
-} from '@dnd-kit/sortable';
-import { useOracleCards } from '@/hooks/useOracleCards';
-import type { OracleCard } from '@/lib/oracleCards';
-import { DraggableCard } from './DraggableCard';
-import {
-    Combobox,
-    ComboboxInput,
-    ComboboxContent,
-    ComboboxList,
-    ComboboxItem,
-} from '@/components/ui/combobox';
-
-const STATUS_LABEL: Record<string, string> = {
-    idle: 'Loading card database...',
-    checking: 'Checking card database...',
-    downloading: 'Downloading card database...',
-    storing: 'Storing card database...',
-    error: 'Failed to load card database',
-};
-
-function makeId() {
-    return Math.random().toString(36).slice(2);
-}
-
-function LiveMode() {
-    const { status, search } = useOracleCards();
-    const [query, setQuery] = useState('');
-    const [comboKey, setComboKey] = useState(0);
-    const [cards, setCards] = useState<Array<{ id: string; card: OracleCard }>>([]);
-    const sensors = useSensors(useSensor(PointerSensor));
-
-    const results = status === 'ready' ? search(query) : [];
-
-    const handleDragEnd = (e: DragEndEvent) => {
-        const { active, over } = e;
-        if (!over || active.id === over.id) return;
-        setCards((prev) => {
-            const from = prev.findIndex((c) => c.id === active.id);
-            const to = prev.findIndex((c) => c.id === over.id);
-            if (from === -1 || to === -1) return prev;
-            return arrayMove(prev, from, to);
-        });
-    };
-
-    return (
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8">
-            {status !== 'ready' && (
-                <p className="text-sm text-muted-foreground">{STATUS_LABEL[status]}</p>
-            )}
-
-            <Combobox<OracleCard, false>
-                key={comboKey}
-                items={results}
-                itemToStringLabel={(card) => card.name}
-                filter={() => true}
-                autoHighlight="always"
-                onInputValueChange={(val, details) => {
-                    if (details.reason === 'input-change') setQuery(val);
-                }}
-                onValueChange={(card) => {
-                    if (!card) return;
-                    setCards((prev) => [...prev, { id: makeId(), card }]);
-                    setQuery('');
-                    setComboKey((k) => k + 1);
-                }}
-            >
-                <ComboboxInput
-                    placeholder="Search cards…"
-                    className="h-8 w-72"
-                    disabled={status !== 'ready'}
-                />
-                <ComboboxContent>
-                    <ComboboxList>
-                        {results.map((card) => (
-                            <ComboboxItem key={card.name} value={card}>
-                                {card.name}
-                                {card.mana_cost && (
-                                    <span className="ml-auto pl-2 text-xs text-muted-foreground">
-                                        {card.mana_cost}
-                                    </span>
-                                )}
-                            </ComboboxItem>
-                        ))}
-                    </ComboboxList>
-                </ComboboxContent>
-            </Combobox>
-
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-                    <div className="flex w-72 flex-col gap-1 rounded-xl border p-2">
-                        {cards.length === 0 ? (
-                            <p className="text-sm text-muted-foreground text-center py-2">No cards in hand</p>
-                        ) : (
-                            cards.map(({ id, card }) => (
-                                <DraggableCard key={id} id={id} card={card} />
-                            ))
-                        )}
-                    </div>
-                </SortableContext>
-            </DndContext>
-        </div>
-    );
-}
-*/
-
 import {
     forwardRef,
     useEffect,
@@ -154,6 +35,7 @@ import { useLiveModeSocket } from '@/hooks/useLiveModeSocket';
 import { LibraryPanel, type LibraryCardInstance } from './LibraryPanel';
 import { PlayerHand } from './PlayerHand';
 import { PlayerState } from './PlayerState';
+import { MatchControls } from './MatchControls';
 import { Annotation } from './Annotation';
 import { CreateAnnotationControl } from './CreateAnnotationControl';
 import { CardChip } from './CardChip';
@@ -1005,6 +887,63 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
         });
     };
 
+    // Reset the match between games: clear both hands, all annotation cards, the
+    // played card, and reset life to 20. Wins, decklists, libraries, and player
+    // names/deck names are kept. Emits removal deltas (so /overlay animates the
+    // clear) then authoritative snapshots.
+    const handleResetMatch = () => {
+        cancelPlayTimer('left');
+        cancelPlayTimer('right');
+
+        for (const side of ['left', 'right'] as Side[]) {
+            emitHandDeltas(side, sides[side].hand, []);
+            for (const a of sides[side].annotations) {
+                emitAnnotationDeltas(side, a.id, a.cards, []);
+            }
+        }
+
+        sendRef.current({ type: 'live-state', state: { left: [], right: [] } });
+        const annotationIds = new Set([
+            ...sides.left.annotations.map((a) => a.id),
+            ...sides.right.annotations.map((a) => a.id),
+        ]);
+        for (const annotationId of annotationIds) {
+            sendRef.current({
+                type: 'annotation-state',
+                annotationId,
+                title:
+                    findAnnotation('left', annotationId)?.title ??
+                    findAnnotation('right', annotationId)?.title ??
+                    humanizeFieldName(annotationId),
+                state: { left: [], right: [] },
+            });
+        }
+        sendRef.current({
+            type: 'card-display-state',
+            left: null,
+            right: null,
+        });
+        sendRef.current({
+            type: 'player-info-state',
+            left: { ...playerInfo('left'), life: 20 },
+            right: { ...playerInfo('right'), life: 20 },
+        });
+
+        const reset = (side: Side): SideState => ({
+            ...sides[side],
+            life: 20,
+            hand: [],
+            annotations: sides[side].annotations.map((a) => ({
+                ...a,
+                cards: [],
+            })),
+            displayCard: null,
+            displayCardFlipped: false,
+            displayCardPlayUntil: null,
+        });
+        setSides({ left: reset('left'), right: reset('right') });
+    };
+
     return (
         <DndContext
             sensors={sensors}
@@ -1018,7 +957,7 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
             }}
         >
             <div className="flex-1 min-h-0 grid grid-cols-6 grid-rows-[auto_1fr] p-2 gap-2 overflow-hidden">
-                <div className="col-span-3">
+                <div className="col-span-6 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
                     <PlayerState
                         name={sides.left.name}
                         deckName={sides.left.deckName}
@@ -1037,8 +976,7 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                             handleUpdateSide('left', { wins })
                         }
                     />
-                </div>
-                <div className="col-span-3">
+                    <MatchControls onResetMatch={handleResetMatch} />
                     <PlayerState
                         name={sides.right.name}
                         deckName={sides.right.deckName}

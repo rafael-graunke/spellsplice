@@ -9,15 +9,22 @@ import {
     loadLiveScoreboardState,
     saveLiveScoreboardState,
     DEFAULT_CARD_STRIP_WIDTH,
+    DEFAULT_CARD_DISPLAY_DURATION_MS,
     type LiveScoreboardState,
 } from '@/lib/liveMode';
 import { cn } from '@/lib/utils';
 import CardDatabaseSection from './sections/CardDatabaseSection';
 import ConnectionSection from './sections/ConnectionSection';
 import CardStripSection from './sections/CardStripSection';
+import CardDisplaySection from './sections/CardDisplaySection';
 import ScoreboardSection from './sections/ScoreboardSection';
 
-type Section = 'connection' | 'scoreboard' | 'card-strip' | 'card-database';
+export type Section =
+    | 'connection'
+    | 'scoreboard'
+    | 'card-strip'
+    | 'card-display'
+    | 'card-database';
 
 type NavLeaf = { id: Section; label: string };
 type NavNode = NavLeaf | { label: string; children: NavLeaf[] };
@@ -29,6 +36,7 @@ const NAV_ITEMS: NavNode[] = [
         children: [
             { id: 'scoreboard', label: 'Scoreboard' },
             { id: 'card-strip', label: 'Card Strip' },
+            { id: 'card-display', label: 'Card Display' },
         ],
     },
     { id: 'card-database', label: 'Card Database' },
@@ -38,19 +46,38 @@ interface LiveModeDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onStart: () => void;
+    // Which section to show when the dialog opens (defaults to Connection).
+    initialSection?: Section;
 }
 
-function LiveModeDialog({ open, onOpenChange, onStart }: LiveModeDialogProps) {
+function LiveModeDialog({
+    open,
+    onOpenChange,
+    onStart,
+    initialSection,
+}: LiveModeDialogProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            {open && <LiveModeDialogContent onStart={onStart} />}
+            {open && (
+                <LiveModeDialogContent
+                    onStart={onStart}
+                    initialSection={initialSection}
+                />
+            )}
         </Dialog>
     );
 }
 
-function LiveModeDialogContent({ onStart }: { onStart: () => void }) {
-    const [selectedSection, setSelectedSection] =
-        useState<Section>('connection');
+function LiveModeDialogContent({
+    onStart,
+    initialSection,
+}: {
+    onStart: () => void;
+    initialSection?: Section;
+}) {
+    const [selectedSection, setSelectedSection] = useState<Section>(
+        initialSection ?? 'connection'
+    );
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
         () => new Set(['Overlay Appearance'])
     );
@@ -66,6 +93,11 @@ function LiveModeDialogContent({ onStart }: { onStart: () => void }) {
     );
     const [cardStripWidth, setCardStripWidth] = useState(
         () => loadLiveModeConfig()?.cardStripWidth ?? DEFAULT_CARD_STRIP_WIDTH
+    );
+    const [cardDisplayDuration, setCardDisplayDuration] = useState(
+        () =>
+            loadLiveModeConfig()?.cardDisplayDuration ??
+            DEFAULT_CARD_DISPLAY_DURATION_MS
     );
     const [scoreboardState, setScoreboardState] = useState(() =>
         loadLiveScoreboardState()
@@ -90,6 +122,17 @@ function LiveModeDialogContent({ onStart }: { onStart: () => void }) {
         },
         [send]
     );
+
+    // Controller-only setting (the play timer runs in the controller), so no
+    // websocket broadcast is needed - just persist it.
+    const handleCardDisplayDurationChange = useCallback((value: number) => {
+        setCardDisplayDuration(value);
+        saveLiveModeConfig({
+            websocketUrl: '',
+            ...loadLiveModeConfig(),
+            cardDisplayDuration: value,
+        });
+    }, []);
 
     const handleScoreboardChange = useCallback(
         (next: LiveScoreboardState) => {
@@ -183,6 +226,14 @@ function LiveModeDialogContent({ onStart }: { onStart: () => void }) {
                         <CardStripSection
                             cardStripWidth={cardStripWidth}
                             onCardStripWidthChange={handleCardStripWidthChange}
+                        />
+                    )}
+                    {selectedSection === 'card-display' && (
+                        <CardDisplaySection
+                            cardDisplayDuration={cardDisplayDuration}
+                            onCardDisplayDurationChange={
+                                handleCardDisplayDurationChange
+                            }
                         />
                     )}
                     {selectedSection === 'card-database' && (

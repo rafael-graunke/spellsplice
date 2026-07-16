@@ -172,8 +172,6 @@ const isCardDisplayDrop = (overId: string | number, side: Side) =>
 const isPlayDrop = (overId: string | number, side: Side) =>
     String(overId) === `${CARD_DISPLAY_DROP_ID(side)}-play`;
 
-// Play = show card then auto-clear after this many ms.
-const PLAY_DURATION_MS = 5000;
 const HAND_DROP_ID = (side: Side) => `hand-${side}`;
 const annotationDropId = (annotationId: string, side: Side) =>
     `annotation-${annotationId}-${side}`;
@@ -236,6 +234,13 @@ export interface LiveModeHandle {
     resetOverlay: () => void;
 }
 
+interface LiveModeProps {
+    // Play-timer duration in ms; opens the settings dialog on the Card
+    // Display section when the card display's settings icon is clicked.
+    cardDisplayDuration: number;
+    onOpenSettings: () => void;
+}
+
 function loadLiveProject(): Record<Side, SideState> | null {
     try {
         const raw = localStorage.getItem(LIVE_PROJECT_KEY);
@@ -263,7 +268,10 @@ function saveLiveProject(sides: Record<Side, SideState>) {
     localStorage.setItem(LIVE_PROJECT_KEY, JSON.stringify(sides));
 }
 
-const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
+const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
+    { cardDisplayDuration, onOpenSettings },
+    ref
+) {
     const { status } = useOracleCards();
     const sensors = useSensors(useSensor(PointerSensor));
     const [sides, setSides] = useState<Record<Side, SideState>>(
@@ -844,13 +852,13 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
             ...prev,
             [side]: {
                 ...prev[side],
-                displayCardPlayUntil: Date.now() + PLAY_DURATION_MS,
+                displayCardPlayUntil: Date.now() + cardDisplayDuration,
             },
         }));
         playTimersRef.current[side] = setTimeout(() => {
             playTimersRef.current[side] = null;
             handleClearDisplayCard(side);
-        }, PLAY_DURATION_MS);
+        }, cardDisplayDuration);
     };
 
     // Cancel pending play timers on unmount.
@@ -970,10 +978,11 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
                         card={sides.left.displayCard}
                         flipped={sides.left.displayCardFlipped}
                         playUntil={sides.left.displayCardPlayUntil}
-                        playDuration={PLAY_DURATION_MS}
+                        playDuration={cardDisplayDuration}
                         disabled={activeSide !== null && activeSide !== 'left'}
                         onClear={() => handleClearDisplayCard('left')}
                         onFlip={() => handleFlipDisplayCard('left')}
+                        onSettings={onOpenSettings}
                     />
                 </div>
                 <div className="flex flex-col gap-2 min-h-0">
@@ -1059,10 +1068,11 @@ const LiveMode = forwardRef<LiveModeHandle>(function LiveMode(_props, ref) {
                         card={sides.right.displayCard}
                         flipped={sides.right.displayCardFlipped}
                         playUntil={sides.right.displayCardPlayUntil}
-                        playDuration={PLAY_DURATION_MS}
+                        playDuration={cardDisplayDuration}
                         disabled={activeSide !== null && activeSide !== 'right'}
                         onClear={() => handleClearDisplayCard('right')}
                         onFlip={() => handleFlipDisplayCard('right')}
+                        onSettings={onOpenSettings}
                     />
                 </div>
                 <div className="flex flex-col min-h-0 overflow-hidden">

@@ -12,9 +12,13 @@ const LEGACY_LIVE_TEMPLATE_KEY = 'spellsplice-live-template';
 // keep this lib module decoupled from the canvas-rendering layer.
 export const DEFAULT_CARD_STRIP_WIDTH = 430;
 
+// How long a played card stays on screen before auto-clearing.
+export const DEFAULT_CARD_DISPLAY_DURATION_MS = 5000;
+
 export interface LiveModeConfig {
     websocketUrl: string;
     cardStripWidth?: number;
+    cardDisplayDuration?: number;
 }
 
 export interface LiveHandCard {

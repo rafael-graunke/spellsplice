@@ -35,8 +35,15 @@ import { Sources } from './components/Sources';
 import type { MediaSource } from './components/types/source';
 import WelcomeScreen from './components/Welcome';
 import LiveMode, { type LiveModeHandle } from './components/LiveMode/LiveMode';
-import LiveModeDialog from './components/LiveMode/LiveModeDialog';
-import { LIVE_PROJECT_KEY, LIVE_SCOREBOARD_KEY } from '@/lib/liveMode';
+import LiveModeDialog, {
+    type Section as LiveSettingsSection,
+} from './components/LiveMode/LiveModeDialog';
+import {
+    LIVE_PROJECT_KEY,
+    LIVE_SCOREBOARD_KEY,
+    loadLiveModeConfig,
+    DEFAULT_CARD_DISPLAY_DURATION_MS,
+} from '@/lib/liveMode';
 
 type PlayerInit = Omit<Player, 'track'>;
 
@@ -123,6 +130,13 @@ function App() {
     const [savedStateInit] = useState(loadSavedState);
     const [mode, setMode] = useState<Mode>(() => loadMode(!!savedStateInit));
     const [liveSettingsOpen, setLiveSettingsOpen] = useState(false);
+    const [liveSettingsSection, setLiveSettingsSection] =
+        useState<LiveSettingsSection>('connection');
+    const [cardDisplayDuration, setCardDisplayDuration] = useState(
+        () =>
+            loadLiveModeConfig()?.cardDisplayDuration ??
+            DEFAULT_CARD_DISPLAY_DURATION_MS
+    );
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [video, setVideo] = useState<VideoState | null>(null);
@@ -1021,7 +1035,10 @@ function App() {
                 onExportVideo={handleOpenExportDialog}
                 onOpenSettings={handleOpenSettings}
                 onRelinkMedia={() => setRelinkDialogOpen(true)}
-                onOpenLiveSettings={() => setLiveSettingsOpen(true)}
+                onOpenLiveSettings={() => {
+                    setLiveSettingsSection('connection');
+                    setLiveSettingsOpen(true);
+                }}
             />
             <SettingsDialog
                 open={settingsOpen}
@@ -1033,8 +1050,18 @@ function App() {
             />
             <LiveModeDialog
                 open={liveSettingsOpen}
-                onOpenChange={setLiveSettingsOpen}
+                onOpenChange={(open) => {
+                    setLiveSettingsOpen(open);
+                    // Pick up any duration change the dialog persisted so the
+                    // controller's play timer uses the new value right away.
+                    if (!open)
+                        setCardDisplayDuration(
+                            loadLiveModeConfig()?.cardDisplayDuration ??
+                                DEFAULT_CARD_DISPLAY_DURATION_MS
+                        );
+                }}
                 onStart={() => setLiveSettingsOpen(false)}
+                initialSection={liveSettingsSection}
             />
             <ExportDialog
                 open={exportDialogOpen}
@@ -1057,7 +1084,14 @@ function App() {
                 deletedSourceNames={deletedSourceNames}
             />
             {mode === 'live' ? (
-                <LiveMode ref={liveModeRef} />
+                <LiveMode
+                    ref={liveModeRef}
+                    cardDisplayDuration={cardDisplayDuration}
+                    onOpenSettings={() => {
+                        setLiveSettingsSection('card-display');
+                        setLiveSettingsOpen(true);
+                    }}
+                />
             ) : mode === 'welcome' ? (
                 <WelcomeScreen
                     onCreateNew={handleNew}

@@ -22,6 +22,7 @@ interface CardDisplayProps {
     playDuration: number;
     onClear: () => void;
     onFlip: () => void;
+    onSettings: () => void;
 }
 
 export function CardDisplay({
@@ -33,6 +34,7 @@ export function CardDisplay({
     playDuration,
     onClear,
     onFlip,
+    onSettings,
 }: CardDisplayProps) {
     const { setNodeRef: setPlayRef, isOver: playOver } = useDroppable({
         id: `card-display-${side}-play`,
@@ -70,7 +72,7 @@ export function CardDisplay({
                     className="cursor-pointer"
                     variant="ghost"
                     size="icon-sm"
-                    onClick={onClear}
+                    onClick={onSettings}
                 >
                     <Settings />
                 </Button>
@@ -147,7 +149,8 @@ export function CardDisplay({
                             Play
                         </span>
                         <span className="text-xs text-white/70">
-                            Remove card from origin and display for 5s
+                            Remove card from origin and display for{' '}
+                            {playDuration / 1000}s
                         </span>
                     </div>
                     <div

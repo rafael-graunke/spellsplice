@@ -50,6 +50,13 @@ function OverlayPage() {
     const [wsUrl] = useState(() =>
         resolveOverlayWebsocketUrl(window.location.search)
     );
+    // ?fps=1 draws a live rAF frame-rate meter and runs a continuous redraw
+    // loop, so the actual callback rate CEF gives inside OBS (vs a real browser)
+    // can be read directly. Off by default - zero cost.
+    const [fpsDebug] = useState(
+        () => new URLSearchParams(window.location.search).get('fps') === '1'
+    );
+    const fpsRef = useRef({ frames: 0, last: 0, value: 0 });
     const stripWRef = useRef(
         resolveOverlayCardStripWidth(window.location.search)
     );
@@ -194,6 +201,15 @@ function OverlayPage() {
             drawScoreboard('right', scoreboard.right);
         }
 
+        if (fpsDebug) {
+            ctx.save();
+            ctx.font = 'bold 48px monospace';
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = '#00ff00';
+            ctx.fillText(`${Math.round(fpsRef.current.value)} fps`, 24, 24);
+            ctx.restore();
+        }
+
         // Present the rasterized overlay: GPU quad when WebGL is available,
         // else a plain 2D blit onto the visible canvas.
         const presenter = presenterRef.current;
@@ -206,7 +222,7 @@ function OverlayPage() {
                 vctx.drawImage(overlay, 0, 0);
             }
         }
-    }, []);
+    }, [fpsDebug]);
     useEffect(() => {
         redrawRef.current = redraw;
     });
@@ -232,6 +248,28 @@ function OverlayPage() {
     useEffect(() => {
         redraw();
     }, [redraw]);
+
+    // Continuous redraw loop that samples the real rAF rate (?fps=1 only).
+    useEffect(() => {
+        if (!fpsDebug) return;
+        let raf = 0;
+        fpsRef.current.last = performance.now();
+        const loop = () => {
+            const f = fpsRef.current;
+            f.frames++;
+            const now = performance.now();
+            const dt = now - f.last;
+            if (dt >= 500) {
+                f.value = (f.frames * 1000) / dt;
+                f.frames = 0;
+                f.last = now;
+            }
+            redrawRef.current();
+            raf = requestAnimationFrame(loop);
+        };
+        raf = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(raf);
+    }, [fpsDebug]);
 
     // Drives hand + display-card animations: redraws every frame while any anim
     // is live, pruning elapsed ones, then stops (the overlay is otherwise

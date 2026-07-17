@@ -1,7 +1,7 @@
 {
     "name": "spellsplice",
     "private": true,
-    "version": "1.0.0",
+    "version": "1.1.0-rc.1",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -26,6 +26,7 @@
         "immer": "^11.1.7",
         "jszip": "^3.10.1",
         "lucide-react": "^1.7.0",
+        "mana-font": "^1.18.0",
         "mp4-muxer": "^5.2.2",
         "mp4box": "^2.3.0",
         "radix-ui": "^1.4.3",

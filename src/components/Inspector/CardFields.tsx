@@ -189,7 +189,7 @@ function EditionPicker({ card, onSelect }: { card: Card; onSelect: (edition: str
                             editionKey={editionKey}
                             onSelect={(p) => {
                                 const key = editionKey(p);
-                                storePrinting(card.name, key, p.image_uris, p.frame);
+                                storePrinting(card.name, key, p.image_uris, p.frame, p.layout);
                                 onSelect(key);
                                 setOpen(false);
                             }}

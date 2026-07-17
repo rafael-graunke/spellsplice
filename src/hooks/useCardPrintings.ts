@@ -6,8 +6,10 @@ export interface Printing {
     set: string;
     set_name: string;
     collector_number: string;
-    image_uris: { normal: string; border_crop?: string };
+    image_uris: { normal?: string; border_crop?: string };
+    card_faces?: Array<{ image_uris?: { normal?: string; border_crop?: string } }>;
     frame?: string;
+    layout?: string;
 }
 
 interface ScryfallList {
@@ -40,7 +42,11 @@ export function useCardPrintings(name: string) {
     }, [query.hasNextPage, query.isFetchingNextPage, query.fetchNextPage]);
 
     const printings = useMemo(
-        () => (query.data?.pages ?? []).flatMap((p) => p.data),
+        () =>
+            (query.data?.pages ?? []).flatMap((p) => p.data).map((c) => ({
+                ...c,
+                image_uris: c.image_uris ?? c.card_faces?.[0]?.image_uris ?? {},
+            })),
         [query.data],
     );
 

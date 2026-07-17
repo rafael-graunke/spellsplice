@@ -28,10 +28,11 @@ Spellsplice is a Magic: The Gathering video overlay editor. Users import video/a
 - `fileToLoad: File | null` — signals VideoPreview to load a video file (used after project import)
 - `isDirty: boolean` — unsaved changes flag; cleared on save/import/new
 - `exportDialogOpen: boolean` — controls video export dialog visibility
-- Players autosave to `localStorage` under `spellsplice-autosave` on every change; restored on load.
+- `mode: 'welcome' | 'timeline' | 'live'` — which of the three top-level screens is showing; persisted to `localStorage['spellsplice-mode']` so a refresh reopens the same screen. Welcome, Timeline, and Live Mode are treated as separate apps that share no state: Timeline's project data lives under `spellsplice-project`, Live Mode's hand/library/decklist state lives under `spellsplice-live-project` (see `src/lib/liveMode.ts`), and neither reads the other's config.
+- Players autosave to `localStorage` under `spellsplice-project` on every change; restored on load. Only cleared by an explicit File > New, not on unload.
 
 Layout: top AppBar + left Sources panel + main area (react-resizable-panels), vertical split:
-- **AppBar** — File menu (New/Open/Save/Export…/Settings). Keyboard shortcuts: Ctrl+S (save), Ctrl+O (open), Ctrl+Alt+N (new). Shows unsaved-changes confirmation dialog.
+- **AppBar** — always rendered, but its File menu is mode-aware (`FileDropdown`'s `mode` prop): disabled on Welcome, New/Open/Save/Export…/Settings/Relink Media on Timeline, New/Settings (websocket URL config, reusing `LiveModeDialog`) on Live Mode. File > New always clears the current mode's stored state and returns to Welcome. Keyboard shortcuts (Ctrl+S, Ctrl+O, Ctrl+Alt+N, Ctrl+,) are gated the same way. Shows unsaved-changes confirmation dialog (Timeline only).
 - **Sources panel** (left) — holds imported `MediaSource` files. Drag & drop or file-picker to add video/audio. Shows thumbnail + clip-use count per source. Red dot badge when any source is offline. Link icon opens `RelinkDialog` to reattach offline sources.
 - **VideoPreview** (top-left, 75%) — renders video frames to a `<canvas>` via `drawImage` on a rAF loop. A hidden `<video>` element handles decoding/audio. Renders player state overlays and active windowed event banners directly on the canvas. Uses `derivedCacheRef` with a `validUntil` timestamp to skip redundant state derivation between frames.
 - **Inspector** (top-right, 25%) — edits the selected event's `meta` fields. Per-type form components.

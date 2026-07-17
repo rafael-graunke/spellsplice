@@ -19,7 +19,10 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+type Mode = 'welcome' | 'timeline' | 'live';
+
 interface FileDropdownProps {
+    mode: Mode;
     isDirty: boolean;
     onNew: () => void;
     onExport: () => Promise<void>;
@@ -27,9 +30,10 @@ interface FileDropdownProps {
     onExportVideo: () => void;
     onOpenSettings: () => void;
     onRelinkMedia: () => void;
+    onOpenLiveSettings: () => void;
 }
 
-function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo, onOpenSettings, onRelinkMedia }: FileDropdownProps) {
+function FileDropdown({ mode, isDirty, onNew, onExport, onImport, onExportVideo, onOpenSettings, onRelinkMedia, onOpenLiveSettings }: FileDropdownProps) {
     const importRef = useRef<HTMLInputElement>(null);
     const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
@@ -38,30 +42,33 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo, onOpe
         else action();
     };
 
-    const handleNew = () => guardDirty(onNew);
+    const handleNew = () => (mode === 'timeline' ? guardDirty(onNew) : onNew());
     const handleOpen = () => guardDirty(() => importRef.current?.click());
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
-            if (e.ctrlKey && !e.altKey && e.code === 'KeyS') {
+            if (mode === 'timeline' && e.ctrlKey && !e.altKey && e.code === 'KeyS') {
                 e.preventDefault();
                 onExport();
-            } else if (e.ctrlKey && !e.altKey && e.code === 'KeyO') {
+            } else if (mode === 'timeline' && e.ctrlKey && !e.altKey && e.code === 'KeyO') {
                 e.preventDefault();
                 if (isDirty) setPendingAction(() => () => importRef.current?.click());
                 else importRef.current?.click();
-            } else if (e.ctrlKey && e.altKey && e.code === 'KeyN') {
+            } else if (mode !== 'welcome' && e.ctrlKey && e.altKey && e.code === 'KeyN') {
                 e.preventDefault();
-                if (isDirty) setPendingAction(() => onNew);
+                if (mode === 'timeline' && isDirty) setPendingAction(() => onNew);
                 else onNew();
-            } else if (e.ctrlKey && !e.altKey && e.code === 'Comma') {
+            } else if (mode === 'timeline' && e.ctrlKey && !e.altKey && e.code === 'Comma') {
                 e.preventDefault();
                 onOpenSettings();
+            } else if (mode === 'live' && e.ctrlKey && !e.altKey && e.code === 'Comma') {
+                e.preventDefault();
+                onOpenLiveSettings();
             }
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [isDirty, onExport, onNew, onOpenSettings]);
+    }, [mode, isDirty, onExport, onNew, onOpenSettings, onOpenLiveSettings]);
 
     return (
         <>
@@ -99,30 +106,43 @@ function FileDropdown({ isDirty, onNew, onExport, onImport, onExportVideo, onOpe
                 </DialogContent>
             </Dialog>
 
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="ghost">File</Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-48">
-                    <DropdownMenuGroup>
-                        <DropdownMenuItem onClick={handleNew}>
-                            New...<DropdownMenuShortcut>{modKey}+Alt+N</DropdownMenuShortcut>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={handleOpen}>
-                            Open...<DropdownMenuShortcut>{modKey}+O</DropdownMenuShortcut>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={onExport}>
-                            Save<DropdownMenuShortcut>{modKey}+S</DropdownMenuShortcut>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={onOpenSettings}>
-                            Settings<DropdownMenuShortcut>{modKey}+,</DropdownMenuShortcut>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={onRelinkMedia}>Relink Media...</DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={onExportVideo}>Export...</DropdownMenuItem>
-                    </DropdownMenuGroup>
-                </DropdownMenuContent>
-            </DropdownMenu>
+            {mode === 'welcome' ? (
+                <Button variant="ghost" disabled>File</Button>
+            ) : (
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost">File</Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-48">
+                        <DropdownMenuGroup>
+                            <DropdownMenuItem onClick={handleNew}>
+                                New...<DropdownMenuShortcut>{modKey}+Alt+N</DropdownMenuShortcut>
+                            </DropdownMenuItem>
+                            {mode === 'timeline' && (
+                                <>
+                                    <DropdownMenuItem onClick={handleOpen}>
+                                        Open...<DropdownMenuShortcut>{modKey}+O</DropdownMenuShortcut>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={onExport}>
+                                        Save<DropdownMenuShortcut>{modKey}+S</DropdownMenuShortcut>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={onOpenSettings}>
+                                        Settings<DropdownMenuShortcut>{modKey}+,</DropdownMenuShortcut>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={onRelinkMedia}>Relink Media...</DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={onExportVideo}>Export...</DropdownMenuItem>
+                                </>
+                            )}
+                            {mode === 'live' && (
+                                <DropdownMenuItem onClick={onOpenLiveSettings}>
+                                    Settings...<DropdownMenuShortcut>{modKey}+,</DropdownMenuShortcut>
+                                </DropdownMenuItem>
+                            )}
+                        </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            )}
         </>
     );
 }

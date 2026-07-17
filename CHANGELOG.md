@@ -1,3 +1,15 @@
+# [1.2.0](https://github.com/rafael-graunke/spellsplice/compare/v1.1.0...v1.2.0) (2026-07-17)
+
+
+### Bug Fixes
+
+* **relay:** bind to 127.0.0.1 only ([7dc2e54](https://github.com/rafael-graunke/spellsplice/commit/7dc2e54b6322a73b5fd1199f43008df151e86c84))
+
+
+### Features
+
+* **live-mode:** guard websocket against mixed content and bad URLs ([027645f](https://github.com/rafael-graunke/spellsplice/commit/027645f00f244f1639782ff6ad986be7899d89b5))
+
 # [1.2.0-rc.1](https://github.com/rafael-graunke/spellsplice/compare/v1.1.0...v1.2.0-rc.1) (2026-07-17)
 
 

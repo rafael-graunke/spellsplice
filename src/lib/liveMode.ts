@@ -282,6 +282,16 @@ export function saveLiveCardDisplayConfig(config: LiveCardDisplayConfig) {
     localStorage.setItem(LIVE_CARD_DISPLAY_KEY, JSON.stringify(config));
 }
 
+// Resolved card image links shipped controller → overlay so the overlay window
+// (which has no oracle bulk of its own) can render with no API/network at
+// reveal. Shape mirrors cardCache's CardImageData.
+export interface PreloadCard {
+    name: string;
+    image_uris: Record<string, string>;
+    frame?: string;
+    layout?: string;
+}
+
 export type LiveMessage =
     | { type: 'live-state'; state: LiveOverlayState }
     | { type: 'live-event'; event: LiveEvent }
@@ -300,6 +310,7 @@ export type LiveMessage =
     | { type: 'card-display-config'; config: LiveCardDisplayConfig }
     | { type: 'scoreboard-state'; scoreboard: LiveScoreboardState }
     | { type: 'player-info-state'; left: LivePlayerInfo; right: LivePlayerInfo }
+    | { type: 'preload-cards'; cards: PreloadCard[] }
     | { type: 'request-state' };
 
 export function loadLiveModeConfig(): LiveModeConfig | null {

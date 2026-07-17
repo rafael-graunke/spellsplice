@@ -20,6 +20,7 @@ import { useOracleCards } from '@/hooks/useOracleCards';
 import { findOracleCard } from '@/lib/oracleCards';
 import { CARD_COLOR_ORDER, getCardColorKey } from '@/lib/cardColors';
 import { getManaValue } from '@/lib/manaCost';
+import { warmCardImages, resolveCardImageData } from '@/lib/cardCache';
 import type { Decklist } from '@/components/types/player';
 import {
     defaultLiveScoreboardState,
@@ -270,6 +271,16 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                 left: playerInfo('left'),
                 right: playerInfo('right'),
             });
+            const preload = [
+                ...sides.left.library,
+                ...sides.right.library,
+            ].flatMap(({ card }) => {
+                const data = resolveCardImageData(card.name);
+                return data ? [data] : [];
+            });
+            if (preload.length > 0) {
+                sendRef.current({ type: 'preload-cards', cards: preload });
+            }
         }
     };
 
@@ -582,6 +593,14 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
             ...prev,
             [side]: { ...prev[side], decklist, library, hand: [] },
         }));
+        const cardNames = library.map(({ card }) => card.name);
+        warmCardImages(cardNames);
+        // Ship resolved image links to the overlay window (no oracle DB there).
+        const preload = library.flatMap(({ card }) => {
+            const data = resolveCardImageData(card.name);
+            return data ? [data] : [];
+        });
+        sendRef.current({ type: 'preload-cards', cards: preload });
     };
 
     const handleDragEnd = (e: DragEndEvent) => {

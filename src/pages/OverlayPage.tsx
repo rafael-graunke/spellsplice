@@ -17,7 +17,7 @@ import {
     type SingleScoreboardConfig,
 } from '@/lib/liveMode';
 import { useLiveModeSocket } from '@/hooks/useLiveModeSocket';
-import { subscribeImageLoad } from '@/lib/cardCache';
+import { subscribeImageLoad, preloadCardImageData } from '@/lib/cardCache';
 import {
     renderLiveHand,
     getHandStackTopY,
@@ -477,6 +477,8 @@ function OverlayPage() {
             } else if (msg.type === 'player-info-state') {
                 playerInfoRef.current = { left: msg.left, right: msg.right };
                 redraw();
+            } else if (msg.type === 'preload-cards') {
+                preloadCardImageData(msg.cards);
             }
         },
         [redraw, wsUrl, startAnimLoop]

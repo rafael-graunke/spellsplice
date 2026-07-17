@@ -6,13 +6,22 @@ const BULK_DATA_INFO_URL = 'https://api.scryfall.com/bulk-data/oracle-cards';
 
 // Bump when the shape of stored card records changes, to force a re-sync
 // even though the remote bulk data's updated_at hasn't changed.
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 export interface OracleCard {
     name: string;
     colors?: string[];
     mana_cost?: string;
     layout?: string;
+    // Kept from the bulk download so image links need no per-card API call.
+    // Keys mirror cardCache's SetData.image_uris; back-face keys only for DFCs.
+    image_uris?: {
+        normal?: string;
+        border_crop?: string;
+        normal_back?: string;
+        border_crop_back?: string;
+    };
+    frame?: string;
 }
 
 // Transform and modal DFC cards store colors/mana_cost/images per-face
@@ -125,26 +134,48 @@ export function ensureOracleCards(onStatus?: (status: OracleCardsStatus) => void
 
             onStatus?.('downloading');
             const cardsRes = await fetch(downloadUri);
+            type RawUris = { normal?: string; border_crop?: string };
             const raw: Array<{
                 name: string;
                 layout?: string;
                 colors?: string[];
                 mana_cost?: string;
-                card_faces?: Array<{ colors?: string[]; mana_cost?: string }>;
+                frame?: string;
+                image_uris?: RawUris;
+                card_faces?: Array<{
+                    colors?: string[];
+                    mana_cost?: string;
+                    image_uris?: RawUris;
+                }>;
             }> = await cardsRes.json();
 
             const byName = new Map<string, OracleCard>();
             for (const c of raw) {
                 if (c.layout === 'art_series') continue;
                 if (!byName.has(c.name)) {
-                    // Transform/modal-DFC cards omit top-level colors/mana_cost;
-                    // fall back to the front face's values.
+                    // Transform/modal-DFC cards omit top-level colors/mana_cost
+                    // and image_uris; fall back to the per-face values.
                     const front = c.card_faces?.[0];
+                    const back = c.card_faces?.[1];
+                    const frontUris = front?.image_uris ?? c.image_uris;
+                    const backUris = back?.image_uris;
+                    const image_uris: OracleCard['image_uris'] = {};
+                    if (frontUris?.normal) image_uris.normal = frontUris.normal;
+                    if (frontUris?.border_crop)
+                        image_uris.border_crop = frontUris.border_crop;
+                    if (backUris?.normal)
+                        image_uris.normal_back = backUris.normal;
+                    if (backUris?.border_crop)
+                        image_uris.border_crop_back = backUris.border_crop;
                     byName.set(c.name, {
                         name: c.name,
                         colors: c.colors ?? front?.colors,
                         mana_cost: c.mana_cost ?? front?.mana_cost,
                         layout: c.layout,
+                        ...(Object.keys(image_uris).length > 0 && {
+                            image_uris,
+                        }),
+                        ...(c.frame && { frame: c.frame }),
                     });
                 }
             }

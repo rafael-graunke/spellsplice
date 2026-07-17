@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LiveMessage } from '@/lib/liveMode';
+import { isMixedContentWs, isValidWsUrl } from '@/lib/liveMode';
 
 export type LiveSocketStatus = 'connecting' | 'open' | 'closed';
 
@@ -17,6 +18,23 @@ export function useLiveModeSocket(url: string | null, onMessage: (msg: LiveMessa
             return;
         }
 
+        // Only connect on a well-formed absolute ws://|wss:// URL. A relative or
+        // half-typed value (e.g. "foo") does NOT throw - WebSocket resolves it
+        // against the page origin (ws://localhost:5173/foo) and fires a real
+        // connection attempt on every keystroke. Bail instead.
+        if (!isValidWsUrl(url)) {
+            setStatus('closed');
+            return;
+        }
+
+        // Never auto-attempt a plaintext ws:// to a non-loopback host from an
+        // https page: the request is blocked/deprecated as mixed content and
+        // downgrades the whole document's security indicator to "Not secure".
+        if (isMixedContentWs(url)) {
+            setStatus('closed');
+            return;
+        }
+
         let cancelled = false;
         let attempt = 0;
         let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -24,7 +42,15 @@ export function useLiveModeSocket(url: string | null, onMessage: (msg: LiveMessa
         const connect = () => {
             if (cancelled) return;
             setStatus('connecting');
-            const ws = new WebSocket(url);
+            let ws: WebSocket;
+            try {
+                ws = new WebSocket(url);
+            } catch {
+                // Malformed URL (e.g. a half-typed value) throws synchronously;
+                // stay closed rather than crashing. A new url re-runs the effect.
+                setStatus('closed');
+                return;
+            }
             wsRef.current = ws;
 
             ws.onopen = () => {

@@ -7,9 +7,10 @@ library - just run:
 
     python3 spellsplice-relay.py [port]
 
-Default port is 8765. Point the Connection tab's WebSocket URL and
-OBS's Browser Source at ws://<this-machine's-ip>:<port> (use
-ws://localhost:<port> if everything runs on one machine).
+Default port is 8765. Binds to 127.0.0.1 only, so the controller and
+OBS's Browser Source must run on this same machine. Point both the
+Connection tab's WebSocket URL and OBS's Browser Source at
+ws://localhost:<port>.
 """
 
 import base64
@@ -153,28 +154,16 @@ def handle_client(conn, addr):
         print(f'[-] {addr[0]}:{addr[1]} disconnected ({len(clients)} total)')
 
 
-def local_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(('8.8.8.8', 80))
-        return s.getsockname()[0]
-    except OSError:
-        return '127.0.0.1'
-    finally:
-        s.close()
-
-
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_PORT
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind(('0.0.0.0', port))
+    server.bind(('127.0.0.1', port))
     server.listen(8)
 
-    print(f'Spellsplice relay listening on port {port}')
-    print(f'  Same machine:  ws://localhost:{port}')
-    print(f'  LAN / OBS:     ws://{local_ip()}:{port}')
+    print(f'Spellsplice relay listening on ws://localhost:{port}')
+    print('  Controller and OBS must run on this machine.')
     print('Ctrl+C to stop.')
 
     try:

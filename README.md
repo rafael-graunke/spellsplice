@@ -15,6 +15,7 @@
   - [Setup](#setup)
   - [Commands](#commands)
 - [Roadmap](#roadmap)
+- [Attribution](#attribution)
 
 
 ## About
@@ -140,3 +141,12 @@ Native desktop experience with offline-first card data and faster video export, 
 - [ ] **Tauri wrapper** - same React UI, distributed as a native desktop app (~5–10 MB runtime vs ~150 MB for Electron)
 - [ ] **FFmpeg video export** - replace WebCodecs pipeline with FFmpeg via Rust backend; order-of-magnitude faster, works on all platforms
 - [ ] **Scryfall bulk data** - download the full card database (~2.3 GB) on first run; SQLite + FTS5 index (via `rusqlite`) for sub-millisecond lookups with no API rate limits
+
+
+## Attribution
+
+Spellsplice is unofficial Fan Content permitted under the [Wizards of the Coast Fan Content Policy](https://company.wizards.com/en/legal/fancontentpolicy). Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.
+
+Wordmark uses [FORQUE](https://www.fontsquirrel.com/fonts/forque) by Tup Wanders (CC BY).
+
+Timeline event icons courtesy of [game-icons.net](https://game-icons.net) (CC BY 3.0).

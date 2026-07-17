@@ -13,6 +13,8 @@ export const EventType = {
     RevealFromHand: 'REVEAL_FROM_HAND',
     StackDeck: 'STACK_DECK',
     UnstackDeck: 'UNSTACK_DECK',
+    AnnotateCard: 'ANNOTATE_CARD',
+    UnannotateCard: 'UNANNOTATE_CARD',
     DisplayCard: 'DISPLAY_CARD',
     Win: 'WIN',
     HideUi: 'HIDE_UI',
@@ -67,6 +69,18 @@ export const EventColorMap: Record<EventType, EventColor> = {
         stroke: 'stroke-slate-500',
     },
     UNSTACK_DECK: {
+        text: 'text-slate-500',
+        bg: 'bg-slate-500',
+        fill: 'fill-slate-500',
+        stroke: 'stroke-slate-500',
+    },
+    ANNOTATE_CARD: {
+        text: 'text-slate-500',
+        bg: 'bg-slate-500',
+        fill: 'fill-slate-500',
+        stroke: 'stroke-slate-500',
+    },
+    UNANNOTATE_CARD: {
         text: 'text-slate-500',
         bg: 'bg-slate-500',
         fill: 'fill-slate-500',

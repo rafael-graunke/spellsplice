@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/rafael-graunke/spellsplice/compare/v1.2.0...v1.2.1) (2026-07-17)
+
+
+### Bug Fixes
+
+* build ([3a271e3](https://github.com/rafael-graunke/spellsplice/commit/3a271e32ef3480829a72d3a7d701aa625faff66f))
+
 # [1.2.0](https://github.com/rafael-graunke/spellsplice/compare/v1.1.0...v1.2.0) (2026-07-17)
 
 

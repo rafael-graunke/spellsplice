@@ -344,6 +344,50 @@ export function resolveOverlayCardStripWidth(search: string): number {
     return loadLiveModeConfig()?.cardStripWidth ?? DEFAULT_CARD_STRIP_WIDTH;
 }
 
+// Browsers treat localhost / loopback as "potentially trustworthy", so a plain
+// ws:// connection to them from an https page is NOT mixed content. Any other
+// host (e.g. a 192.168.x LAN IP) is, and the browser downgrades the page's
+// security indicator to "Not secure" for the whole document.
+function isLoopbackHost(host: string): boolean {
+    const h = host.toLowerCase();
+    return (
+        h === 'localhost' ||
+        h.endsWith('.localhost') ||
+        h === '127.0.0.1' ||
+        h.startsWith('127.') ||
+        h === '[::1]' ||
+        h === '::1'
+    );
+}
+
+// True when `wsUrl` is a well-formed ws:// or wss:// URL. Used to show
+// validation state in the UI before anyone tries to connect.
+export function isValidWsUrl(wsUrl: string): boolean {
+    let parsed: URL;
+    try {
+        parsed = new URL(wsUrl);
+    } catch {
+        return false;
+    }
+    return (parsed.protocol === 'ws:' || parsed.protocol === 'wss:') && parsed.hostname !== '';
+}
+
+// Returns true when connecting to `wsUrl` would trigger a mixed-content
+// downgrade given the current page origin: an https page reaching a plaintext
+// ws:// endpoint on a non-loopback host. Used to block auto-connect and warn
+// in the UI. Malformed URLs return false (nothing we can flag).
+export function isMixedContentWs(wsUrl: string): boolean {
+    if (typeof window === 'undefined' || window.location.protocol !== 'https:') return false;
+    let parsed: URL;
+    try {
+        parsed = new URL(wsUrl);
+    } catch {
+        return false;
+    }
+    if (parsed.protocol !== 'ws:') return false;
+    return !isLoopbackHost(parsed.hostname);
+}
+
 export function buildOverlayUrl(
     websocketUrl: string,
     cardStripWidth?: number

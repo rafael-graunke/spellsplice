@@ -1,3 +1,43 @@
+# [1.1.0-rc.1](https://github.com/rafael-graunke/spellsplice/compare/v1.0.0...v1.1.0-rc.1) (2026-07-17)
+
+
+### Bug Fixes
+
+* **cards:** render split-layout card art correctly ([d8d29b1](https://github.com/rafael-graunke/spellsplice/commit/d8d29b19cc741fc8f3b84ec5c3c7afebc25ae6ac))
+* drops art-card from indexedDB ([55857aa](https://github.com/rafael-graunke/spellsplice/commit/55857aac1ed0fe25710dc4a87d50c08f6d15b845))
+* **live-mode:** include sideboard cards in library ([1d2df7f](https://github.com/rafael-graunke/spellsplice/commit/1d2df7fb29d3640623ed95d75f65b12c6bb63c55))
+* **overlay:** style card strip placeholder like DraggableCard ([8935192](https://github.com/rafael-graunke/spellsplice/commit/89351922c255d6743c32aea87a3c40b69910e6a2))
+
+
+### Features
+
+* **live-mode:** add annotation editing and collapse ([3dcc2aa](https://github.com/rafael-graunke/spellsplice/commit/3dcc2aa3cf35faf8fd4a4b7a084b23341d25ad48))
+* **live-mode:** add configurable card display duration ([ad41d42](https://github.com/rafael-graunke/spellsplice/commit/ad41d425ba657c59323036d1ead06e67fb8c4cd4))
+* **live-mode:** add downloadable websocket relay script ([10821da](https://github.com/rafael-graunke/spellsplice/commit/10821da23a00351b2629f54beb2a7392ad26815d))
+* **live-mode:** add generic annotation system for graveyard/top deck ([84a6ea2](https://github.com/rafael-graunke/spellsplice/commit/84a6ea27f20fa1c8212b7e4cd4dd94b9823947e5))
+* **live-mode:** add live overlay mode entry and welcome screen ([f77ce48](https://github.com/rafael-graunke/spellsplice/commit/f77ce48e4dc3ba32dfb56b2545037ab7bf962ac9))
+* **live-mode:** add player control panel with graveyard/top-deck slots ([d980a7c](https://github.com/rafael-graunke/spellsplice/commit/d980a7ce72d28a3202fb4f99eaed614096326d0b))
+* **live-mode:** add reset-match control between games ([b0a0c15](https://github.com/rafael-graunke/spellsplice/commit/b0a0c15da66603319d837e4294080eacf68628f4))
+* **live-mode:** add SVG template overlay system ([89e5b3d](https://github.com/rafael-graunke/spellsplice/commit/89e5b3d505be6c69191205f55dcff227625185ef))
+* **live-mode:** animate annotation cards ([3152949](https://github.com/rafael-graunke/spellsplice/commit/315294968b4ba15277e725ba80362b894a40c461))
+* **live-mode:** animate card face flip with 3D rotation ([f10d60b](https://github.com/rafael-graunke/spellsplice/commit/f10d60b28e039a685aec21b8d2c31be8e51f9242))
+* **live-mode:** animate overlay cards, configurable card display ([e14844e](https://github.com/rafael-graunke/spellsplice/commit/e14844e3d956b98cbb2ea9151d4646490ac569e5))
+* **live-mode:** auto-load default overlay template ([204d5a6](https://github.com/rafael-graunke/spellsplice/commit/204d5a6edb058e4a91031396ae9b0721d699057a))
+* **live-mode:** gradient border for two-color card chips ([d0231d2](https://github.com/rafael-graunke/spellsplice/commit/d0231d245c9fcdd9ff0376369b19a1279b968bd6))
+* **live-mode:** nest Scoreboard and Card Strip under Overlay Appearance ([5a24fc3](https://github.com/rafael-graunke/spellsplice/commit/5a24fc3d6299ba436a70e05fd5a01223f568801d))
+* **live-mode:** preload deck card images for instant overlay render ([de80ad4](https://github.com/rafael-graunke/spellsplice/commit/de80ad488fdc1aeb4edca44d4652ecffa29beec5))
+* **live-mode:** seed default overlay template on first run ([b2019e5](https://github.com/rafael-graunke/spellsplice/commit/b2019e599d0032eca3f5abdfcd540d637d38b392))
+* **live-mode:** slide display card out before in on swap ([22d56aa](https://github.com/rafael-graunke/spellsplice/commit/22d56aaf61d288b6562aafeb06783ef798345911))
+* **live-mode:** split Card Display into Play and Display drops ([64ee6b0](https://github.com/rafael-graunke/spellsplice/commit/64ee6b0783d8983b7b9f82cb9ffaccc667762e68))
+* **live-mode:** sync card flip state and add card DB refresh ([c52b4de](https://github.com/rafael-graunke/spellsplice/commit/c52b4ded04d13a4d77f0c5733a838e4ed2207a55))
+* **live-mode:** sync hand state to overlay over websocket ([30479bb](https://github.com/rafael-graunke/spellsplice/commit/30479bb108b9b543dfd7dead7f98ce839129fbe8))
+* **overlay:** add ?fps=1 rAF frame-rate meter ([27a79bd](https://github.com/rafael-graunke/spellsplice/commit/27a79bdfec54a3ee35e482e4a993f72082a830af))
+
+
+### Performance Improvements
+
+* **card-cache:** load card images lazily on render ([7ba005c](https://github.com/rafael-graunke/spellsplice/commit/7ba005c693cef0365846d2eb8a744f62ac65ba38))
+
 # [1.0.0](https://github.com/rafael-graunke/spellsplice/compare/v0.9.0...v1.0.0) (2026-06-30)
 
 

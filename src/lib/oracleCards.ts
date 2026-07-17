@@ -6,7 +6,7 @@ const BULK_DATA_INFO_URL = 'https://api.scryfall.com/bulk-data/oracle-cards';
 
 // Bump when the shape of stored card records changes, to force a re-sync
 // even though the remote bulk data's updated_at hasn't changed.
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 export interface OracleCard {
     name: string;
@@ -135,6 +135,7 @@ export function ensureOracleCards(onStatus?: (status: OracleCardsStatus) => void
 
             const byName = new Map<string, OracleCard>();
             for (const c of raw) {
+                if (c.layout === 'art_series') continue;
                 if (!byName.has(c.name)) {
                     // Transform/modal-DFC cards omit top-level colors/mana_cost;
                     // fall back to the front face's values.

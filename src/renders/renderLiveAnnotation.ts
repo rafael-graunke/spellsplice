@@ -187,7 +187,7 @@ export function renderLiveAnnotations(
     offsetX: number,
     drawW: number,
     anchorBottomY: { left: number; right: number },
-    stripW: number,
+    stripW: { left: number; right: number },
     anims: Map<string, AnnotationAnim> = new Map(),
     now = 0
 ) {
@@ -195,7 +195,9 @@ export function renderLiveAnnotations(
     ctx.imageSmoothingQuality = 'high';
 
     for (const isLeft of [true, false]) {
-        const boxes = buildBoxes(annotations, isLeft, stripW, anims, now);
+        // Match this side's hand strip width so annotations align with the hand.
+        const sw = isLeft ? stripW.left : stripW.right;
+        const boxes = buildBoxes(annotations, isLeft, sw, anims, now);
         if (boxes.length === 0) continue;
 
         const totalH =
@@ -209,9 +211,7 @@ export function renderLiveAnnotations(
             const offscreenX = isLeft ? offsetX - box.contW : offsetX + drawW;
             const firstStripY = y + CONT_PAD_Y + TITLE_AREA_H;
             const cumH = (list: LiveHandCard[], upTo: number) =>
-                list
-                    .slice(0, upTo)
-                    .reduce((s, c) => s + stripHOf(c, stripW), 0);
+                list.slice(0, upTo).reduce((s, c) => s + stripHOf(c, sw), 0);
 
             // Container modes: the whole box (background + all cards) slides as
             // one unit; cards do not animate individually.
@@ -241,7 +241,7 @@ export function renderLiveAnnotations(
                         1,
                         hc.card.mana_cost,
                         hc.card.colors,
-                        stripW
+                        sw
                     );
                 }
                 y += box.contH + GAP;
@@ -296,7 +296,7 @@ export function renderLiveAnnotations(
                     alpha,
                     hc.card.mana_cost,
                     hc.card.colors,
-                    stripW
+                    sw
                 );
             }
 
@@ -317,7 +317,7 @@ export function renderLiveAnnotations(
                     1 - t,
                     a.card.card.mana_cost,
                     a.card.card.colors,
-                    stripW
+                    sw
                 );
             }
 

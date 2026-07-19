@@ -1,8 +1,8 @@
 import type {
     LivePlayerInfo,
+    Offset,
     ScoreboardAnchor,
     ScoreboardFieldMapping,
-    ScoreboardMargins,
 } from '@/lib/liveMode';
 import { substituteScoreboard } from '@/lib/liveScoreboard';
 
@@ -86,7 +86,7 @@ export function renderLiveScoreboard(
     img: HTMLImageElement,
     anchor: ScoreboardAnchor,
     scale: number,
-    margins: ScoreboardMargins,
+    offset: Offset,
     canvasWidth: number,
     canvasHeight: number
 ): void {
@@ -94,14 +94,19 @@ export function renderLiveScoreboard(
     const aspect = img.naturalWidth ? img.naturalHeight / img.naturalWidth : 1;
     const height = width * aspect;
 
-    const x = anchor.endsWith('left')
-        ? margins.left
+    const dx = offset?.x ?? 0;
+    const dy = offset?.y ?? 0;
+    // Anchor gives the flush base position; the signed offset nudges from it.
+    const baseX = anchor.endsWith('left')
+        ? 0
         : anchor.endsWith('right')
-          ? canvasWidth - width - margins.right
+          ? canvasWidth - width
           : (canvasWidth - width) / 2;
-    const y = anchor.startsWith('top')
-        ? margins.top
-        : canvasHeight - height - margins.bottom;
+    const baseY = anchor.startsWith('top')
+        ? 0
+        : anchor.startsWith('bottom')
+          ? canvasHeight - height
+          : (canvasHeight - height) / 2;
 
-    ctx.drawImage(img, x, y, width, height);
+    ctx.drawImage(img, baseX + dx, baseY + dy, width, height);
 }

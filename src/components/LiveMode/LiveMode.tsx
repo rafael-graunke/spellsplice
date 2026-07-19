@@ -27,6 +27,9 @@ import {
     loadLiveModeConfig,
     loadLiveScoreboardState,
     loadLiveCardDisplayConfig,
+    loadLiveHandStackConfig,
+    defaultLiveCardDisplayConfig,
+    defaultLiveHandStackConfig,
     type LiveMessage,
     type LiveEvent,
     type LivePlayerInfo,
@@ -267,6 +270,10 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                 config: loadLiveCardDisplayConfig(),
             });
             sendRef.current({
+                type: 'hand-stack-config',
+                config: loadLiveHandStackConfig(),
+            });
+            sendRef.current({
                 type: 'player-info-state',
                 left: playerInfo('left'),
                 right: playerInfo('right'),
@@ -307,6 +314,10 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                 type: 'card-display-config',
                 config: loadLiveCardDisplayConfig(),
             });
+            sendRef.current({
+                type: 'hand-stack-config',
+                config: loadLiveHandStackConfig(),
+            });
         }
     }, [socketStatus]);
 
@@ -340,6 +351,14 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
             sendRef.current({
                 type: 'scoreboard-state',
                 scoreboard: defaultLiveScoreboardState(),
+            });
+            sendRef.current({
+                type: 'card-display-config',
+                config: defaultLiveCardDisplayConfig(),
+            });
+            sendRef.current({
+                type: 'hand-stack-config',
+                config: defaultLiveHandStackConfig(),
             });
             const freshInfo = (side: Side): LivePlayerInfo => {
                 const fresh = emptySide(side);

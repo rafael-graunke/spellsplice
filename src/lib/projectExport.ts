@@ -8,6 +8,13 @@ import { cardDataCache, restoreCardDataCache } from './cardCache';
 
 export type SourceMeta = Pick<MediaSource, 'id' | 'name' | 'duration' | 'type'>;
 
+function sanitizeFilename(name: string): string {
+    return name
+        .trim()
+        .replace(/[/\\?%*:|"<>]/g, '')
+        .trim();
+}
+
 export interface ProjectExport {
     version: '1';
     createdAt: string;
@@ -52,7 +59,7 @@ export async function exportProject(
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'project.sps';
+    a.download = `${sanitizeFilename(config.title) || 'Untitled'}.sps`;
     a.click();
     URL.revokeObjectURL(url);
 }

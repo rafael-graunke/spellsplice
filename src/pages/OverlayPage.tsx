@@ -8,11 +8,14 @@ import {
     saveLiveModeConfig,
     loadLiveCardDisplayConfig,
     saveLiveCardDisplayConfig,
+    loadLiveHandStackConfig,
+    saveLiveHandStackConfig,
     type LiveMessage,
     type LiveOverlayState,
     type LiveDisplayCard,
     type LiveScoreboardState,
     type LiveCardDisplayConfig,
+    type LiveHandStackConfig,
     type LivePlayerInfo,
     type SingleScoreboardConfig,
 } from '@/lib/liveMode';
@@ -83,6 +86,12 @@ function OverlayPage() {
     const cardDisplayConfigRef = useRef<LiveCardDisplayConfig>(
         loadLiveCardDisplayConfig()
     );
+    // Per-side hand stack placement/sizing, seeded from this page's own
+    // localStorage so the very first paint is placed correctly before the
+    // controller sends 'hand-stack-config'.
+    const handStackConfigRef = useRef<LiveHandStackConfig>(
+        loadLiveHandStackConfig()
+    );
     const playerInfoRef = useRef<{
         left: LivePlayerInfo;
         right: LivePlayerInfo;
@@ -149,6 +158,7 @@ function OverlayPage() {
             displayAnimRef.current,
             performance.now()
         );
+        const handStack = handStackConfigRef.current;
         renderLiveHand(
             ctx,
             stateRef.current.left,
@@ -157,7 +167,7 @@ function OverlayPage() {
             0,
             WIDTH,
             HEIGHT,
-            stripW,
+            handStack,
             handAnimRef.current,
             performance.now()
         );
@@ -168,17 +178,24 @@ function OverlayPage() {
             WIDTH,
             {
                 left:
-                    getHandStackTopY(stateRef.current.left, 0, HEIGHT, stripW) -
-                    ANNOTATION_HAND_GAP,
+                    getHandStackTopY(
+                        stateRef.current.left,
+                        handStack.left,
+                        0,
+                        HEIGHT
+                    ) - ANNOTATION_HAND_GAP,
                 right:
                     getHandStackTopY(
                         stateRef.current.right,
+                        handStack.right,
                         0,
-                        HEIGHT,
-                        stripW
+                        HEIGHT
                     ) - ANNOTATION_HAND_GAP,
             },
-            stripW,
+            {
+                left: handStack.left.cardStripWidth,
+                right: handStack.right.cardStripWidth,
+            },
             annotationAnimRef.current,
             performance.now()
         );
@@ -202,7 +219,7 @@ function OverlayPage() {
                     img,
                     config.anchor,
                     config.scale,
-                    config.margins,
+                    config.offset,
                     WIDTH,
                     HEIGHT
                 );
@@ -469,6 +486,10 @@ function OverlayPage() {
             } else if (msg.type === 'card-display-config') {
                 cardDisplayConfigRef.current = msg.config;
                 saveLiveCardDisplayConfig(msg.config);
+                redraw();
+            } else if (msg.type === 'hand-stack-config') {
+                handStackConfigRef.current = msg.config;
+                saveLiveHandStackConfig(msg.config);
                 redraw();
             } else if (msg.type === 'scoreboard-state') {
                 scoreboardRef.current = msg.scoreboard;

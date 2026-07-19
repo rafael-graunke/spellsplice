@@ -41,6 +41,8 @@ import LiveModeDialog, {
 import {
     LIVE_PROJECT_KEY,
     LIVE_SCOREBOARD_KEY,
+    LIVE_CARD_DISPLAY_KEY,
+    LIVE_HAND_STACK_KEY,
     loadLiveModeConfig,
     DEFAULT_CARD_DISPLAY_DURATION_MS,
 } from '@/lib/liveMode';
@@ -371,6 +373,8 @@ function App() {
             liveModeRef.current?.resetOverlay();
             localStorage.removeItem(LIVE_PROJECT_KEY);
             localStorage.removeItem(LIVE_SCOREBOARD_KEY);
+            localStorage.removeItem(LIVE_CARD_DISPLAY_KEY);
+            localStorage.removeItem(LIVE_HAND_STACK_KEY);
         }
         setMode('welcome');
     }, [mode, resetToFresh]);

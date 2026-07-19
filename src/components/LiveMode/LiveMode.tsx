@@ -28,8 +28,10 @@ import {
     loadLiveScoreboardState,
     loadLiveCardDisplayConfig,
     loadLiveHandStackConfig,
+    loadLiveLayerOrder,
     defaultLiveCardDisplayConfig,
     defaultLiveHandStackConfig,
+    DEFAULT_LAYER_ORDER,
     type LiveMessage,
     type LiveEvent,
     type LivePlayerInfo,
@@ -274,6 +276,10 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                 config: loadLiveHandStackConfig(),
             });
             sendRef.current({
+                type: 'layer-order',
+                order: loadLiveLayerOrder(),
+            });
+            sendRef.current({
                 type: 'player-info-state',
                 left: playerInfo('left'),
                 right: playerInfo('right'),
@@ -318,6 +324,10 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                 type: 'hand-stack-config',
                 config: loadLiveHandStackConfig(),
             });
+            sendRef.current({
+                type: 'layer-order',
+                order: loadLiveLayerOrder(),
+            });
         }
     }, [socketStatus]);
 
@@ -360,6 +370,10 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                 type: 'hand-stack-config',
                 config: defaultLiveHandStackConfig(),
             });
+            sendRef.current({
+                type: 'layer-order',
+                order: [...DEFAULT_LAYER_ORDER],
+            });
             const freshInfo = (side: Side): LivePlayerInfo => {
                 const fresh = emptySide(side);
                 return {
@@ -401,6 +415,17 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                     event: makeHandEvent('REMOVE_FROM_HAND', side, card),
                 });
         }
+    };
+
+    // Places a new hand card per that side's configured insert order: 'prepend'
+    // puts it at the anchor end (index 0), 'append' (default) at the growth end.
+    const placeInHand = (
+        side: Side,
+        hand: LibraryCardInstance[],
+        entry: LibraryCardInstance,
+    ) => {
+        const insert = loadLiveHandStackConfig()[side].insert ?? 'append';
+        return insert === 'prepend' ? [entry, ...hand] : [...hand, entry];
     };
 
     const broadcastHand = (side: Side, hand: LibraryCardInstance[]) => {
@@ -649,10 +674,10 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                         else cancelPlayTimer(s);
                         success = true;
                     } else if (over.id === HAND_DROP_ID(s)) {
-                        const newHand = [
-                            ...sides[s].hand,
-                            { id: makeId(), card: entry.card },
-                        ];
+                        const newHand = placeInHand(s, sides[s].hand, {
+                            id: makeId(),
+                            card: entry.card,
+                        });
                         setSides((prev) => ({
                             ...prev,
                             [s]: { ...prev[s], hand: newHand },
@@ -751,7 +776,7 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                         prefix !== 'hand'
                     ) {
                         removeFromSource();
-                        const newHand = [...sides[side].hand, entry];
+                        const newHand = placeInHand(side, sides[side].hand, entry);
                         setSides((prev) => ({
                             ...prev,
                             [side]: { ...prev[side], hand: newHand },

@@ -3,6 +3,7 @@ import {
     defaultOffsetForAnchor,
     type SingleHandStackConfig,
     type HandStackGrowth,
+    type HandStackInsert,
 } from '@/lib/liveMode';
 import { Input } from '@/components/ui/input';
 import {
@@ -37,6 +38,11 @@ const GROWTH_OPTIONS: { id: HandStackGrowth; label: string }[] = [
     { id: 'center', label: 'Center' },
 ];
 
+const INSERT_OPTIONS: { id: HandStackInsert; label: string }[] = [
+    { id: 'append', label: 'Append' },
+    { id: 'prepend', label: 'Prepend' },
+];
+
 function HandStackConfigEditor({ config, onChange, ownSide }: Props) {
     const [openItems, setOpenItems] = usePersistedAccordion(
         `spellsplice-acc-handstack-${ownSide}`,
@@ -64,6 +70,30 @@ function HandStackConfigEditor({ config, onChange, ownSide }: Props) {
                 : config.cardStripWidth;
         setWidthText(String(committed));
         onChange({ ...config, cardStripWidth: committed });
+    };
+
+    const clampMaxHeight = (value: number) =>
+        Math.max(0, Math.min(2000, Math.round(value)));
+
+    const [maxHeightText, setMaxHeightText] = useState(() =>
+        String(config.maxHeight ?? 0)
+    );
+
+    const handleMaxHeightChange = (value: string) => {
+        setMaxHeightText(value);
+        const num = Number(value);
+        if (value !== '' && Number.isFinite(num))
+            onChange({ ...config, maxHeight: clampMaxHeight(num) });
+    };
+
+    const handleMaxHeightBlur = () => {
+        const num = Number(maxHeightText);
+        const committed =
+            maxHeightText !== '' && Number.isFinite(num)
+                ? clampMaxHeight(num)
+                : (config.maxHeight ?? 0);
+        setMaxHeightText(String(committed));
+        onChange({ ...config, maxHeight: committed });
     };
 
     const growField = (
@@ -95,6 +125,35 @@ function HandStackConfigEditor({ config, onChange, ownSide }: Props) {
         </div>
     );
 
+    const insertField = (
+        <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium flex items-center gap-1.5">
+                New card
+                <InfoHint>
+                    Where a newly added card lands: append to the end of the
+                    stack, or prepend to the anchor end.
+                </InfoHint>
+            </span>
+            <Select
+                value={config.insert ?? 'append'}
+                onValueChange={(value) =>
+                    onChange({ ...config, insert: value as HandStackInsert })
+                }
+            >
+                <SelectTrigger className="w-44">
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                    {INSERT_OPTIONS.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                            {option.label}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        </div>
+    );
+
     const widthField = (
         <div className="flex flex-col gap-1.5">
             <label
@@ -111,6 +170,28 @@ function HandStackConfigEditor({ config, onChange, ownSide }: Props) {
                 value={widthText}
                 onChange={(e) => handleWidthChange(e.target.value)}
                 onBlur={handleWidthBlur}
+                className="w-28"
+            />
+        </div>
+    );
+
+    const maxHeightField = (
+        <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium flex items-center gap-1.5">
+                Max height (px)
+                <InfoHint>
+                    Cap the stack height. Cards nearest the anchor stay; the rest
+                    collapse into a “+N” pill at the growth edge. 0 = unlimited.
+                </InfoHint>
+            </span>
+            <Input
+                id={`hand-stack-max-height-${ownSide}`}
+                type="number"
+                min={0}
+                max={2000}
+                value={maxHeightText}
+                onChange={(e) => handleMaxHeightChange(e.target.value)}
+                onBlur={handleMaxHeightBlur}
                 className="w-28"
             />
         </div>
@@ -158,12 +239,20 @@ function HandStackConfigEditor({ config, onChange, ownSide }: Props) {
             <AccordionItem value="sizing">
                 <AccordionTrigger className="px-4">Sizing</AccordionTrigger>
                 <AccordionContent className="p-4">
-                    {widthField}
+                    <div className="grid grid-cols-2 gap-4">
+                        {widthField}
+                        {maxHeightField}
+                    </div>
                 </AccordionContent>
             </AccordionItem>
             <AccordionItem value="behaviour">
                 <AccordionTrigger className="px-4">Behaviour</AccordionTrigger>
-                <AccordionContent className="p-4">{growField}</AccordionContent>
+                <AccordionContent className="p-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        {growField}
+                        {insertField}
+                    </div>
+                </AccordionContent>
             </AccordionItem>
         </Accordion>
     );

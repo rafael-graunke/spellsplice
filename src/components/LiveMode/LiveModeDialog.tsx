@@ -13,11 +13,14 @@ import {
     saveLiveCardDisplayConfig,
     loadLiveHandStackConfig,
     saveLiveHandStackConfig,
+    loadLiveLayerOrder,
+    saveLiveLayerOrder,
     DEFAULT_CARD_STRIP_WIDTH,
     DEFAULT_CARD_DISPLAY_DURATION_MS,
     type LiveScoreboardState,
     type LiveCardDisplayConfig,
     type LiveHandStackConfig,
+    type LiveLayerId,
     type LiveOverlayPreset,
 } from '@/lib/liveMode';
 import { cn } from '@/lib/utils';
@@ -202,6 +205,9 @@ function LiveModeDialogContent({
     const [handStackConfig, setHandStackConfig] = useState(() =>
         loadLiveHandStackConfig()
     );
+    const [layerOrder, setLayerOrder] = useState<LiveLayerId[]>(() =>
+        loadLiveLayerOrder()
+    );
     const { status: oracleCardsStatus, forceRefresh: forceRefreshOracleCards } =
         useOracleCards();
 
@@ -244,6 +250,15 @@ function LiveModeDialogContent({
             saveLiveCardDisplayConfig(next);
             setCardDisplayConfig(next);
             send({ type: 'card-display-config', config: next });
+        },
+        [send]
+    );
+
+    const handleLayerOrderChange = useCallback(
+        (next: LiveLayerId[]) => {
+            saveLiveLayerOrder(next);
+            setLayerOrder(next);
+            send({ type: 'layer-order', order: next });
         },
         [send]
     );
@@ -383,6 +398,10 @@ function LiveModeDialogContent({
                                         cardDisplay={cardDisplayConfig}
                                         cardDisplayDuration={
                                             cardDisplayDuration
+                                        }
+                                        layerOrder={layerOrder}
+                                        onLayerOrderChange={
+                                            handleLayerOrderChange
                                         }
                                         onApplyPreset={handleApplyPreset}
                                     />

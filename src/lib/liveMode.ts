@@ -7,6 +7,7 @@ export const LIVE_PROJECT_KEY = 'spellsplice-live-project';
 export const LIVE_SCOREBOARD_KEY = 'spellsplice-live-scoreboard';
 export const LIVE_CARD_DISPLAY_KEY = 'spellsplice-live-card-display';
 export const LIVE_HAND_STACK_KEY = 'spellsplice-live-hand-stack';
+export const LIVE_LAYER_ORDER_KEY = 'spellsplice-live-layer-order';
 // Pre-rename key ('template' era). Read once on load so existing saved
 // scoreboards migrate forward; cleared after the first successful migration.
 const LEGACY_LIVE_TEMPLATE_KEY = 'spellsplice-live-template';
@@ -378,6 +379,12 @@ export function saveLiveCardDisplayConfig(config: LiveCardDisplayConfig) {
 // (block centered on the anchor line).
 export type HandStackGrowth = 'top-down' | 'bottom-up' | 'center';
 
+// Where a newly added card lands in the hand array: 'append' at the end (index
+// n), 'prepend' at the front (index 0, the anchor end). Determines whether the
+// newest card sits at the anchor or the growth edge, and thus which end the
+// maxHeight cap hides.
+export type HandStackInsert = 'append' | 'prepend';
+
 // Back-compat alias; hand stack now shares the common `Offset` type.
 export type HandStackOffset = Offset;
 
@@ -389,6 +396,12 @@ export interface SingleHandStackConfig {
     offset: Offset;
     cardStripWidth: number;
     growth: HandStackGrowth;
+    // Where new cards are inserted into the hand array. Defaults to 'append'.
+    insert?: HandStackInsert;
+    // Max rendered stack height in px. Cards nearest the anchor are kept; the
+    // overflowing tail is hidden and summarised by a `+N` pill at the growth
+    // (overflow) edge. 0 or undefined = unlimited.
+    maxHeight?: number;
 }
 
 export interface LiveHandStackConfig {
@@ -411,6 +424,8 @@ export function defaultHandStackConfig(
         offset: defaultOffsetForAnchor(anchor),
         cardStripWidth: stripWidth,
         growth: 'bottom-up',
+        insert: 'append',
+        maxHeight: 0,
     };
 }
 
@@ -453,6 +468,8 @@ function mergeHandStackSide(
         offset,
         cardStripWidth: saved.cardStripWidth ?? def.cardStripWidth,
         growth: saved.growth ?? def.growth,
+        insert: saved.insert ?? def.insert,
+        maxHeight: saved.maxHeight ?? def.maxHeight,
     };
 }
 
@@ -489,6 +506,61 @@ export function loadLiveHandStackConfig(): LiveHandStackConfig {
 
 export function saveLiveHandStackConfig(config: LiveHandStackConfig) {
     localStorage.setItem(LIVE_HAND_STACK_KEY, JSON.stringify(config));
+}
+
+// The four overlay draw layers, in paint order (index 0 = bottom, drawn first;
+// last = top). OverlayPage renders each layer in this order, so reordering the
+// array restacks the overlay.
+export type LiveLayerId = 'cardDisplay' | 'hand' | 'annotations' | 'scoreboard';
+
+// Default order matches the historic hardcoded draw sequence in OverlayPage.
+export const DEFAULT_LAYER_ORDER: LiveLayerId[] = [
+    'cardDisplay',
+    'hand',
+    'annotations',
+    'scoreboard',
+];
+
+// Human labels for the Layers reorder UI.
+export const LIVE_LAYER_LABELS: Record<LiveLayerId, string> = {
+    cardDisplay: 'Card Display',
+    hand: 'Hand Stack',
+    annotations: 'Annotations',
+    scoreboard: 'Scoreboard',
+};
+
+// Normalizes a possibly-partial/corrupt saved order to a valid permutation:
+// keeps known ids in saved order, drops unknowns, appends any missing layers
+// (in default order) so all four always render.
+function normalizeLayerOrder(saved: unknown): LiveLayerId[] {
+    const known = new Set(DEFAULT_LAYER_ORDER);
+    const seen = new Set<LiveLayerId>();
+    const order: LiveLayerId[] = [];
+    if (Array.isArray(saved)) {
+        for (const id of saved) {
+            if (known.has(id as LiveLayerId) && !seen.has(id as LiveLayerId)) {
+                seen.add(id as LiveLayerId);
+                order.push(id as LiveLayerId);
+            }
+        }
+    }
+    for (const id of DEFAULT_LAYER_ORDER) {
+        if (!seen.has(id)) order.push(id);
+    }
+    return order;
+}
+
+export function loadLiveLayerOrder(): LiveLayerId[] {
+    try {
+        const raw = localStorage.getItem(LIVE_LAYER_ORDER_KEY);
+        return normalizeLayerOrder(raw ? JSON.parse(raw) : null);
+    } catch {
+        return [...DEFAULT_LAYER_ORDER];
+    }
+}
+
+export function saveLiveLayerOrder(order: LiveLayerId[]) {
+    localStorage.setItem(LIVE_LAYER_ORDER_KEY, JSON.stringify(order));
 }
 
 // A named, self-contained snapshot of every Overlay Appearance config. Bundles
@@ -673,16 +745,28 @@ export function configMatchesPreset(
     cardDisplay: LiveCardDisplayConfig,
     cardDisplayDuration: number
 ): boolean {
+    // Fill optional fields to their defaults on both sides so a preset JSON that
+    // predates them still matches a live config carrying the default (absent key
+    // vs `maxHeight: 0` / `insert: 'append'` would otherwise never compare equal).
+    const normSide = (s: SingleHandStackConfig): SingleHandStackConfig => ({
+        ...s,
+        insert: s.insert ?? 'append',
+        maxHeight: s.maxHeight ?? 0,
+    });
+    const normHandStack = (h: LiveHandStackConfig): LiveHandStackConfig => ({
+        left: normSide(h.left),
+        right: normSide(h.right),
+    });
     return (
         stableStringify({
             scoreboard,
-            handStack,
+            handStack: normHandStack(handStack),
             cardDisplay,
             cardDisplayDuration,
         }) ===
         stableStringify({
             scoreboard: preset.scoreboard,
-            handStack: preset.handStack,
+            handStack: normHandStack(preset.handStack),
             cardDisplay: preset.cardDisplay,
             cardDisplayDuration: preset.cardDisplayDuration,
         })
@@ -716,6 +800,7 @@ export type LiveMessage =
     | { type: 'config-state'; cardStripWidth: number }
     | { type: 'card-display-config'; config: LiveCardDisplayConfig }
     | { type: 'hand-stack-config'; config: LiveHandStackConfig }
+    | { type: 'layer-order'; order: LiveLayerId[] }
     | { type: 'scoreboard-state'; scoreboard: LiveScoreboardState }
     | { type: 'player-info-state'; left: LivePlayerInfo; right: LivePlayerInfo }
     | { type: 'preload-cards'; cards: PreloadCard[] }

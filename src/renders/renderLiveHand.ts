@@ -43,7 +43,30 @@ function handStackAnchorY(
     return base + (cfg.offset?.y ?? 0);
 }
 
+// Number of cards actually rendered under `maxHeight`. Cards nearest the anchor
+// (the array prefix) are kept; once the cumulative strip height would exceed the
+// cap the rest are hidden. At least one card always shows. 0/undefined = no cap.
+export function visibleHandCount(
+    hand: LiveHandCard[],
+    cfg: SingleHandStackConfig
+): number {
+    const cap = cfg.maxHeight ?? 0;
+    if (cap <= 0) return hand.length;
+    const stripW = cfg.cardStripWidth;
+    let acc = 0;
+    let count = 0;
+    for (const { card } of hand) {
+        const h = getStripH({ name: card.name }, stripW);
+        if (acc + h > cap && count > 0) break;
+        acc += h;
+        count++;
+    }
+    return count;
+}
+
 // Top Y of the rendered stack (used to place annotations directly above it).
+// Honors the max-height cap so annotations follow the visible top, not the
+// full hand's would-be top.
 export function getHandStackTopY(
     hand: LiveHandCard[],
     cfg: SingleHandStackConfig,
@@ -51,7 +74,8 @@ export function getHandStackTopY(
     drawH: number
 ): number {
     const stripW = cfg.cardStripWidth;
-    const totalH = hand.reduce(
+    const visible = hand.slice(0, visibleHandCount(hand, cfg));
+    const totalH = visible.reduce(
         (s, { card }) => s + getStripH({ name: card.name }, stripW),
         0
     );
@@ -59,6 +83,35 @@ export function getHandStackTopY(
     if (cfg.growth === 'top-down') return anchorY;
     if (cfg.growth === 'center') return anchorY - totalH / 2;
     return anchorY - totalH; // bottom-up
+}
+
+// Small rounded `+N` pill summarising the hidden overflow tail, centered
+// horizontally on the stack and straddling the growth (overflow) edge.
+function drawOverflowPill(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    count: number,
+    stripW: number
+) {
+    const text = `+${count}`;
+    const fontSize = Math.max(14, Math.round(stripW * 0.05));
+    ctx.save();
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const padX = fontSize * 0.6;
+    const w = ctx.measureText(text).width + padX * 2;
+    const h = Math.round(fontSize * 1.5);
+    const x = cx - w / 2;
+    const y = cy - h / 2;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, h / 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(text, cx, cy + 1);
+    ctx.restore();
 }
 
 export function renderLiveHand(
@@ -84,9 +137,15 @@ export function renderLiveHand(
         { hand: right, side: 'right' },
     ];
 
-    for (const { hand, side } of sides) {
+    for (const { hand: fullHand, side } of sides) {
         const cfg = config[side];
         const stripW = cfg.cardStripWidth;
+        // Cap to the cards that fit under maxHeight; the tail is summarised by a
+        // pill below. Rendering (and its enter/exit anims) only ever sees the
+        // visible prefix.
+        const visibleCount = visibleHandCount(fullHand, cfg);
+        const hand = fullHand.slice(0, visibleCount);
+        const hiddenCount = fullHand.length - visibleCount;
         const horizontal = cfg.anchor.split('-')[1]; // left | center | right
         // isLeft governs the revealed-eye-icon side; live hands pass no icon so
         // it only needs to be consistent. Center anchors face by player side.
@@ -212,6 +271,27 @@ export function renderLiveHand(
                 1 - t,
                 a.card.card.mana_cost,
                 a.card.card.colors,
+                stripW
+            );
+        }
+
+        // Overflow pill: horizontally centered on the stack, straddling the
+        // growth edge (top for bottom-up, bottom for top-down/center).
+        if (hiddenCount > 0 && hand.length > 0) {
+            const visTotalH = cumH(hand, hand.length);
+            const topY =
+                cfg.growth === 'top-down'
+                    ? anchorY
+                    : cfg.growth === 'center'
+                      ? anchorY - visTotalH / 2
+                      : anchorY - visTotalH;
+            const edgeY =
+                cfg.growth === 'bottom-up' ? topY : topY + visTotalH;
+            drawOverflowPill(
+                ctx,
+                finalX + stripW / 2,
+                edgeY,
+                hiddenCount,
                 stripW
             );
         }

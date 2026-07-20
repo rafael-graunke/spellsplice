@@ -11,10 +11,14 @@
             "fieldMappings": [
                 { "id": "left.name", "field": "name", "side": "left" },
                 { "id": "left.deck", "field": "deckName", "side": "left" },
+                { "id": "left.standing", "field": "standing", "side": "left" },
+                { "id": "left.pronouns", "field": "pronouns", "side": "left" },
                 { "id": "left.life", "field": "life", "side": "left" },
                 { "id": "left.wins", "field": "wins", "side": "left" },
                 { "id": "right.name", "field": "name", "side": "right" },
                 { "id": "right.deck", "field": "deckName", "side": "right" },
+                { "id": "right.standing", "field": "standing", "side": "right" },
+                { "id": "right.pronouns", "field": "pronouns", "side": "right" },
                 { "id": "right.life", "field": "life", "side": "right" },
                 { "id": "right.wins", "field": "wins", "side": "right" }
             ]
@@ -27,6 +31,8 @@
             "fieldMappings": [
                 { "id": "name", "field": "name", "side": "left" },
                 { "id": "deck", "field": "deckName", "side": "left" },
+                { "id": "standing", "field": "standing", "side": "left" },
+                { "id": "pronouns", "field": "pronouns", "side": "left" },
                 { "id": "life", "field": "life", "side": "left" },
                 { "id": "wins", "field": "wins", "side": "left" }
             ]
@@ -39,6 +45,8 @@
             "fieldMappings": [
                 { "id": "name", "field": "name", "side": "right" },
                 { "id": "deck", "field": "deckName", "side": "right" },
+                { "id": "standing", "field": "standing", "side": "right" },
+                { "id": "pronouns", "field": "pronouns", "side": "right" },
                 { "id": "life", "field": "life", "side": "right" },
                 { "id": "wins", "field": "wins", "side": "right" }
             ]
@@ -78,5 +86,6 @@
             }
         }
     },
-    "cardDisplayDuration": 5000
+    "cardDisplayDuration": 5000,
+    "layerOrder": ["cardDisplay", "hand", "annotations", "scoreboard"]
 }

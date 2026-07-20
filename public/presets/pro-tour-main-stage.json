@@ -1,0 +1,197 @@
+{
+  "version": "1",
+  "name": "Pro Tour (Main Stage)",
+  "scoreboard": {
+    "mode": "shared",
+    "shared": {
+      "svg": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1920 1080\" xmlns:bx=\"https://boxy-svg.com\" width=\"1920px\" height=\"1080px\"><defs><bx:export><bx:file format=\"svg\" path=\"protour_bottom_scoreboard.svg\" excluded=\"true\"/><bx:file format=\"svg\" href=\"#bottom-scoreboard\" path=\"protour_bottom_.svg\"/><bx:file format=\"svg\" href=\"#game1-top\" path=\"Sem título.svg\"/></bx:export><bx:export><bx:file format=\"svg\" path=\"protour_top_scoreboard.svg\" excluded=\"true\"/><bx:file format=\"svg\" path=\"protour.svg\" excluded=\"true\"/><bx:file format=\"svg\" path=\"Sem título 2.svg\"/></bx:export></defs><path d=\"M 0 0 L 23.016 0 L 23.016 219.18 C 23.016 225.807 28.389 231.18 35.016 231.18 L 326.776 231.18 C 333.403 231.18 338.776 225.807 338.776 219.18 L 338.776 0 L 355.827 0 L 355.827 1080 L 335.376 1080 L 335.501 861.342 C 335.501 854.715 328.382 848.22 321.755 848.22 L 29.508 848.22 C 22.881 848.22 17.508 853.593 17.508 860.22 L 17.508 1080 L 0 1080 L 0 0 Z\" style=\"fill: rgb(83, 83, 83);\" id=\"bg-left-panel\"/><g id=\"top-panel\"><path style=\"fill: rgb(14, 14, 10);\" d=\"M 347.989 0 L 347.989 511.244 C 347.989 524.326 337.384 534.931 324.302 534.931 L 32.54 534.931 C 19.458 534.931 8.853 524.326 8.853 511.244 L 8.853 0 L 21.016 0 L 21.016 219.18 C 21.016 225.807 28.389 231.18 35.016 231.18 L 326.776 231.18 C 333.403 231.18 336.776 224.916 336.776 218.289 L 336.776 0 L 347.989 0 Z\" id=\"bg-top\"/><path style=\"fill: none; stroke-width: 4px; paint-order: fill; stroke-dasharray: 0, 0; stroke: rgb(83, 83, 83);\" d=\"M 336.301 0 L 336.301 219.18 C 336.301 225.807 330.931 231.18 324.301 231.18 L 32.541 231.18 C 25.911 231.18 20.541 225.807 20.541 219.18 L 20.541 0\" id=\"facecam-top\"/><rect x=\"148.778\" y=\"214.126\" width=\"59.286\" height=\"34.108\" style=\"stroke-width: 3px; fill: rgb(15, 15, 15); stroke: rgb(83, 83, 83);\" id=\"flag-top\"/><g id=\"win-count\"><ellipse style=\"paint-order: fill; filter: none; fill: rgb(14, 14, 10); stroke-width: 4; stroke: rgb(83, 83, 83);\" cx=\"161.117\" cy=\"267.98\" rx=\"11.228\" ry=\"10.753\" id=\"game1-top\" data-visible-if=\"left.wins&lt;1\"/><ellipse style=\"paint-order: fill; filter: none; fill: rgb(14, 14, 10); stroke-width: 4px; stroke: rgb(83, 83, 83);\" cx=\"193.66\" cy=\"267.98\" rx=\"11.228\" ry=\"10.753\" id=\"game2-top\" data-visible-if=\"left.wins&lt;2\"/><ellipse style=\"paint-order: fill; fill: rgb(148, 37, 204); filter: none; visibility: hidden;\" cx=\"161.117\" cy=\"267.98\" rx=\"12.853\" ry=\"12.853\" id=\"game1-win-top\" data-visible-if=\"left.wins&gt;=1\"/><ellipse style=\"paint-order: fill; fill: rgb(148, 37, 204); filter: none; stroke-width: 1; visibility: hidden;\" cx=\"193.66\" cy=\"267.98\" rx=\"12.853\" ry=\"12.853\" id=\"game2-win-top\" data-visible-if=\"left.wins&gt;=2\"/></g><text style=\"fill: rgb(165, 165, 165); font-family: Arial, sans-serif; font-size: 20px; font-weight: 700; text-transform: uppercase; white-space: pre;\" x=\"35.296\" y=\"255.626\" id=\"left.standing\"> </text></g><g id=\"bottom-panel\" transform=\"matrix(-1, 0, 0, -1, 0.000001, 545.06897)\" style=\"transform-origin: 178.421px 267.466px;\"><path style=\"fill: rgb(14, 14, 10);\" d=\"M 347.989 0 L 347.989 511.244 C 347.989 524.326 337.384 534.931 324.302 534.931 L 32.54 534.931 C 19.458 534.931 8.853 524.326 8.853 511.244 L 8.853 0 L 20.541 0 L 20.541 219.18 C 20.541 225.807 28.389 231.18 35.016 231.18 L 326.776 231.18 C 333.403 231.18 336.301 225.807 336.301 219.18 L 336.301 0 L 347.989 0 Z\" id=\"bg-bottom\"/><path style=\"fill: none; stroke-width: 4px; paint-order: fill; stroke-dasharray: 0, 0; stroke: rgb(83, 83, 83);\" d=\"M 336.301 0 L 336.301 219.18 C 336.301 225.807 330.928 231.18 324.301 231.18 L 32.541 231.18 C 25.914 231.18 20.541 225.807 20.541 219.18 L 20.541 0\" id=\"facecam-bottom\"/><rect x=\"148.778\" y=\"214.126\" width=\"59.286\" height=\"34.108\" style=\"stroke-width: 3px; fill: rgb(15, 15, 15); stroke: rgb(83, 83, 83);\" id=\"flag-bottom\"/><g id=\"win-count-bottom\" transform=\"matrix(-1, 0, 0, -1, 356.328003, 535.445557)\"><ellipse style=\"paint-order: fill; filter: none; fill: rgb(14, 14, 10); stroke-width: 4; stroke: rgb(83, 83, 83);\" cx=\"161.117\" cy=\"267.98\" rx=\"11.228\" ry=\"10.753\" id=\"game1-bottom\" data-visible-if=\"right.wins&lt;1\"/><ellipse style=\"paint-order: fill; filter: none; fill: rgb(14, 14, 10); stroke-width: 4px; stroke: rgb(83, 83, 83);\" cx=\"193.66\" cy=\"267.98\" rx=\"11.228\" ry=\"10.753\" id=\"game2-bottom\" data-visible-if=\"right.wins&lt;2\"/><ellipse style=\"paint-order: fill; fill: rgb(148, 37, 204); filter: none; visibility: hidden;\" cx=\"161.117\" cy=\"267.98\" rx=\"12.853\" ry=\"12.853\" id=\"game1-win-bottom\" data-visible-if=\"right.wins&gt;=1\"/><ellipse style=\"paint-order: fill; fill: rgb(148, 37, 204); filter: none; stroke-width: 1; visibility: hidden;\" cx=\"193.66\" cy=\"267.98\" rx=\"12.853\" ry=\"12.853\" id=\"game2-win-bottom\" data-visible-if=\"right.wins&gt;=2\"/></g><text style=\"fill: rgb(165, 165, 165); font-family: Arial, sans-serif; font-size: 20px; font-weight: 700; text-transform: uppercase; white-space: pre; stroke-width: 1;\" x=\"-321.55\" y=\"-243.11\" id=\"right.standing\" transform=\"matrix(-1, 0, 0, -1, 0, 0)\"> </text></g><g id=\"cards-in-hand\"><rect x=\"36.158\" y=\"525.999\" width=\"283.689\" height=\"29.275\" style=\"stroke: rgb(36, 36, 36); stroke-width: 3px; fill: rgb(30, 30, 30);\" id=\"cih-bg\"/><text style=\"fill: rgb(253, 253, 253); font-family: Arial, sans-serif; font-size: 20px; text-transform: uppercase; white-space: pre;\" x=\"99.032\" y=\"547.458\" id=\"cih-text\">CARDS IN HAND</text></g><g id=\"bottom-scoreboard\" transform=\"matrix(1, 0, 0, 1, 0.179991, 991.999939)\"><rect x=\"355.647\" width=\"1564.35\" height=\"74.181\" style=\"fill: rgb(26, 26, 26);\" id=\"bg-scoreboard\" y=\"13.819\"/><text style=\"fill: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 32px; font-weight: 700; letter-spacing: -1.9px; text-transform: uppercase; white-space: pre;\" x=\"388.944\" y=\"53.071\" id=\"right.name\">NAME LASTNAME</text><text style=\"fill: rgb(176, 176, 178); font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; text-transform: uppercase; white-space: pre;\" id=\"right.pronouns\" x=\"388.944\" y=\"74.251\"> </text><text style=\"fill: rgb(173, 173, 173); font-family: Arial, sans-serif; font-size: 20px; font-weight: 700; text-transform: uppercase; white-space: pre;\" id=\"right.deck\" x=\"1335.74\" y=\"59.96\">DECK NAME</text><g id=\"life-counter\" transform=\"matrix(1, 0, 0, 1, -0.180023, -990.46106)\"><rect x=\"1071\" y=\"995.223\" width=\"134.004\" height=\"76.34\" style=\"stroke-width: 6px; stroke: rgb(98, 98, 98); fill: rgb(26, 26, 26);\" rx=\"24\" ry=\"24\" id=\"bg-life\"/><text style=\"fill: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 69px; font-weight: 700; text-transform: uppercase; white-space: pre;\" x=\"1099.63\" y=\"1057.17\" id=\"right.life\">20</text></g></g><g id=\"top-scoreboard\" transform=\"matrix(1, 0, 0, 1, 0.179996, 0.000005)\"><rect x=\"355.647\" width=\"1564.35\" height=\"74.181\" style=\"fill: rgb(26, 26, 26);\" id=\"rect-1\"/><g id=\"group-1\" transform=\"matrix(1, 0, 0, 1, -0.180023, -987.551697)\"><rect x=\"1071\" y=\"995.223\" width=\"134.004\" height=\"76.34\" style=\"stroke-width: 6px; stroke: rgb(98, 98, 98); fill: rgb(26, 26, 26);\" rx=\"24\" ry=\"24\" id=\"rect-2\"/><text style=\"fill: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 69px; font-weight: 700; text-transform: uppercase; white-space: pre;\" x=\"1099.63\" y=\"1057.17\" id=\"left.life\">20</text></g><text style=\"fill: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 32px; font-weight: 700; letter-spacing: -1.9px; text-transform: uppercase; white-space: pre;\" x=\"388.944\" y=\"39.252\" id=\"left.name\">NAME LASTNAME</text><text style=\"fill: rgb(176, 176, 178); font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; text-transform: uppercase; white-space: pre;\" id=\"left.pronouns\" x=\"388.944\" y=\"60.432\"> </text><text style=\"fill: rgb(173, 173, 173); font-family: Arial, sans-serif; font-size: 20px; font-weight: 700; text-transform: uppercase; white-space: pre;\" id=\"left.deck\" x=\"1335.74\" y=\"46.141\">DECK NAME</text></g></svg>",
+      "anchor": "top-center",
+      "scale": 100,
+      "offset": {
+        "x": 0,
+        "y": 0
+      },
+      "fieldMappings": [
+        {
+          "id": "left.name",
+          "field": "name",
+          "side": "left"
+        },
+        {
+          "id": "left.deck",
+          "field": "deckName",
+          "side": "left"
+        },
+        {
+          "id": "left.life",
+          "field": "life",
+          "side": "left"
+        },
+        {
+          "id": "left.wins",
+          "field": "wins",
+          "side": "left"
+        },
+        {
+          "id": "right.name",
+          "field": "name",
+          "side": "right"
+        },
+        {
+          "id": "right.deck",
+          "field": "deckName",
+          "side": "right"
+        },
+        {
+          "id": "right.life",
+          "field": "life",
+          "side": "right"
+        },
+        {
+          "id": "right.wins",
+          "field": "wins",
+          "side": "right"
+        },
+        {
+          "id": "left.standing",
+          "field": "standing",
+          "side": "left"
+        },
+        {
+          "id": "right.pronouns",
+          "field": "pronouns",
+          "side": "right"
+        },
+        {
+          "id": "left.pronouns",
+          "field": "pronouns",
+          "side": "left"
+        },
+        {
+          "id": "right.standing",
+          "field": "standing",
+          "side": "right"
+        }
+      ]
+    },
+    "left": {
+      "svg": null,
+      "anchor": "top-center",
+      "scale": 100,
+      "offset": {
+        "x": 0,
+        "y": 24
+      },
+      "fieldMappings": [
+        {
+          "id": "name",
+          "field": "name",
+          "side": "left"
+        },
+        {
+          "id": "deck",
+          "field": "deckName",
+          "side": "left"
+        },
+        {
+          "id": "life",
+          "field": "life",
+          "side": "left"
+        },
+        {
+          "id": "wins",
+          "field": "wins",
+          "side": "left"
+        }
+      ]
+    },
+    "right": {
+      "svg": null,
+      "anchor": "top-center",
+      "scale": 100,
+      "offset": {
+        "x": 0,
+        "y": 24
+      },
+      "fieldMappings": [
+        {
+          "id": "name",
+          "field": "name",
+          "side": "right"
+        },
+        {
+          "id": "deck",
+          "field": "deckName",
+          "side": "right"
+        },
+        {
+          "id": "life",
+          "field": "life",
+          "side": "right"
+        },
+        {
+          "id": "wins",
+          "field": "wins",
+          "side": "right"
+        }
+      ]
+    }
+  },
+  "handStack": {
+    "left": {
+      "anchor": "top-left",
+      "offset": {
+        "x": 42,
+        "y": 305
+      },
+      "cardStripWidth": 270,
+      "growth": "top-down",
+      "insert": "prepend",
+      "maxHeight": 230
+    },
+    "right": {
+      "anchor": "middle-left",
+      "offset": {
+        "x": 42,
+        "y": 30
+      },
+      "cardStripWidth": 270,
+      "growth": "top-down",
+      "insert": "prepend",
+      "maxHeight": 230
+    }
+  },
+  "cardDisplay": {
+    "left": {
+      "anchor": "middle-left",
+      "offset": {
+        "x": 8,
+        "y": 0
+      },
+      "animation": {
+        "type": "slide",
+        "duration": 250,
+        "direction": "left"
+      }
+    },
+    "right": {
+      "anchor": "middle-left",
+      "offset": {
+        "x": 8,
+        "y": 0
+      },
+      "animation": {
+        "type": "slide",
+        "duration": 250,
+        "direction": "left"
+      }
+    }
+  },
+  "cardDisplayDuration": 5000,
+  "layerOrder": [
+    "annotations",
+    "scoreboard",
+    "hand",
+    "cardDisplay"
+  ]
+}

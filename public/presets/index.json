@@ -1,4 +1,4 @@
 {
     "default": "spellsplice",
-    "presets": ["spellsplice"]
+    "presets": ["spellsplice", "pro-tour-main-stage", "pro-tour-side-table"]
 }

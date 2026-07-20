@@ -59,7 +59,13 @@ export function createDefaultLiveState(): LiveOverlayState {
 }
 
 export type ScoreboardMode = 'shared' | 'per-player';
-export type ScoreboardField = 'name' | 'deckName' | 'life' | 'wins';
+export type ScoreboardField =
+    | 'name'
+    | 'deckName'
+    | 'standing'
+    | 'pronouns'
+    | 'life'
+    | 'wins';
 
 // 9-anchor grid (top/middle/bottom X left/center/right), shared by the card
 // display, hand stack, and scoreboard.
@@ -140,16 +146,87 @@ export interface LiveScoreboardState {
 export interface LivePlayerInfo {
     name: string;
     deckName: string;
+    // Free-text fields exposed to the scoreboard SVG (e.g. "3-1", "she/her").
+    standing: string;
+    pronouns: string;
     life: number;
     wins: number;
 }
 
+// The identity fields a caster edits in the Players config, as opposed to the
+// life/wins match state driven from the controller during a game.
+export type LivePlayerIdentity = Pick<
+    LivePlayerInfo,
+    'name' | 'deckName' | 'standing' | 'pronouns'
+>;
+
 const DEFAULT_FIELD_IDS: { id: string; field: ScoreboardField }[] = [
     { id: 'name', field: 'name' },
     { id: 'deck', field: 'deckName' },
+    { id: 'standing', field: 'standing' },
+    { id: 'pronouns', field: 'pronouns' },
     { id: 'life', field: 'life' },
     { id: 'wins', field: 'wins' },
 ];
+
+// Live player info is a subset of the per-side project state persisted under
+// LIVE_PROJECT_KEY by LiveMode. These helpers read/patch just the identity +
+// score fields without knowing the full SideState shape, so the Players config
+// (which lives in the settings dialog, not LiveMode) can edit them directly.
+function defaultLivePlayerInfo(side: 'left' | 'right'): LivePlayerInfo {
+    return {
+        name: side === 'left' ? 'Player 1' : 'Player 2',
+        deckName: '',
+        standing: '',
+        pronouns: '',
+        life: 20,
+        wins: 0,
+    };
+}
+
+export function loadLivePlayerInfos(): {
+    left: LivePlayerInfo;
+    right: LivePlayerInfo;
+} {
+    let store: Partial<Record<'left' | 'right', Partial<LivePlayerInfo>>> = {};
+    try {
+        const raw = localStorage.getItem(LIVE_PROJECT_KEY);
+        if (raw) store = JSON.parse(raw) as typeof store;
+    } catch {
+        store = {};
+    }
+    const pick = (side: 'left' | 'right'): LivePlayerInfo => {
+        const def = defaultLivePlayerInfo(side);
+        const saved = store[side] ?? {};
+        return {
+            name: saved.name ?? def.name,
+            deckName: saved.deckName ?? def.deckName,
+            standing: saved.standing ?? def.standing,
+            pronouns: saved.pronouns ?? def.pronouns,
+            life: saved.life ?? def.life,
+            wins: saved.wins ?? def.wins,
+        };
+    };
+    return { left: pick('left'), right: pick('right') };
+}
+
+// Patches only the identity fields of one side in the project store, preserving
+// all other SideState (cards, life, wins, annotations, ...).
+export function patchLivePlayerIdentity(
+    side: 'left' | 'right',
+    patch: Partial<LivePlayerIdentity>
+) {
+    let store: Record<string, unknown> = {};
+    try {
+        const raw = localStorage.getItem(LIVE_PROJECT_KEY);
+        if (raw) store = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+        store = {};
+    }
+    const current = (store[side] ?? {}) as Record<string, unknown>;
+    store[side] = { ...current, ...patch };
+    localStorage.setItem(LIVE_PROJECT_KEY, JSON.stringify(store));
+}
 
 // Shared scoreboards address both players from one SVG, so default mapping ids
 // are side-prefixed (e.g. "left.life"); per-player scoreboards only ever bind
@@ -577,6 +654,9 @@ export interface LiveOverlayPreset {
     handStack: LiveHandStackConfig;
     cardDisplay: LiveCardDisplayConfig;
     cardDisplayDuration: number;
+    // Overlay draw order (bottom -> top). Optional on disk so presets predating
+    // this field still load; normalized to a full permutation on read.
+    layerOrder: LiveLayerId[];
 }
 
 // The built-in "Spellsplice" look: default placements plus the bundled sample
@@ -592,6 +672,7 @@ export function spellsplicePreset(): LiveOverlayPreset {
         handStack: defaultLiveHandStackConfig(),
         cardDisplay: defaultLiveCardDisplayConfig(),
         cardDisplayDuration: DEFAULT_CARD_DISPLAY_DURATION_MS,
+        layerOrder: [...DEFAULT_LAYER_ORDER],
     };
 }
 
@@ -601,7 +682,8 @@ export function buildOverlayPreset(
     scoreboard: LiveScoreboardState,
     handStack: LiveHandStackConfig,
     cardDisplay: LiveCardDisplayConfig,
-    cardDisplayDuration: number
+    cardDisplayDuration: number,
+    layerOrder: LiveLayerId[]
 ): LiveOverlayPreset {
     return {
         version: LIVE_PRESET_VERSION,
@@ -610,6 +692,7 @@ export function buildOverlayPreset(
         handStack,
         cardDisplay,
         cardDisplayDuration,
+        layerOrder,
     };
 }
 
@@ -665,7 +748,10 @@ function fallbackPresetsManifest(): PresetsManifest {
 // returns null if it's missing required config slices.
 function normalizePreset(p: Partial<LiveOverlayPreset>): LiveOverlayPreset | null {
     if (!p?.scoreboard || !p.handStack || !p.cardDisplay) return null;
-    return resolvePresetSvgs(p as LiveOverlayPreset);
+    return resolvePresetSvgs({
+        ...(p as LiveOverlayPreset),
+        layerOrder: normalizeLayerOrder(p.layerOrder),
+    });
 }
 
 // Fetches a single preset file by slug; null on any failure (404, malformed).
@@ -743,7 +829,8 @@ export function configMatchesPreset(
     scoreboard: LiveScoreboardState,
     handStack: LiveHandStackConfig,
     cardDisplay: LiveCardDisplayConfig,
-    cardDisplayDuration: number
+    cardDisplayDuration: number,
+    layerOrder: LiveLayerId[]
 ): boolean {
     // Fill optional fields to their defaults on both sides so a preset JSON that
     // predates them still matches a live config carrying the default (absent key
@@ -763,12 +850,14 @@ export function configMatchesPreset(
             handStack: normHandStack(handStack),
             cardDisplay,
             cardDisplayDuration,
+            layerOrder,
         }) ===
         stableStringify({
             scoreboard: preset.scoreboard,
             handStack: normHandStack(preset.handStack),
             cardDisplay: preset.cardDisplay,
             cardDisplayDuration: preset.cardDisplayDuration,
+            layerOrder: normalizeLayerOrder(preset.layerOrder),
         })
     );
 }

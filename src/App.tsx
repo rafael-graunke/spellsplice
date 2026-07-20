@@ -1058,11 +1058,15 @@ function App() {
                     setLiveSettingsOpen(open);
                     // Pick up any duration change the dialog persisted so the
                     // controller's play timer uses the new value right away.
-                    if (!open)
+                    if (!open) {
                         setCardDisplayDuration(
                             loadLiveModeConfig()?.cardDisplayDuration ??
                                 DEFAULT_CARD_DISPLAY_DURATION_MS
                         );
+                        // Pull in any player identity edits the Players section
+                        // persisted so LiveMode's own copy stays in sync.
+                        liveModeRef.current?.syncPlayerInfoFromStorage();
+                    }
                 }}
                 onStart={() => setLiveSettingsOpen(false)}
                 initialSection={liveSettingsSection}
@@ -1093,6 +1097,10 @@ function App() {
                     cardDisplayDuration={cardDisplayDuration}
                     onOpenSettings={() => {
                         setLiveSettingsSection('card-display');
+                        setLiveSettingsOpen(true);
+                    }}
+                    onEditPlayers={() => {
+                        setLiveSettingsSection('players');
                         setLiveSettingsOpen(true);
                     }}
                 />

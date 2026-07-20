@@ -47,6 +47,8 @@ interface Props {
 const FIELD_OPTIONS: { id: ScoreboardField; label: string }[] = [
     { id: 'name', label: 'Name' },
     { id: 'deckName', label: 'Deck Name' },
+    { id: 'standing', label: 'Standing' },
+    { id: 'pronouns', label: 'Pronouns' },
     { id: 'life', label: 'Life' },
     { id: 'wins', label: 'Wins' },
 ];

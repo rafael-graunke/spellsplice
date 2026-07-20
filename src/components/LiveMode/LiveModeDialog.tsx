@@ -15,6 +15,8 @@ import {
     saveLiveHandStackConfig,
     loadLiveLayerOrder,
     saveLiveLayerOrder,
+    loadLivePlayerInfos,
+    patchLivePlayerIdentity,
     DEFAULT_CARD_STRIP_WIDTH,
     DEFAULT_CARD_DISPLAY_DURATION_MS,
     type LiveScoreboardState,
@@ -22,6 +24,7 @@ import {
     type LiveHandStackConfig,
     type LiveLayerId,
     type LiveOverlayPreset,
+    type LivePlayerIdentity,
 } from '@/lib/liveMode';
 import { cn } from '@/lib/utils';
 import CardDatabaseSection from './sections/CardDatabaseSection';
@@ -30,9 +33,11 @@ import GeneralSection from './sections/GeneralSection';
 import HandStackSection from './sections/HandStackSection';
 import CardDisplaySection from './sections/CardDisplaySection';
 import ScoreboardSection from './sections/ScoreboardSection';
+import PlayersSection from './sections/PlayersSection';
 
 export type Section =
     | 'connection'
+    | 'players'
     | 'general'
     | 'scoreboard'
     | 'hand-stack'
@@ -44,6 +49,7 @@ type NavNode = NavLeaf | { label: string; children: NavLeaf[] };
 
 const NAV_ITEMS: NavNode[] = [
     { id: 'connection', label: 'Connection' },
+    { id: 'players', label: 'Players' },
     {
         label: 'Overlay Appearance',
         children: [
@@ -208,6 +214,9 @@ function LiveModeDialogContent({
     const [layerOrder, setLayerOrder] = useState<LiveLayerId[]>(() =>
         loadLiveLayerOrder()
     );
+    const [playerInfos, setPlayerInfos] = useState(() =>
+        loadLivePlayerInfos()
+    );
     const { status: oracleCardsStatus, forceRefresh: forceRefreshOracleCards } =
         useOracleCards();
 
@@ -263,6 +272,28 @@ function LiveModeDialogContent({
         [send]
     );
 
+    // Persists the edited identity fields to the project store and broadcasts
+    // the full player-info snapshot (identity + current life/wins) to any
+    // connected overlay. LiveMode re-reads identity from the store on close.
+    const handlePlayerIdentityChange = useCallback(
+        (side: 'left' | 'right', patch: Partial<LivePlayerIdentity>) => {
+            setPlayerInfos((prev) => {
+                const next = {
+                    ...prev,
+                    [side]: { ...prev[side], ...patch },
+                };
+                patchLivePlayerIdentity(side, patch);
+                send({
+                    type: 'player-info-state',
+                    left: next.left,
+                    right: next.right,
+                });
+                return next;
+            });
+        },
+        [send]
+    );
+
     // Applies a whole preset: routes each slice through its own change handler
     // so every config persists and broadcasts exactly as a manual edit would.
     const handleApplyPreset = useCallback(
@@ -271,12 +302,16 @@ function LiveModeDialogContent({
             handleHandStackConfigChange(preset.handStack);
             handleCardDisplayConfigChange(preset.cardDisplay);
             handleCardDisplayDurationChange(preset.cardDisplayDuration);
+            // Legacy presets (pre-layerOrder) omit the field; keep current order.
+            if (preset.layerOrder)
+                handleLayerOrderChange(preset.layerOrder);
         },
         [
             handleScoreboardChange,
             handleHandStackConfigChange,
             handleCardDisplayConfigChange,
             handleCardDisplayDurationChange,
+            handleLayerOrderChange,
         ]
     );
 
@@ -381,6 +416,12 @@ function LiveModeDialogContent({
                                 onUrlChange={setUrl}
                                 cardStripWidth={cardStripWidth}
                                 onStart={onStart}
+                            />
+                        )}
+                        {selectedSection === 'players' && (
+                            <PlayersSection
+                                infos={playerInfos}
+                                onChange={handlePlayerIdentityChange}
                             />
                         )}
                         {isOverlaySection && (

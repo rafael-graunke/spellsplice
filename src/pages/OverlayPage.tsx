@@ -47,7 +47,7 @@ import {
 import { OverlayPresenter } from '@/renders/overlayPresenter';
 
 function defaultPlayerInfo(): LivePlayerInfo {
-    return { name: '', deckName: '', life: 20, wins: 0 };
+    return { name: '', deckName: '', standing: '', pronouns: '', life: 20, wins: 0 };
 }
 
 const WIDTH = 1920;
@@ -77,6 +77,13 @@ function OverlayPage() {
     }>({
         left: null,
         right: null,
+    });
+    // Per-side timestamp of when the current card appeared/was replaced. Used to
+    // paint the most-recently-activated side last (on top) when the two card
+    // displays overlap on screen.
+    const displayOrderRef = useRef<{ left: number; right: number }>({
+        left: 0,
+        right: 0,
     });
     // Hydrated from localStorage (this page's own, OBS-isolated profile) so a
     // reload before the controller reconnects keeps the last known scoreboard
@@ -168,7 +175,10 @@ function OverlayPage() {
                     stripW,
                     cardDisplayConfigRef.current,
                     displayAnimRef.current,
-                    performance.now()
+                    performance.now(),
+                    displayOrderRef.current.left > displayOrderRef.current.right
+                        ? 'left'
+                        : 'right'
                 ),
             hand: () =>
                 renderLiveHand(
@@ -460,6 +470,7 @@ function OverlayPage() {
                     // it slides in only after the old one has slid out. Same
                     // card (e.g. a flip) leaves any running anim alone.
                     if (p && n && p.id !== n.id) {
+                        displayOrderRef.current[side] = performance.now();
                         displayAnimRef.current[side] = {
                             phase: 'exit',
                             start: performance.now(),
@@ -473,6 +484,7 @@ function OverlayPage() {
                             anim: cfg,
                         };
                     } else if (n && !p) {
+                        displayOrderRef.current[side] = performance.now();
                         displayAnimRef.current[side] = {
                             phase: 'enter',
                             start: performance.now(),

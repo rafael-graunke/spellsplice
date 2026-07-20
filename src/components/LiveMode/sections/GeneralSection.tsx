@@ -157,7 +157,8 @@ function GeneralSection({
             scoreboard,
             handStack,
             cardDisplay,
-            cardDisplayDuration
+            cardDisplayDuration,
+            layerOrder
         )
     );
     const presetValue = matched?.name ?? CUSTOM_VALUE;
@@ -203,7 +204,8 @@ function GeneralSection({
                 scoreboard,
                 handStack,
                 cardDisplay,
-                cardDisplayDuration
+                cardDisplayDuration,
+                layerOrder
             )
         );
         setExportOpen(false);

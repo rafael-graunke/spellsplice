@@ -187,7 +187,33 @@
       }
     }
   },
-  "cardDisplayDuration": 5000,
+  "cardDisplayDuration": 10000,
+  "annotations": {
+    "left": {
+      "follow": false,
+      "anchor": "top-left",
+      "offset": {
+        "x": 370,
+        "y": 90
+      },
+      "cardStripWidth": 270,
+      "growth": "top-down",
+      "insert": "append",
+      "maxSlotHeight": 0
+    },
+    "right": {
+      "follow": false,
+      "anchor": "bottom-left",
+      "offset": {
+        "x": 370,
+        "y": -90
+      },
+      "cardStripWidth": 270,
+      "growth": "bottom-up",
+      "insert": "append",
+      "maxSlotHeight": 0
+    }
+  },
   "layerOrder": [
     "annotations",
     "scoreboard",

@@ -6,6 +6,8 @@ interface Props<T extends string> {
     onChange: (next: T) => void;
     // Scoreboard anchors have no vertical-center row; omit it to show a 3×2 grid.
     includeMiddleRow?: boolean;
+    // Renders the grid inert and dimmed (e.g. annotations following the hand).
+    disabled?: boolean;
 }
 
 const ANCHOR_CELLS: { id: CardDisplayAnchor; label: string }[] = [
@@ -24,6 +26,7 @@ function AnchorField<T extends string>({
     value,
     onChange,
     includeMiddleRow = true,
+    disabled = false,
 }: Props<T>) {
     const cells = ANCHOR_CELLS.filter(
         (cell) => includeMiddleRow || !cell.id.startsWith('middle-')
@@ -31,7 +34,12 @@ function AnchorField<T extends string>({
     const selected = cells.find((cell) => cell.id === value);
 
     return (
-        <div className="flex w-28 flex-col gap-1.5">
+        <div
+            className={cn(
+                'flex w-28 flex-col gap-1.5',
+                disabled && 'pointer-events-none opacity-50'
+            )}
+        >
             <div className="grid grid-cols-3 overflow-hidden rounded-sm border">
                 {cells.map((cell) => (
                     <button
@@ -39,6 +47,7 @@ function AnchorField<T extends string>({
                         type="button"
                         aria-label={cell.label}
                         aria-pressed={value === cell.id}
+                        disabled={disabled}
                         onClick={() => onChange(cell.id as T)}
                         className={cn(
                             'aspect-square cursor-pointer ring-1 ring-inset ring-border transition-colors',

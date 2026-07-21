@@ -28,8 +28,12 @@ import {
     loadLiveScoreboardState,
     loadLiveCardDisplayConfig,
     loadLiveHandStackConfig,
+    loadLiveAnnotationConfig,
+    loadLiveLayerOrder,
     defaultLiveCardDisplayConfig,
     defaultLiveHandStackConfig,
+    DEFAULT_LAYER_ORDER,
+    loadLivePlayerInfos,
     type LiveMessage,
     type LiveEvent,
     type LivePlayerInfo,
@@ -102,6 +106,8 @@ function humanizeFieldName(field: string): string {
 interface SideState {
     name: string;
     deckName: string;
+    standing: string;
+    pronouns: string;
     life: number;
     wins: number;
     decklist: Decklist | null;
@@ -122,6 +128,8 @@ function emptySide(side: Side): SideState {
     return {
         name: side === 'left' ? 'Player 1' : 'Player 2',
         deckName: '',
+        standing: '',
+        pronouns: '',
         life: 20,
         wins: 0,
         decklist: null,
@@ -139,6 +147,9 @@ function emptySide(side: Side): SideState {
 
 export interface LiveModeHandle {
     resetOverlay: () => void;
+    // Reload player identity (name/deck/standing/pronouns) from the project
+    // store, e.g. after the Players config dialog edited and persisted it.
+    syncPlayerInfoFromStorage: () => void;
 }
 
 interface LiveModeProps {
@@ -146,6 +157,8 @@ interface LiveModeProps {
     // Display section when the card display's settings icon is clicked.
     cardDisplayDuration: number;
     onOpenSettings: () => void;
+    // Opens the settings dialog on the Players section (PlayerState edit icon).
+    onEditPlayers: () => void;
 }
 
 function loadLiveProject(): Record<Side, SideState> | null {
@@ -176,7 +189,7 @@ function saveLiveProject(sides: Record<Side, SideState>) {
 }
 
 const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
-    { cardDisplayDuration, onOpenSettings },
+    { cardDisplayDuration, onOpenSettings, onEditPlayers },
     ref
 ) {
     const { status } = useOracleCards();
@@ -210,12 +223,16 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
         right: null,
     });
 
-    const playerInfo = (side: Side): LivePlayerInfo => ({
-        name: sides[side].name,
-        deckName: sides[side].deckName,
-        life: sides[side].life,
-        wins: sides[side].wins,
+    const toPlayerInfo = (s: SideState): LivePlayerInfo => ({
+        name: s.name,
+        deckName: s.deckName,
+        standing: s.standing,
+        pronouns: s.pronouns,
+        life: s.life,
+        wins: s.wins,
     });
+    const playerInfo = (side: Side): LivePlayerInfo =>
+        toPlayerInfo(sides[side]);
 
     const findAnnotation = (side: Side, annotationId: string) =>
         sides[side].annotations.find((a) => a.id === annotationId);
@@ -274,6 +291,14 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                 config: loadLiveHandStackConfig(),
             });
             sendRef.current({
+                type: 'annotation-config',
+                config: loadLiveAnnotationConfig(),
+            });
+            sendRef.current({
+                type: 'layer-order',
+                order: loadLiveLayerOrder(),
+            });
+            sendRef.current({
                 type: 'player-info-state',
                 left: playerInfo('left'),
                 right: playerInfo('right'),
@@ -318,6 +343,14 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                 type: 'hand-stack-config',
                 config: loadLiveHandStackConfig(),
             });
+            sendRef.current({
+                type: 'annotation-config',
+                config: loadLiveAnnotationConfig(),
+            });
+            sendRef.current({
+                type: 'layer-order',
+                order: loadLiveLayerOrder(),
+            });
         }
     }, [socketStatus]);
 
@@ -360,20 +393,34 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                 type: 'hand-stack-config',
                 config: defaultLiveHandStackConfig(),
             });
-            const freshInfo = (side: Side): LivePlayerInfo => {
-                const fresh = emptySide(side);
-                return {
-                    name: fresh.name,
-                    deckName: fresh.deckName,
-                    life: fresh.life,
-                    wins: fresh.wins,
-                };
-            };
+            sendRef.current({
+                type: 'layer-order',
+                order: [...DEFAULT_LAYER_ORDER],
+            });
             sendRef.current({
                 type: 'player-info-state',
-                left: freshInfo('left'),
-                right: freshInfo('right'),
+                left: toPlayerInfo(emptySide('left')),
+                right: toPlayerInfo(emptySide('right')),
             });
+        },
+        syncPlayerInfoFromStorage: () => {
+            const infos = loadLivePlayerInfos();
+            setSides((prev) => ({
+                left: {
+                    ...prev.left,
+                    name: infos.left.name,
+                    deckName: infos.left.deckName,
+                    standing: infos.left.standing,
+                    pronouns: infos.left.pronouns,
+                },
+                right: {
+                    ...prev.right,
+                    name: infos.right.name,
+                    deckName: infos.right.deckName,
+                    standing: infos.right.standing,
+                    pronouns: infos.right.pronouns,
+                },
+            }));
         },
     }));
 
@@ -401,6 +448,29 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                     event: makeHandEvent('REMOVE_FROM_HAND', side, card),
                 });
         }
+    };
+
+    // Places a new hand card per that side's configured insert order: 'prepend'
+    // puts it at the anchor end (index 0), 'append' (default) at the growth end.
+    const placeInHand = (
+        side: Side,
+        hand: LibraryCardInstance[],
+        entry: LibraryCardInstance
+    ) => {
+        const insert = loadLiveHandStackConfig()[side].insert ?? 'append';
+        return insert === 'prepend' ? [entry, ...hand] : [...hand, entry];
+    };
+
+    // Same, for a card dropped into an annotation slot. Annotations carry their
+    // own insert setting, so a caster can have the hand append while the
+    // top-of-deck slot prepends.
+    const placeInAnnotation = (
+        side: Side,
+        cards: LibraryCardInstance[],
+        entry: LibraryCardInstance
+    ) => {
+        const insert = loadLiveAnnotationConfig()[side].insert ?? 'append';
+        return insert === 'prepend' ? [entry, ...cards] : [...cards, entry];
     };
 
     const broadcastHand = (side: Side, hand: LibraryCardInstance[]) => {
@@ -586,7 +656,10 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
     const handleImport = (side: Side, decklist: Decklist) => {
         const seen = new Set<string>();
         const library: LibraryCardInstance[] = [];
-        for (const { card } of [...decklist.maindeck, ...(decklist.sideboard ?? [])]) {
+        for (const { card } of [
+            ...decklist.maindeck,
+            ...(decklist.sideboard ?? []),
+        ]) {
             if (seen.has(card.name)) continue;
             const oracleCard = findOracleCard(card.name);
             if (!oracleCard) continue;
@@ -649,10 +722,10 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                         else cancelPlayTimer(s);
                         success = true;
                     } else if (over.id === HAND_DROP_ID(s)) {
-                        const newHand = [
-                            ...sides[s].hand,
-                            { id: makeId(), card: entry.card },
-                        ];
+                        const newHand = placeInHand(s, sides[s].hand, {
+                            id: makeId(),
+                            card: entry.card,
+                        });
                         setSides((prev) => ({
                             ...prev,
                             [s]: { ...prev[s], hand: newHand },
@@ -664,10 +737,11 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                             if (
                                 over.id === annotationDropId(annotation.id, s)
                             ) {
-                                const newCards = [
-                                    ...annotation.cards,
-                                    { id: makeId(), card: entry.card },
-                                ];
+                                const newCards = placeInAnnotation(
+                                    s,
+                                    annotation.cards,
+                                    { id: makeId(), card: entry.card }
+                                );
                                 setAnnotationCards(s, annotation.id, newCards);
                                 broadcastAnnotation(annotation.id, s, newCards);
                                 success = true;
@@ -751,7 +825,11 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                         prefix !== 'hand'
                     ) {
                         removeFromSource();
-                        const newHand = [...sides[side].hand, entry];
+                        const newHand = placeInHand(
+                            side,
+                            sides[side].hand,
+                            entry
+                        );
                         setSides((prev) => ({
                             ...prev,
                             [side]: { ...prev[side], hand: newHand },
@@ -768,7 +846,11 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                                 continue;
                             }
                             removeFromSource();
-                            const newTargetCards = [...annotation.cards, entry];
+                            const newTargetCards = placeInAnnotation(
+                                side,
+                                annotation.cards,
+                                entry
+                            );
                             setAnnotationCards(
                                 side,
                                 annotation.id,
@@ -900,26 +982,18 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
         broadcastDisplayCard(side, sides[side].displayCard, flipped);
     };
 
+    // Life/wins are the only fields the controller edits inline; identity
+    // (name/deck/standing/pronouns) is edited in the Players config dialog.
     const handleUpdateSide = (
         side: Side,
-        patch: Partial<Pick<SideState, 'name' | 'deckName' | 'life' | 'wins'>>
+        patch: Partial<Pick<SideState, 'life' | 'wins'>>
     ) => {
         setSides((prev) => {
             const next = { ...prev, [side]: { ...prev[side], ...patch } };
             sendRef.current({
                 type: 'player-info-state',
-                left: {
-                    name: next.left.name,
-                    deckName: next.left.deckName,
-                    life: next.left.life,
-                    wins: next.left.wins,
-                },
-                right: {
-                    name: next.right.name,
-                    deckName: next.right.deckName,
-                    life: next.right.life,
-                    wins: next.right.wins,
-                },
+                left: toPlayerInfo(next.left),
+                right: toPlayerInfo(next.right),
             });
             return next;
         });
@@ -1001,12 +1075,7 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                         deckName={sides.left.deckName}
                         life={sides.left.life}
                         wins={sides.left.wins}
-                        onChangeName={(name) =>
-                            handleUpdateSide('left', { name })
-                        }
-                        onChangeDeckName={(deckName) =>
-                            handleUpdateSide('left', { deckName })
-                        }
+                        onEdit={onEditPlayers}
                         onLifeChange={(life) =>
                             handleUpdateSide('left', { life })
                         }
@@ -1020,12 +1089,7 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                         deckName={sides.right.deckName}
                         life={sides.right.life}
                         wins={sides.right.wins}
-                        onChangeName={(name) =>
-                            handleUpdateSide('right', { name })
-                        }
-                        onChangeDeckName={(deckName) =>
-                            handleUpdateSide('right', { deckName })
-                        }
+                        onEdit={onEditPlayers}
                         onLifeChange={(life) =>
                             handleUpdateSide('right', { life })
                         }

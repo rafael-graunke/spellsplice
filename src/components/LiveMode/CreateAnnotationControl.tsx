@@ -6,7 +6,9 @@ interface CreateAnnotationControlProps {
     onCreate: (title: string, description: string) => void;
 }
 
-export function CreateAnnotationControl({ onCreate }: CreateAnnotationControlProps) {
+export function CreateAnnotationControl({
+    onCreate,
+}: CreateAnnotationControlProps) {
     const [dialogOpen, setDialogOpen] = useState(false);
 
     return (
@@ -19,7 +21,11 @@ export function CreateAnnotationControl({ onCreate }: CreateAnnotationControlPro
                 <PlusIcon className="size-4" />
                 New annotation
             </button>
-            <AnnotationDialog open={dialogOpen} onOpenChange={setDialogOpen} onSave={onCreate} />
+            <AnnotationDialog
+                open={dialogOpen}
+                onOpenChange={setDialogOpen}
+                onSave={onCreate}
+            />
         </>
     );
 }

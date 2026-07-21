@@ -5,6 +5,14 @@ import type {
     SingleHandStackConfig,
 } from '@/lib/liveMode';
 import { getStripH, drawCardStrip } from './renderCardStrips';
+import {
+    drawOverflowPill,
+    stackAnchorX,
+    stackAnchorY,
+    stackFacesLeft,
+    stackTopY,
+    visibleStripCount,
+} from './stackLayout';
 
 // Per-card hand animation, keyed by card instance id in OverlayPage's registry.
 // `enter` slides a newly added card in from the near edge; `exit` slides a
@@ -25,25 +33,17 @@ export const HAND_ANIM_DURATION = 250; // ms
 const clamp01 = (t: number) => (t < 0 ? 0 : t > 1 ? 1 : t);
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 
-// Y of the anchor line the stack is pinned to (before growth is applied),
-// derived from the anchor's vertical band and its margin. Independent of the
-// card count so the pinned edge stays put as cards are added/removed.
-function handStackAnchorY(
-    cfg: SingleHandStackConfig,
-    offsetY: number,
-    drawH: number
+// Number of cards actually rendered under `maxHeight`.
+export function visibleHandCount(
+    hand: LiveHandCard[],
+    cfg: SingleHandStackConfig
 ): number {
-    const vertical = cfg.anchor.split('-')[0]; // top | middle | bottom
-    const base =
-        vertical === 'top'
-            ? offsetY
-            : vertical === 'bottom'
-              ? offsetY + drawH
-              : offsetY + drawH / 2;
-    return base + (cfg.offset?.y ?? 0);
+    return visibleStripCount(hand, cfg.cardStripWidth, cfg.maxHeight);
 }
 
 // Top Y of the rendered stack (used to place annotations directly above it).
+// Honors the max-height cap so annotations follow the visible top, not the
+// full hand's would-be top.
 export function getHandStackTopY(
     hand: LiveHandCard[],
     cfg: SingleHandStackConfig,
@@ -51,14 +51,13 @@ export function getHandStackTopY(
     drawH: number
 ): number {
     const stripW = cfg.cardStripWidth;
-    const totalH = hand.reduce(
+    const visible = hand.slice(0, visibleHandCount(hand, cfg));
+    const totalH = visible.reduce(
         (s, { card }) => s + getStripH({ name: card.name }, stripW),
         0
     );
-    const anchorY = handStackAnchorY(cfg, offsetY, drawH);
-    if (cfg.growth === 'top-down') return anchorY;
-    if (cfg.growth === 'center') return anchorY - totalH / 2;
-    return anchorY - totalH; // bottom-up
+    const anchorY = stackAnchorY(cfg.anchor, cfg.offset, offsetY, drawH);
+    return stackTopY(anchorY, totalH, cfg.growth);
 }
 
 export function renderLiveHand(
@@ -84,24 +83,28 @@ export function renderLiveHand(
         { hand: right, side: 'right' },
     ];
 
-    for (const { hand, side } of sides) {
+    for (const { hand: fullHand, side } of sides) {
         const cfg = config[side];
         const stripW = cfg.cardStripWidth;
-        const horizontal = cfg.anchor.split('-')[1]; // left | center | right
+        // Cap to the cards that fit under maxHeight; the tail is summarised by a
+        // pill below. Rendering (and its enter/exit anims) only ever sees the
+        // visible prefix.
+        const visibleCount = visibleHandCount(fullHand, cfg);
+        const hand = fullHand.slice(0, visibleCount);
+        const hiddenCount = fullHand.length - visibleCount;
         // isLeft governs the revealed-eye-icon side; live hands pass no icon so
-        // it only needs to be consistent. Center anchors face by player side.
-        const isLeft =
-            horizontal === 'center' ? side === 'left' : horizontal === 'left';
-        const baseX =
-            horizontal === 'left'
-                ? offsetX
-                : horizontal === 'right'
-                  ? offsetX + drawW - stripW
-                  : offsetX + (drawW - stripW) / 2;
-        const finalX = baseX + (cfg.offset?.x ?? 0);
+        // it only needs to be consistent.
+        const isLeft = stackFacesLeft(cfg.anchor, side);
+        const finalX = stackAnchorX(
+            cfg.anchor,
+            cfg.offset,
+            offsetX,
+            drawW,
+            stripW
+        );
         // Cards slide in from (and out to) the nearest horizontal edge.
         const offscreenX = isLeft ? offsetX - stripW : offsetX + drawW;
-        const anchorY = handStackAnchorY(cfg, offsetY, drawH);
+        const anchorY = stackAnchorY(cfg.anchor, cfg.offset, offsetY, drawH);
 
         const stripHOf = (c: LiveHandCard) =>
             getStripH({ name: c.card.name }, stripW);
@@ -212,6 +215,26 @@ export function renderLiveHand(
                 1 - t,
                 a.card.card.mana_cost,
                 a.card.card.colors,
+                stripW
+            );
+        }
+
+        // Overflow pill: horizontally centered on the stack, straddling the
+        // growth edge (top for bottom-up, bottom for top-down/center).
+        if (hiddenCount > 0 && hand.length > 0) {
+            const visTotalH = cumH(hand, hand.length);
+            const topY =
+                cfg.growth === 'top-down'
+                    ? anchorY
+                    : cfg.growth === 'center'
+                      ? anchorY - visTotalH / 2
+                      : anchorY - visTotalH;
+            const edgeY = cfg.growth === 'bottom-up' ? topY : topY + visTotalH;
+            drawOverflowPill(
+                ctx,
+                finalX + stripW / 2,
+                edgeY,
+                hiddenCount,
                 stripW
             );
         }

@@ -10,7 +10,10 @@ interface DraggableCardProps {
 }
 
 export function DraggableCard({ id, card, disabled }: DraggableCardProps) {
-    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id, disabled });
+    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+        id,
+        disabled,
+    });
 
     return (
         <CardChip
@@ -19,8 +22,10 @@ export function DraggableCard({ id, card, disabled }: DraggableCardProps) {
             {...listeners}
             {...attributes}
             className={cn(
-                disabled ? 'cursor-default' : 'cursor-grab touch-none active:cursor-grabbing',
-                isDragging && 'opacity-30',
+                disabled
+                    ? 'cursor-default'
+                    : 'cursor-grab touch-none active:cursor-grabbing',
+                isDragging && 'opacity-30'
             )}
         />
     );

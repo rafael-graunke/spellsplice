@@ -194,7 +194,8 @@ export function renderLiveCardDisplay(
         left: null,
         right: null,
     },
-    now = 0
+    now = 0,
+    frontSide: 'left' | 'right' = 'right'
 ) {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
@@ -202,8 +203,17 @@ export function renderLiveCardDisplay(
     const cardW = stripW;
     const cardH = cardW / CARD_ASPECT;
 
-    // prettier-ignore
-    drawSide(ctx, left, config.left, anims.left, offsetX, offsetY, drawW, drawH, cardW, cardH, now);
-    // prettier-ignore
-    drawSide(ctx, right, config.right, anims.right, offsetX, offsetY, drawW, drawH, cardW, cardH, now);
+    // Paint the non-front side first, front side last (on top) so the most
+    // recently activated card wins when the two displays overlap.
+    const paint = (side: 'left' | 'right') => {
+        if (side === 'left') {
+            // prettier-ignore
+            drawSide(ctx, left, config.left, anims.left, offsetX, offsetY, drawW, drawH, cardW, cardH, now);
+        } else {
+            // prettier-ignore
+            drawSide(ctx, right, config.right, anims.right, offsetX, offsetY, drawW, drawH, cardW, cardH, now);
+        }
+    };
+    paint(frontSide === 'left' ? 'right' : 'left');
+    paint(frontSide);
 }

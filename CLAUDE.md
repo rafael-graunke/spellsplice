@@ -237,7 +237,7 @@ shadcn/ui + Radix UI + Tailwind CSS v4. Components live in `src/components/ui/`.
 **v2 targets**:
 - Add / remove players from within the app
 - **Non-linear video editing** (in progress — basic clips + drag implemented; missing: trimming, multi-source sync, playback engine per-clip seeking, full export integration)
-- Live overlay mode — `/control` + `/overlay` routes; controller manages an event stack, overlay renders chroma-keyed canvas synced via BroadcastChannel; popup window for clean OBS Window Capture
+- Live overlay mode: the `/overlay` route renders a transparent 1920x1080 canvas (no chroma key). The Live Mode controller UI (in the main app) syncs to it over a WebSocket via a small local relay (`spellsplice-relay.py`), configured in `LiveModeDialog` > Connection. Added to OBS as a transparent Browser Source pointing at `/overlay?ws=<relay>`. See `useLiveModeSocket.ts` and `OverlayPage.tsx`. (No `/control` route, no BroadcastChannel.)
 - Full overlay UI editor (drag/resize/style any element) + layout export & sharing
 - Built-in macro library (common spell sequences like Brainstorm) + user-defined macros
 - **Annotation system** — replaces `STACK_DECK`/`UNSTACK_DECK` with generic `ANNOTATE`/`CLEAR_ANNOTATION` events; multiple simultaneous annotations per player keyed by slot ID; project-level slot registry with system slots (top-of-deck, pithing-needle, disruptor-flute, meddling-mage) + user-defined slots; slot titles are user-editable and resolve at render time; macros target slot IDs directly; see `docs/annotation-system.md`

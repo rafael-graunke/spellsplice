@@ -13,26 +13,39 @@ import {
     saveLiveCardDisplayConfig,
     loadLiveHandStackConfig,
     saveLiveHandStackConfig,
+    loadLiveAnnotationConfig,
+    saveLiveAnnotationConfig,
+    loadLiveLayerOrder,
+    saveLiveLayerOrder,
+    loadLivePlayerInfos,
+    patchLivePlayerIdentity,
     DEFAULT_CARD_STRIP_WIDTH,
     DEFAULT_CARD_DISPLAY_DURATION_MS,
     type LiveScoreboardState,
     type LiveCardDisplayConfig,
     type LiveHandStackConfig,
+    type LiveAnnotationConfig,
+    type LiveLayerId,
     type LiveOverlayPreset,
+    type LivePlayerIdentity,
 } from '@/lib/liveMode';
 import { cn } from '@/lib/utils';
 import CardDatabaseSection from './sections/CardDatabaseSection';
 import ConnectionSection from './sections/ConnectionSection';
 import GeneralSection from './sections/GeneralSection';
 import HandStackSection from './sections/HandStackSection';
+import AnnotationsSection from './sections/AnnotationsSection';
 import CardDisplaySection from './sections/CardDisplaySection';
 import ScoreboardSection from './sections/ScoreboardSection';
+import PlayersSection from './sections/PlayersSection';
 
 export type Section =
     | 'connection'
+    | 'players'
     | 'general'
     | 'scoreboard'
     | 'hand-stack'
+    | 'annotations'
     | 'card-display'
     | 'card-database';
 
@@ -41,12 +54,14 @@ type NavNode = NavLeaf | { label: string; children: NavLeaf[] };
 
 const NAV_ITEMS: NavNode[] = [
     { id: 'connection', label: 'Connection' },
+    { id: 'players', label: 'Players' },
     {
         label: 'Overlay Appearance',
         children: [
             { id: 'general', label: 'General' },
             { id: 'scoreboard', label: 'Scoreboard' },
             { id: 'hand-stack', label: 'Hand Stack' },
+            { id: 'annotations', label: 'Annotations' },
             { id: 'card-display', label: 'Card Display' },
         ],
     },
@@ -93,6 +108,7 @@ function LiveModeDialogContent({
         selectedSection === 'general' ||
         selectedSection === 'scoreboard' ||
         selectedSection === 'hand-stack' ||
+        selectedSection === 'annotations' ||
         selectedSection === 'card-display';
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
         () => new Set(['Overlay Appearance'])
@@ -112,6 +128,7 @@ function LiveModeDialogContent({
         'general',
         'scoreboard',
         'hand-stack',
+        'annotations',
         'card-display',
     ];
     const anchorRefs = useRef<Partial<Record<Section, HTMLDivElement | null>>>(
@@ -202,6 +219,13 @@ function LiveModeDialogContent({
     const [handStackConfig, setHandStackConfig] = useState(() =>
         loadLiveHandStackConfig()
     );
+    const [annotationConfig, setAnnotationConfig] = useState(() =>
+        loadLiveAnnotationConfig()
+    );
+    const [layerOrder, setLayerOrder] = useState<LiveLayerId[]>(() =>
+        loadLiveLayerOrder()
+    );
+    const [playerInfos, setPlayerInfos] = useState(() => loadLivePlayerInfos());
     const { status: oracleCardsStatus, forceRefresh: forceRefreshOracleCards } =
         useOracleCards();
 
@@ -215,6 +239,15 @@ function LiveModeDialogContent({
             saveLiveHandStackConfig(next);
             setHandStackConfig(next);
             send({ type: 'hand-stack-config', config: next });
+        },
+        [send]
+    );
+
+    const handleAnnotationConfigChange = useCallback(
+        (next: LiveAnnotationConfig) => {
+            saveLiveAnnotationConfig(next);
+            setAnnotationConfig(next);
+            send({ type: 'annotation-config', config: next });
         },
         [send]
     );
@@ -248,6 +281,37 @@ function LiveModeDialogContent({
         [send]
     );
 
+    const handleLayerOrderChange = useCallback(
+        (next: LiveLayerId[]) => {
+            saveLiveLayerOrder(next);
+            setLayerOrder(next);
+            send({ type: 'layer-order', order: next });
+        },
+        [send]
+    );
+
+    // Persists the edited identity fields to the project store and broadcasts
+    // the full player-info snapshot (identity + current life/wins) to any
+    // connected overlay. LiveMode re-reads identity from the store on close.
+    const handlePlayerIdentityChange = useCallback(
+        (side: 'left' | 'right', patch: Partial<LivePlayerIdentity>) => {
+            setPlayerInfos((prev) => {
+                const next = {
+                    ...prev,
+                    [side]: { ...prev[side], ...patch },
+                };
+                patchLivePlayerIdentity(side, patch);
+                send({
+                    type: 'player-info-state',
+                    left: next.left,
+                    right: next.right,
+                });
+                return next;
+            });
+        },
+        [send]
+    );
+
     // Applies a whole preset: routes each slice through its own change handler
     // so every config persists and broadcasts exactly as a manual edit would.
     const handleApplyPreset = useCallback(
@@ -256,12 +320,18 @@ function LiveModeDialogContent({
             handleHandStackConfigChange(preset.handStack);
             handleCardDisplayConfigChange(preset.cardDisplay);
             handleCardDisplayDurationChange(preset.cardDisplayDuration);
+            // Legacy presets omit these fields; keep the current values.
+            if (preset.annotations)
+                handleAnnotationConfigChange(preset.annotations);
+            if (preset.layerOrder) handleLayerOrderChange(preset.layerOrder);
         },
         [
             handleScoreboardChange,
             handleHandStackConfigChange,
             handleCardDisplayConfigChange,
             handleCardDisplayDurationChange,
+            handleAnnotationConfigChange,
+            handleLayerOrderChange,
         ]
     );
 
@@ -368,6 +438,12 @@ function LiveModeDialogContent({
                                 onStart={onStart}
                             />
                         )}
+                        {selectedSection === 'players' && (
+                            <PlayersSection
+                                infos={playerInfos}
+                                onChange={handlePlayerIdentityChange}
+                            />
+                        )}
                         {isOverlaySection && (
                             <div className="flex flex-col gap-6">
                                 <div
@@ -383,6 +459,11 @@ function LiveModeDialogContent({
                                         cardDisplay={cardDisplayConfig}
                                         cardDisplayDuration={
                                             cardDisplayDuration
+                                        }
+                                        annotations={annotationConfig}
+                                        layerOrder={layerOrder}
+                                        onLayerOrderChange={
+                                            handleLayerOrderChange
                                         }
                                         onApplyPreset={handleApplyPreset}
                                     />
@@ -412,6 +493,21 @@ function LiveModeDialogContent({
                                         handStackConfig={handStackConfig}
                                         onHandStackConfigChange={
                                             handleHandStackConfigChange
+                                        }
+                                    />
+                                </div>
+                                <Separator className="bg-foreground/20" />
+                                <div
+                                    data-anchor="annotations"
+                                    className="scroll-mt-6"
+                                    ref={(el) => {
+                                        anchorRefs.current['annotations'] = el;
+                                    }}
+                                >
+                                    <AnnotationsSection
+                                        annotationConfig={annotationConfig}
+                                        onAnnotationConfigChange={
+                                            handleAnnotationConfigChange
                                         }
                                     />
                                 </div>

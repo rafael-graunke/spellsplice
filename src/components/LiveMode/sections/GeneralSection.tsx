@@ -1,5 +1,24 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
-import { DownloadIcon, UploadIcon } from 'lucide-react';
+import { DownloadIcon, GripVertical, UploadIcon } from 'lucide-react';
+import {
+    DndContext,
+    closestCenter,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+    restrictToVerticalAxis,
+    restrictToParentElement,
+} from '@dnd-kit/modifiers';
+import {
+    SortableContext,
+    verticalListSortingStrategy,
+    useSortable,
+    arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -20,11 +39,15 @@ import {
     buildOverlayPreset,
     configMatchesPreset,
     loadOverlayPresets,
+    LIVE_LAYER_LABELS,
     type LiveCardDisplayConfig,
     type LiveHandStackConfig,
+    type LiveAnnotationConfig,
+    type LiveLayerId,
     type LiveOverlayPreset,
     type LiveScoreboardState,
 } from '@/lib/liveMode';
+import { cn } from '@/lib/utils';
 import InfoHint from './InfoHint';
 
 // Sentinel Select value for "the current config matches no known preset".
@@ -35,9 +58,47 @@ interface Props {
     handStack: LiveHandStackConfig;
     cardDisplay: LiveCardDisplayConfig;
     cardDisplayDuration: number;
+    annotations: LiveAnnotationConfig;
+    // Overlay paint order, bottom -> top (index 0 drawn first).
+    layerOrder: LiveLayerId[];
+    onLayerOrderChange: (order: LiveLayerId[]) => void;
     // Applies a whole preset at once (scoreboard + hand stack + card display +
     // duration). Called when the user picks a preset.
     onApplyPreset: (preset: LiveOverlayPreset) => void;
+}
+
+// One draggable row in the Layers list.
+function SortableLayerItem({ id }: { id: LiveLayerId }) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({ id });
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+    };
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            {...attributes}
+            className={cn(
+                'flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm outline-none',
+                isDragging && 'relative z-10'
+            )}
+        >
+            <GripVertical
+                className="size-3.5 shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing"
+                {...listeners}
+            />
+            {LIVE_LAYER_LABELS[id]}
+        </div>
+    );
 }
 
 // Serializes `preset` to a downloaded JSON file. SVGs ride along inside the
@@ -59,8 +120,27 @@ function GeneralSection({
     handStack,
     cardDisplay,
     cardDisplayDuration,
+    annotations,
+    layerOrder,
+    onLayerOrderChange,
     onApplyPreset,
 }: Props) {
+    const sensors = useSensors(useSensor(PointerSensor));
+
+    // The list is shown top -> bottom (top row = topmost layer), while the
+    // stored order is bottom -> top, so display is the reversed array and any
+    // reorder is reversed back before saving.
+    const displayOrder = [...layerOrder].reverse();
+    const handleLayerDragEnd = (e: DragEndEvent) => {
+        const { active, over } = e;
+        if (!over || active.id === over.id) return;
+        const from = displayOrder.indexOf(active.id as LiveLayerId);
+        const to = displayOrder.indexOf(over.id as LiveLayerId);
+        if (from < 0 || to < 0) return;
+        const nextDisplay = arrayMove(displayOrder, from, to);
+        onLayerOrderChange([...nextDisplay].reverse());
+    };
+
     // Presets served from public/presets.json (built-in Spellsplice on failure).
     const [presets, setPresets] = useState<LiveOverlayPreset[]>([]);
     useEffect(() => {
@@ -80,7 +160,9 @@ function GeneralSection({
             scoreboard,
             handStack,
             cardDisplay,
-            cardDisplayDuration
+            cardDisplayDuration,
+            annotations,
+            layerOrder
         )
     );
     const presetValue = matched?.name ?? CUSTOM_VALUE;
@@ -126,7 +208,9 @@ function GeneralSection({
                 scoreboard,
                 handStack,
                 cardDisplay,
-                cardDisplayDuration
+                cardDisplayDuration,
+                annotations,
+                layerOrder
             )
         );
         setExportOpen(false);
@@ -199,6 +283,36 @@ function GeneralSection({
                         />
                     </div>
                 </div>
+            </div>
+
+            <div>
+                <div className="mb-2 flex items-center gap-3">
+                    <h3 className="text-sm font-medium">Layers</h3>
+                    <InfoHint className="size-4">
+                        Drag to restack the overlay. The top of the list is
+                        drawn on top of everything below it.
+                    </InfoHint>
+                </div>
+                <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    modifiers={[
+                        restrictToVerticalAxis,
+                        restrictToParentElement,
+                    ]}
+                    onDragEnd={handleLayerDragEnd}
+                >
+                    <SortableContext
+                        items={displayOrder}
+                        strategy={verticalListSortingStrategy}
+                    >
+                        <div className="flex flex-col gap-1.5">
+                            {displayOrder.map((id) => (
+                                <SortableLayerItem key={id} id={id} />
+                            ))}
+                        </div>
+                    </SortableContext>
+                </DndContext>
             </div>
 
             <Dialog open={exportOpen} onOpenChange={setExportOpen}>

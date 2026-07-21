@@ -31,7 +31,9 @@ export function AnnotationDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>{onDelete ? 'Edit Annotation' : 'New Annotation'}</DialogTitle>
+                    <DialogTitle>
+                        {onDelete ? 'Edit Annotation' : 'New Annotation'}
+                    </DialogTitle>
                 </DialogHeader>
                 {open && (
                     <AnnotationDialogFields
@@ -55,7 +57,13 @@ interface AnnotationDialogFieldsProps {
     onOpenChange: (open: boolean) => void;
 }
 
-function AnnotationDialogFields({ title, description, onSave, onDelete, onOpenChange }: AnnotationDialogFieldsProps) {
+function AnnotationDialogFields({
+    title,
+    description,
+    onSave,
+    onDelete,
+    onOpenChange,
+}: AnnotationDialogFieldsProps) {
     const [titleDraft, setTitleDraft] = useState(title);
     const [descriptionDraft, setDescriptionDraft] = useState(description);
 
@@ -97,13 +105,23 @@ function AnnotationDialogFields({ title, description, onSave, onDelete, onOpenCh
                 </div>
             </div>
 
-            <DialogFooter className={onDelete ? 'sm:justify-between' : undefined}>
+            <DialogFooter
+                className={onDelete ? 'sm:justify-between' : undefined}
+            >
                 {onDelete && (
-                    <Button variant="destructive" className="cursor-pointer" onClick={handleDelete}>
+                    <Button
+                        variant="destructive"
+                        className="cursor-pointer"
+                        onClick={handleDelete}
+                    >
                         Delete
                     </Button>
                 )}
-                <Button className="cursor-pointer" onClick={handleSave} disabled={!titleDraft.trim()}>
+                <Button
+                    className="cursor-pointer"
+                    onClick={handleSave}
+                    disabled={!titleDraft.trim()}
+                >
                     Save
                 </Button>
             </DialogFooter>

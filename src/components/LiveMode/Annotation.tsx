@@ -1,11 +1,22 @@
 import { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { ChevronDownIcon, ChevronUpIcon, InfoIcon, PencilIcon, Trash2Icon } from 'lucide-react';
+import {
+    ChevronDownIcon,
+    ChevronUpIcon,
+    InfoIcon,
+    PencilIcon,
+    Trash2Icon,
+} from 'lucide-react';
 import type { LibraryCardInstance } from './LibraryPanel';
 import { DraggableCard } from './DraggableCard';
 import { AnnotationDialog } from './AnnotationDialog';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 interface AnnotationProps {
@@ -19,7 +30,16 @@ interface AnnotationProps {
     onDelete: () => void;
 }
 
-export function Annotation({ id, title, description, cards, maxCards, onClear, onSave, onDelete }: AnnotationProps) {
+export function Annotation({
+    id,
+    title,
+    description,
+    cards,
+    maxCards,
+    onClear,
+    onSave,
+    onDelete,
+}: AnnotationProps) {
     const [collapsed, setCollapsed] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const { setNodeRef, isOver } = useDroppable({
@@ -32,7 +52,7 @@ export function Annotation({ id, title, description, cards, maxCards, onClear, o
             ref={setNodeRef}
             className={cn(
                 'flex shrink-0 flex-col gap-2 overflow-hidden rounded-lg border bg-muted p-2 transition-colors',
-                isOver && 'border-ring bg-input/50',
+                isOver && 'border-ring bg-input/50'
             )}
         >
             <div
@@ -46,7 +66,11 @@ export function Annotation({ id, title, description, cards, maxCards, onClear, o
                         <ChevronDownIcon className="size-3.5 text-muted-foreground shrink-0" />
                     )}
                     <p className="text-sm font-medium truncate">{title}</p>
-                    {collapsed && <span className="text-xs text-muted-foreground shrink-0">{cards.length} cards</span>}
+                    {collapsed && (
+                        <span className="text-xs text-muted-foreground shrink-0">
+                            {cards.length} cards
+                        </span>
+                    )}
                     {description && (
                         <TooltipProvider>
                             <Tooltip>
@@ -58,7 +82,10 @@ export function Annotation({ id, title, description, cards, maxCards, onClear, o
                         </TooltipProvider>
                     )}
                 </div>
-                <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                <div
+                    className="flex items-center gap-1 shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                >
                     <Button
                         className="cursor-pointer"
                         variant="ghost"
@@ -89,10 +116,16 @@ export function Annotation({ id, title, description, cards, maxCards, onClear, o
             {!collapsed && (
                 <div className="flex flex-col gap-1">
                     {cards.length === 0 ? (
-                        <p className="text-xs text-muted-foreground text-center py-2">No cards annotated</p>
+                        <p className="text-xs text-muted-foreground text-center py-2">
+                            No cards annotated
+                        </p>
                     ) : (
                         cards.map(({ id: cardId, card }) => (
-                            <DraggableCard key={cardId} id={`annotation:${id}:${cardId}`} card={card} />
+                            <DraggableCard
+                                key={cardId}
+                                id={`annotation:${id}:${cardId}`}
+                                card={card}
+                            />
                         ))
                     )}
                 </div>

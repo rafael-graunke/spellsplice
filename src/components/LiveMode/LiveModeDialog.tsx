@@ -13,6 +13,8 @@ import {
     saveLiveCardDisplayConfig,
     loadLiveHandStackConfig,
     saveLiveHandStackConfig,
+    loadLiveAnnotationConfig,
+    saveLiveAnnotationConfig,
     loadLiveLayerOrder,
     saveLiveLayerOrder,
     loadLivePlayerInfos,
@@ -22,6 +24,7 @@ import {
     type LiveScoreboardState,
     type LiveCardDisplayConfig,
     type LiveHandStackConfig,
+    type LiveAnnotationConfig,
     type LiveLayerId,
     type LiveOverlayPreset,
     type LivePlayerIdentity,
@@ -31,6 +34,7 @@ import CardDatabaseSection from './sections/CardDatabaseSection';
 import ConnectionSection from './sections/ConnectionSection';
 import GeneralSection from './sections/GeneralSection';
 import HandStackSection from './sections/HandStackSection';
+import AnnotationsSection from './sections/AnnotationsSection';
 import CardDisplaySection from './sections/CardDisplaySection';
 import ScoreboardSection from './sections/ScoreboardSection';
 import PlayersSection from './sections/PlayersSection';
@@ -41,6 +45,7 @@ export type Section =
     | 'general'
     | 'scoreboard'
     | 'hand-stack'
+    | 'annotations'
     | 'card-display'
     | 'card-database';
 
@@ -56,6 +61,7 @@ const NAV_ITEMS: NavNode[] = [
             { id: 'general', label: 'General' },
             { id: 'scoreboard', label: 'Scoreboard' },
             { id: 'hand-stack', label: 'Hand Stack' },
+            { id: 'annotations', label: 'Annotations' },
             { id: 'card-display', label: 'Card Display' },
         ],
     },
@@ -102,6 +108,7 @@ function LiveModeDialogContent({
         selectedSection === 'general' ||
         selectedSection === 'scoreboard' ||
         selectedSection === 'hand-stack' ||
+        selectedSection === 'annotations' ||
         selectedSection === 'card-display';
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
         () => new Set(['Overlay Appearance'])
@@ -121,6 +128,7 @@ function LiveModeDialogContent({
         'general',
         'scoreboard',
         'hand-stack',
+        'annotations',
         'card-display',
     ];
     const anchorRefs = useRef<Partial<Record<Section, HTMLDivElement | null>>>(
@@ -211,12 +219,13 @@ function LiveModeDialogContent({
     const [handStackConfig, setHandStackConfig] = useState(() =>
         loadLiveHandStackConfig()
     );
+    const [annotationConfig, setAnnotationConfig] = useState(() =>
+        loadLiveAnnotationConfig()
+    );
     const [layerOrder, setLayerOrder] = useState<LiveLayerId[]>(() =>
         loadLiveLayerOrder()
     );
-    const [playerInfos, setPlayerInfos] = useState(() =>
-        loadLivePlayerInfos()
-    );
+    const [playerInfos, setPlayerInfos] = useState(() => loadLivePlayerInfos());
     const { status: oracleCardsStatus, forceRefresh: forceRefreshOracleCards } =
         useOracleCards();
 
@@ -230,6 +239,15 @@ function LiveModeDialogContent({
             saveLiveHandStackConfig(next);
             setHandStackConfig(next);
             send({ type: 'hand-stack-config', config: next });
+        },
+        [send]
+    );
+
+    const handleAnnotationConfigChange = useCallback(
+        (next: LiveAnnotationConfig) => {
+            saveLiveAnnotationConfig(next);
+            setAnnotationConfig(next);
+            send({ type: 'annotation-config', config: next });
         },
         [send]
     );
@@ -302,15 +320,17 @@ function LiveModeDialogContent({
             handleHandStackConfigChange(preset.handStack);
             handleCardDisplayConfigChange(preset.cardDisplay);
             handleCardDisplayDurationChange(preset.cardDisplayDuration);
-            // Legacy presets (pre-layerOrder) omit the field; keep current order.
-            if (preset.layerOrder)
-                handleLayerOrderChange(preset.layerOrder);
+            // Legacy presets omit these fields; keep the current values.
+            if (preset.annotations)
+                handleAnnotationConfigChange(preset.annotations);
+            if (preset.layerOrder) handleLayerOrderChange(preset.layerOrder);
         },
         [
             handleScoreboardChange,
             handleHandStackConfigChange,
             handleCardDisplayConfigChange,
             handleCardDisplayDurationChange,
+            handleAnnotationConfigChange,
             handleLayerOrderChange,
         ]
     );
@@ -440,6 +460,7 @@ function LiveModeDialogContent({
                                         cardDisplayDuration={
                                             cardDisplayDuration
                                         }
+                                        annotations={annotationConfig}
                                         layerOrder={layerOrder}
                                         onLayerOrderChange={
                                             handleLayerOrderChange
@@ -472,6 +493,21 @@ function LiveModeDialogContent({
                                         handStackConfig={handStackConfig}
                                         onHandStackConfigChange={
                                             handleHandStackConfigChange
+                                        }
+                                    />
+                                </div>
+                                <Separator className="bg-foreground/20" />
+                                <div
+                                    data-anchor="annotations"
+                                    className="scroll-mt-6"
+                                    ref={(el) => {
+                                        anchorRefs.current['annotations'] = el;
+                                    }}
+                                >
+                                    <AnnotationsSection
+                                        annotationConfig={annotationConfig}
+                                        onAnnotationConfigChange={
+                                            handleAnnotationConfigChange
                                         }
                                     />
                                 </div>

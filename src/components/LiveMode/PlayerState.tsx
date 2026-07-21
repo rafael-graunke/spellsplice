@@ -76,9 +76,11 @@ export function PlayerState({
                 <div className="flex items-center justify-center gap-3 p-1 pl-2 rounded-md border bg-black/20">
                     <div className="flex items-center justify-start gap-2">
                         <Heart className="w-4 h-4" />
-                        <p className="text-sm text-muted-foreground tabular-nums">Life</p>
+                        <p className="text-sm text-muted-foreground tabular-nums">
+                            Life
+                        </p>
                     </div>
-                    <Separator orientation="vertical" className="w-full"/>
+                    <Separator orientation="vertical" className="w-full" />
                     <div className="flex items-center justify-center gap-1">
                         <Button
                             className="cursor-pointer"
@@ -114,7 +116,9 @@ export function PlayerState({
                 <div className="flex items-center justify-center gap-3 p-1 pl-2 rounded-md border bg-black/20">
                     <div className="flex items-center w-full justify-start gap-2">
                         <Trophy className="w-4 h-4" />
-                        <p className="text-sm text-muted-foreground tabular-nums">Wins</p>
+                        <p className="text-sm text-muted-foreground tabular-nums">
+                            Wins
+                        </p>
                     </div>
                     <Separator orientation="vertical" className="w-full" />
                     <div className="flex items-center justify-center gap-2">

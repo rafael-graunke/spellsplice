@@ -9,11 +9,12 @@ interface Props {
     onChange: (next: Offset) => void;
     // Seeds each input's id (e.g. `hand-stack-offset-x`).
     idPrefix?: string;
+    disabled?: boolean;
 }
 
 // Signed X/Y nudge editor. Values may be negative (move the stack the opposite
 // way from the anchor), so nothing is clamped to a floor.
-function OffsetField({ offset, onChange, idPrefix }: Props) {
+function OffsetField({ offset, onChange, idPrefix, disabled }: Props) {
     const [text, setText] = useState<Record<(typeof AXES)[number], string>>(
         () => ({ x: String(offset.x), y: String(offset.y) })
     );
@@ -55,6 +56,7 @@ function OffsetField({ offset, onChange, idPrefix }: Props) {
                         type="text"
                         inputMode="numeric"
                         aria-label={`${axis} offset`}
+                        disabled={disabled}
                         value={text[axis]}
                         onChange={(e) => handleChange(axis, e.target.value)}
                         onBlur={() => handleBlur(axis)}

@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import {
     defaultOffsetForAnchor,
-    type SingleHandStackConfig,
+    type SingleAnnotationConfig,
     type HandStackGrowth,
     type HandStackInsert,
 } from '@/lib/liveMode';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Select,
     SelectContent,
@@ -27,8 +28,8 @@ import OffsetField from './OffsetField';
 const ACCORDION_ITEMS = ['position', 'sizing', 'behaviour'];
 
 interface Props {
-    config: SingleHandStackConfig;
-    onChange: (next: SingleHandStackConfig) => void;
+    config: SingleAnnotationConfig;
+    onChange: (next: SingleAnnotationConfig) => void;
     ownSide: 'left' | 'right';
 }
 
@@ -43,11 +44,15 @@ const INSERT_OPTIONS: { id: HandStackInsert; label: string }[] = [
     { id: 'prepend', label: 'Prepend' },
 ];
 
-function HandStackConfigEditor({ config, onChange, ownSide }: Props) {
+function AnnotationConfigEditor({ config, onChange, ownSide }: Props) {
     const [openItems, setOpenItems] = usePersistedAccordion(
-        `spellsplice-acc-handstack-${ownSide}`,
+        `spellsplice-acc-annotations-${ownSide}`,
         ACCORDION_ITEMS
     );
+
+    // While following the hand stack, placement and width come from the hand,
+    // so those inputs are inert.
+    const following = config.follow;
 
     const clampWidth = (value: number) => Math.max(100, Math.min(1000, value));
 
@@ -76,14 +81,14 @@ function HandStackConfigEditor({ config, onChange, ownSide }: Props) {
         Math.max(0, Math.min(2000, Math.round(value)));
 
     const [maxHeightText, setMaxHeightText] = useState(() =>
-        String(config.maxHeight ?? 0)
+        String(config.maxSlotHeight ?? 0)
     );
 
     const handleMaxHeightChange = (value: string) => {
         setMaxHeightText(value);
         const num = Number(value);
         if (value !== '' && Number.isFinite(num))
-            onChange({ ...config, maxHeight: clampMaxHeight(num) });
+            onChange({ ...config, maxSlotHeight: clampMaxHeight(num) });
     };
 
     const handleMaxHeightBlur = () => {
@@ -91,22 +96,46 @@ function HandStackConfigEditor({ config, onChange, ownSide }: Props) {
         const committed =
             maxHeightText !== '' && Number.isFinite(num)
                 ? clampMaxHeight(num)
-                : (config.maxHeight ?? 0);
+                : (config.maxSlotHeight ?? 0);
         setMaxHeightText(String(committed));
-        onChange({ ...config, maxHeight: committed });
+        onChange({ ...config, maxSlotHeight: committed });
     };
+
+    const followField = (
+        <div className="flex items-center gap-3">
+            <Checkbox
+                id={`annotations-follow-${ownSide}`}
+                checked={config.follow}
+                onCheckedChange={(checked) =>
+                    onChange({ ...config, follow: checked === true })
+                }
+            />
+            <label
+                htmlFor={`annotations-follow-${ownSide}`}
+                className="text-sm font-medium flex items-center gap-1.5"
+            >
+                Follow hand stack
+                <InfoHint>
+                    Stack the annotations directly above this side's hand, using
+                    the hand's card strip width. Turn off to place and size them
+                    independently.
+                </InfoHint>
+            </label>
+        </div>
+    );
 
     const growField = (
         <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium flex items-center gap-1.5">
                 Grow
                 <InfoHint>
-                    Direction the stack extends from its anchored point as cards
-                    are added.
+                    Direction the column of annotations extends from its
+                    anchored point as slots are filled.
                 </InfoHint>
             </span>
             <Select
                 value={config.growth}
+                disabled={following}
                 onValueChange={(value) =>
                     onChange({ ...config, growth: value as HandStackGrowth })
                 }
@@ -130,8 +159,8 @@ function HandStackConfigEditor({ config, onChange, ownSide }: Props) {
             <span className="text-sm font-medium flex items-center gap-1.5">
                 New card
                 <InfoHint>
-                    Where a newly added card lands: append to the end of the
-                    stack, or prepend to the anchor end.
+                    Where a card dropped into an annotation lands: append to the
+                    end of that slot, or prepend to the front.
                 </InfoHint>
             </span>
             <Select
@@ -157,16 +186,17 @@ function HandStackConfigEditor({ config, onChange, ownSide }: Props) {
     const widthField = (
         <div className="flex flex-col gap-1.5">
             <label
-                htmlFor={`hand-stack-width-${ownSide}`}
+                htmlFor={`annotations-width-${ownSide}`}
                 className="text-sm font-medium"
             >
                 Card strip width (px)
             </label>
             <Input
-                id={`hand-stack-width-${ownSide}`}
+                id={`annotations-width-${ownSide}`}
                 type="number"
                 min={100}
                 max={1000}
+                disabled={following}
                 value={widthText}
                 onChange={(e) => handleWidthChange(e.target.value)}
                 onBlur={handleWidthBlur}
@@ -178,15 +208,15 @@ function HandStackConfigEditor({ config, onChange, ownSide }: Props) {
     const maxHeightField = (
         <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium flex items-center gap-1.5">
-                Max height (px)
+                Max card height (px)
                 <InfoHint>
-                    Cap the stack height. Cards nearest the anchor stay; the
-                    rest collapse into a “+N” pill at the growth edge. 0 =
-                    unlimited.
+                    Cap the cards inside each annotation. Applies per
+                    annotation, not to the column as a whole. The overflow
+                    collapses into a “+N” pill. 0 = unlimited.
                 </InfoHint>
             </span>
             <Input
-                id={`hand-stack-max-height-${ownSide}`}
+                id={`annotations-max-height-${ownSide}`}
                 type="number"
                 min={0}
                 max={2000}
@@ -207,12 +237,14 @@ function HandStackConfigEditor({ config, onChange, ownSide }: Props) {
         >
             <AccordionItem value="position">
                 <AccordionTrigger className="px-4">Position</AccordionTrigger>
-                <AccordionContent className="p-4">
+                <AccordionContent className="flex flex-col gap-4 p-4">
+                    {followField}
                     <div className="grid grid-cols-2 gap-4">
                         <div className="flex flex-col gap-1.5">
                             <span className="text-sm font-medium">Anchor</span>
                             <AnchorField
                                 value={config.anchor}
+                                disabled={following}
                                 onChange={(anchor) =>
                                     onChange({
                                         ...config,
@@ -228,10 +260,11 @@ function HandStackConfigEditor({ config, onChange, ownSide }: Props) {
                             </span>
                             <OffsetField
                                 offset={config.offset}
+                                disabled={following}
                                 onChange={(offset) =>
                                     onChange({ ...config, offset })
                                 }
-                                idPrefix={`hand-stack-offset-${ownSide}`}
+                                idPrefix={`annotations-offset-${ownSide}`}
                             />
                         </div>
                     </div>
@@ -259,4 +292,4 @@ function HandStackConfigEditor({ config, onChange, ownSide }: Props) {
     );
 }
 
-export default HandStackConfigEditor;
+export default AnnotationConfigEditor;

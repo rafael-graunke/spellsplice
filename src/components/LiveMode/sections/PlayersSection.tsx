@@ -59,8 +59,8 @@ function PlayersSection({ infos, onChange }: Props) {
                 <h2 className="text-lg font-semibold mb-1">Players</h2>
                 <p className="text-xs text-muted-foreground">
                     Identity shown on the scoreboard. Standing and Pronouns are
-                    exposed to the scoreboard SVG as the{' '}
-                    <code>standing</code> and <code>pronouns</code> fields.
+                    exposed to the scoreboard SVG as the <code>standing</code>{' '}
+                    and <code>pronouns</code> fields.
                 </p>
             </div>
 
@@ -72,7 +72,11 @@ function PlayersSection({ infos, onChange }: Props) {
                     </h3>
                     <div className="h-px flex-1 bg-border" />
                 </div>
-                <PlayerFields side="left" info={infos.left} onChange={onChange} />
+                <PlayerFields
+                    side="left"
+                    info={infos.left}
+                    onChange={onChange}
+                />
             </div>
 
             <div>

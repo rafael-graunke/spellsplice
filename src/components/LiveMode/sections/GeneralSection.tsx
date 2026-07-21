@@ -42,6 +42,7 @@ import {
     LIVE_LAYER_LABELS,
     type LiveCardDisplayConfig,
     type LiveHandStackConfig,
+    type LiveAnnotationConfig,
     type LiveLayerId,
     type LiveOverlayPreset,
     type LiveScoreboardState,
@@ -57,6 +58,7 @@ interface Props {
     handStack: LiveHandStackConfig;
     cardDisplay: LiveCardDisplayConfig;
     cardDisplayDuration: number;
+    annotations: LiveAnnotationConfig;
     // Overlay paint order, bottom -> top (index 0 drawn first).
     layerOrder: LiveLayerId[];
     onLayerOrderChange: (order: LiveLayerId[]) => void;
@@ -118,6 +120,7 @@ function GeneralSection({
     handStack,
     cardDisplay,
     cardDisplayDuration,
+    annotations,
     layerOrder,
     onLayerOrderChange,
     onApplyPreset,
@@ -158,6 +161,7 @@ function GeneralSection({
             handStack,
             cardDisplay,
             cardDisplayDuration,
+            annotations,
             layerOrder
         )
     );
@@ -205,6 +209,7 @@ function GeneralSection({
                 handStack,
                 cardDisplay,
                 cardDisplayDuration,
+                annotations,
                 layerOrder
             )
         );

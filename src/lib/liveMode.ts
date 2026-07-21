@@ -7,6 +7,7 @@ export const LIVE_PROJECT_KEY = 'spellsplice-live-project';
 export const LIVE_SCOREBOARD_KEY = 'spellsplice-live-scoreboard';
 export const LIVE_CARD_DISPLAY_KEY = 'spellsplice-live-card-display';
 export const LIVE_HAND_STACK_KEY = 'spellsplice-live-hand-stack';
+export const LIVE_ANNOTATION_KEY = 'spellsplice-live-annotations';
 export const LIVE_LAYER_ORDER_KEY = 'spellsplice-live-layer-order';
 // Pre-rename key ('template' era). Read once on load so existing saved
 // scoreboards migrate forward; cleared after the first successful migration.
@@ -60,12 +61,7 @@ export function createDefaultLiveState(): LiveOverlayState {
 
 export type ScoreboardMode = 'shared' | 'per-player';
 export type ScoreboardField =
-    | 'name'
-    | 'deckName'
-    | 'standing'
-    | 'pronouns'
-    | 'life'
-    | 'wins';
+    'name' | 'deckName' | 'standing' | 'pronouns' | 'life' | 'wins';
 
 // 9-anchor grid (top/middle/bottom X left/center/right), shared by the card
 // display, hand stack, and scoreboard.
@@ -585,6 +581,107 @@ export function saveLiveHandStackConfig(config: LiveHandStackConfig) {
     localStorage.setItem(LIVE_HAND_STACK_KEY, JSON.stringify(config));
 }
 
+// Placement + sizing shared by every annotation slot on one side. Deliberately
+// not per-slot: slots are created at runtime by the caster, so per-slot geometry
+// would orphan on delete and make presets non-portable between machines. Slots
+// also render as one stacked column per side, so a single anchor per side is the
+// only coherent model until free per-element placement lands.
+export interface SingleAnnotationConfig {
+    // When true, anchor/offset/cardStripWidth are ignored and the column pins to
+    // the hand stack's growth edge at the hand's strip width - the placement
+    // annotations had before they were configurable.
+    follow: boolean;
+    anchor: CardDisplayAnchor;
+    offset: Offset;
+    cardStripWidth: number;
+    growth: HandStackGrowth;
+    // Where a new card lands within a slot's card list. Defaults to 'append'.
+    insert?: HandStackInsert;
+    // Max rendered height of the cards inside ONE slot, in px (slot title and
+    // padding excluded). The overflowing tail is hidden and summarised by a `+N`
+    // pill, as in the hand stack. 0 or undefined = unlimited. Does not cap the
+    // total height of the column of slots.
+    maxSlotHeight?: number;
+}
+
+export interface LiveAnnotationConfig {
+    left: SingleAnnotationConfig;
+    right: SingleAnnotationConfig;
+}
+
+// Defaults reproduce the pre-config placement via `follow`, so a fresh install
+// (and any preset predating this config) renders exactly as before. The
+// anchor/offset/width values below only take effect once `follow` is turned off.
+export function defaultAnnotationConfig(
+    side: 'left' | 'right',
+    stripWidth: number = DEFAULT_CARD_STRIP_WIDTH
+): SingleAnnotationConfig {
+    const anchor: CardDisplayAnchor =
+        side === 'left' ? 'bottom-left' : 'bottom-right';
+    return {
+        follow: true,
+        anchor,
+        offset: defaultOffsetForAnchor(anchor),
+        cardStripWidth: stripWidth,
+        growth: 'bottom-up',
+        insert: 'append',
+        maxSlotHeight: 0,
+    };
+}
+
+export function defaultLiveAnnotationConfig(
+    stripWidth: number = DEFAULT_CARD_STRIP_WIDTH
+): LiveAnnotationConfig {
+    return {
+        left: defaultAnnotationConfig('left', stripWidth),
+        right: defaultAnnotationConfig('right', stripWidth),
+    };
+}
+
+// Rebuilt in canonical key order so value-equal configs stringify identically
+// (preset matching).
+function mergeAnnotationSide(
+    def: SingleAnnotationConfig,
+    saved: Partial<SingleAnnotationConfig>
+): SingleAnnotationConfig {
+    return {
+        follow: saved.follow ?? def.follow,
+        anchor: saved.anchor ?? def.anchor,
+        offset: saved.offset ?? def.offset,
+        cardStripWidth: saved.cardStripWidth ?? def.cardStripWidth,
+        growth: saved.growth ?? def.growth,
+        insert: saved.insert ?? def.insert,
+        maxSlotHeight: saved.maxSlotHeight ?? def.maxSlotHeight,
+    };
+}
+
+export function loadLiveAnnotationConfig(): LiveAnnotationConfig {
+    // Seed each side's strip width from that side's hand stack, so turning
+    // `follow` off starts from the width the annotations already rendered at.
+    const hand = loadLiveHandStackConfig();
+    const defaults: LiveAnnotationConfig = {
+        left: defaultAnnotationConfig('left', hand.left.cardStripWidth),
+        right: defaultAnnotationConfig('right', hand.right.cardStripWidth),
+    };
+    let parsed: Partial<
+        Record<'left' | 'right', Partial<SingleAnnotationConfig>>
+    > = {};
+    try {
+        const raw = localStorage.getItem(LIVE_ANNOTATION_KEY);
+        if (raw) parsed = JSON.parse(raw) as typeof parsed;
+    } catch {
+        parsed = {};
+    }
+    return {
+        left: mergeAnnotationSide(defaults.left, parsed.left ?? {}),
+        right: mergeAnnotationSide(defaults.right, parsed.right ?? {}),
+    };
+}
+
+export function saveLiveAnnotationConfig(config: LiveAnnotationConfig) {
+    localStorage.setItem(LIVE_ANNOTATION_KEY, JSON.stringify(config));
+}
+
 // The four overlay draw layers, in paint order (index 0 = bottom, drawn first;
 // last = top). OverlayPage renders each layer in this order, so reordering the
 // array restacks the overlay.
@@ -654,6 +751,10 @@ export interface LiveOverlayPreset {
     handStack: LiveHandStackConfig;
     cardDisplay: LiveCardDisplayConfig;
     cardDisplayDuration: number;
+    // Annotation placement/sizing. Optional on disk so presets predating this
+    // field still load; filled from defaults on read (which have `follow: true`,
+    // reproducing the placement those presets were authored against).
+    annotations: LiveAnnotationConfig;
     // Overlay draw order (bottom -> top). Optional on disk so presets predating
     // this field still load; normalized to a full permutation on read.
     layerOrder: LiveLayerId[];
@@ -672,6 +773,7 @@ export function spellsplicePreset(): LiveOverlayPreset {
         handStack: defaultLiveHandStackConfig(),
         cardDisplay: defaultLiveCardDisplayConfig(),
         cardDisplayDuration: DEFAULT_CARD_DISPLAY_DURATION_MS,
+        annotations: defaultLiveAnnotationConfig(),
         layerOrder: [...DEFAULT_LAYER_ORDER],
     };
 }
@@ -683,6 +785,7 @@ export function buildOverlayPreset(
     handStack: LiveHandStackConfig,
     cardDisplay: LiveCardDisplayConfig,
     cardDisplayDuration: number,
+    annotations: LiveAnnotationConfig,
     layerOrder: LiveLayerId[]
 ): LiveOverlayPreset {
     return {
@@ -692,6 +795,7 @@ export function buildOverlayPreset(
         handStack,
         cardDisplay,
         cardDisplayDuration,
+        annotations,
         layerOrder,
     };
 }
@@ -723,9 +827,7 @@ export interface PresetsManifest {
 // are left untouched).
 function resolvePresetSvgs(preset: LiveOverlayPreset): LiveOverlayPreset {
     const fix = (c: SingleScoreboardConfig): SingleScoreboardConfig =>
-        c.svg === PRESET_BUNDLED_SVG
-            ? { ...c, svg: defaultScoreboardSvg }
-            : c;
+        c.svg === PRESET_BUNDLED_SVG ? { ...c, svg: defaultScoreboardSvg } : c;
     return {
         ...preset,
         scoreboard: {
@@ -746,20 +848,47 @@ function fallbackPresetsManifest(): PresetsManifest {
 
 // Validates and normalizes one fetched preset (resolving its SVG sentinel), or
 // returns null if it's missing required config slices.
-function normalizePreset(p: Partial<LiveOverlayPreset>): LiveOverlayPreset | null {
+function normalizePreset(
+    p: Partial<LiveOverlayPreset>
+): LiveOverlayPreset | null {
     if (!p?.scoreboard || !p.handStack || !p.cardDisplay) return null;
     return resolvePresetSvgs({
         ...(p as LiveOverlayPreset),
+        annotations: normalizePresetAnnotations(p.annotations, p.handStack),
         layerOrder: normalizeLayerOrder(p.layerOrder),
     });
 }
 
+// Fills a preset's annotation config from defaults when absent (presets authored
+// before annotations were configurable). Strip-width defaults track the preset's
+// own hand stack, not the local one, so an imported look stays self-contained.
+function normalizePresetAnnotations(
+    saved: Partial<LiveAnnotationConfig> | undefined,
+    handStack: LiveHandStackConfig
+): LiveAnnotationConfig {
+    return {
+        left: mergeAnnotationSide(
+            defaultAnnotationConfig('left', handStack.left.cardStripWidth),
+            saved?.left ?? {}
+        ),
+        right: mergeAnnotationSide(
+            defaultAnnotationConfig('right', handStack.right.cardStripWidth),
+            saved?.right ?? {}
+        ),
+    };
+}
+
 // Fetches a single preset file by slug; null on any failure (404, malformed).
-async function fetchPreset(base: string, slug: string): Promise<LiveOverlayPreset | null> {
+async function fetchPreset(
+    base: string,
+    slug: string
+): Promise<LiveOverlayPreset | null> {
     try {
         const res = await fetch(`${base}presets/${slug}.json`);
         if (!res.ok) return null;
-        return normalizePreset((await res.json()) as Partial<LiveOverlayPreset>);
+        return normalizePreset(
+            (await res.json()) as Partial<LiveOverlayPreset>
+        );
     } catch {
         return null;
     }
@@ -830,6 +959,7 @@ export function configMatchesPreset(
     handStack: LiveHandStackConfig,
     cardDisplay: LiveCardDisplayConfig,
     cardDisplayDuration: number,
+    annotations: LiveAnnotationConfig,
     layerOrder: LiveLayerId[]
 ): boolean {
     // Fill optional fields to their defaults on both sides so a preset JSON that
@@ -844,12 +974,26 @@ export function configMatchesPreset(
         left: normSide(h.left),
         right: normSide(h.right),
     });
+    const normAnnSide = (
+        s: SingleAnnotationConfig
+    ): SingleAnnotationConfig => ({
+        ...s,
+        insert: s.insert ?? 'append',
+        maxSlotHeight: s.maxSlotHeight ?? 0,
+    });
+    const normAnnotations = (
+        a: LiveAnnotationConfig
+    ): LiveAnnotationConfig => ({
+        left: normAnnSide(a.left),
+        right: normAnnSide(a.right),
+    });
     return (
         stableStringify({
             scoreboard,
             handStack: normHandStack(handStack),
             cardDisplay,
             cardDisplayDuration,
+            annotations: normAnnotations(annotations),
             layerOrder,
         }) ===
         stableStringify({
@@ -857,6 +1001,9 @@ export function configMatchesPreset(
             handStack: normHandStack(preset.handStack),
             cardDisplay: preset.cardDisplay,
             cardDisplayDuration: preset.cardDisplayDuration,
+            annotations: normAnnotations(
+                normalizePresetAnnotations(preset.annotations, preset.handStack)
+            ),
             layerOrder: normalizeLayerOrder(preset.layerOrder),
         })
     );
@@ -889,6 +1036,7 @@ export type LiveMessage =
     | { type: 'config-state'; cardStripWidth: number }
     | { type: 'card-display-config'; config: LiveCardDisplayConfig }
     | { type: 'hand-stack-config'; config: LiveHandStackConfig }
+    | { type: 'annotation-config'; config: LiveAnnotationConfig }
     | { type: 'layer-order'; order: LiveLayerId[] }
     | { type: 'scoreboard-state'; scoreboard: LiveScoreboardState }
     | { type: 'player-info-state'; left: LivePlayerInfo; right: LivePlayerInfo }

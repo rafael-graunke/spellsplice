@@ -10,6 +10,8 @@ import {
     saveLiveCardDisplayConfig,
     loadLiveHandStackConfig,
     saveLiveHandStackConfig,
+    loadLiveAnnotationConfig,
+    saveLiveAnnotationConfig,
     loadLiveLayerOrder,
     saveLiveLayerOrder,
     type LiveLayerId,
@@ -19,6 +21,7 @@ import {
     type LiveScoreboardState,
     type LiveCardDisplayConfig,
     type LiveHandStackConfig,
+    type LiveAnnotationConfig,
     type LivePlayerInfo,
     type SingleScoreboardConfig,
 } from '@/lib/liveMode';
@@ -47,7 +50,14 @@ import {
 import { OverlayPresenter } from '@/renders/overlayPresenter';
 
 function defaultPlayerInfo(): LivePlayerInfo {
-    return { name: '', deckName: '', standing: '', pronouns: '', life: 20, wins: 0 };
+    return {
+        name: '',
+        deckName: '',
+        standing: '',
+        pronouns: '',
+        life: 20,
+        wins: 0,
+    };
 }
 
 const WIDTH = 1920;
@@ -101,6 +111,11 @@ function OverlayPage() {
     // controller sends 'hand-stack-config'.
     const handStackConfigRef = useRef<LiveHandStackConfig>(
         loadLiveHandStackConfig()
+    );
+    // Per-side annotation placement/sizing, seeded the same way, before the
+    // controller sends 'annotation-config'.
+    const annotationConfigRef = useRef<LiveAnnotationConfig>(
+        loadLiveAnnotationConfig()
     );
     // Overlay paint order, seeded from this page's own localStorage so the very
     // first paint is stacked correctly before the controller sends 'layer-order'.
@@ -198,26 +213,31 @@ function OverlayPage() {
                     ctx,
                     annotationsRef.current,
                     0,
+                    0,
                     WIDTH,
+                    HEIGHT,
+                    annotationConfigRef.current,
                     {
-                        left:
-                            getHandStackTopY(
-                                stateRef.current.left,
-                                handStack.left,
-                                0,
-                                HEIGHT
-                            ) - ANNOTATION_HAND_GAP,
-                        right:
-                            getHandStackTopY(
-                                stateRef.current.right,
-                                handStack.right,
-                                0,
-                                HEIGHT
-                            ) - ANNOTATION_HAND_GAP,
-                    },
-                    {
-                        left: handStack.left.cardStripWidth,
-                        right: handStack.right.cardStripWidth,
+                        anchorBottomY: {
+                            left:
+                                getHandStackTopY(
+                                    stateRef.current.left,
+                                    handStack.left,
+                                    0,
+                                    HEIGHT
+                                ) - ANNOTATION_HAND_GAP,
+                            right:
+                                getHandStackTopY(
+                                    stateRef.current.right,
+                                    handStack.right,
+                                    0,
+                                    HEIGHT
+                                ) - ANNOTATION_HAND_GAP,
+                        },
+                        stripW: {
+                            left: handStack.left.cardStripWidth,
+                            right: handStack.right.cardStripWidth,
+                        },
                     },
                     annotationAnimRef.current,
                     performance.now()
@@ -518,6 +538,10 @@ function OverlayPage() {
             } else if (msg.type === 'hand-stack-config') {
                 handStackConfigRef.current = msg.config;
                 saveLiveHandStackConfig(msg.config);
+                redraw();
+            } else if (msg.type === 'annotation-config') {
+                annotationConfigRef.current = msg.config;
+                saveLiveAnnotationConfig(msg.config);
                 redraw();
             } else if (msg.type === 'layer-order') {
                 layerOrderRef.current = msg.order;

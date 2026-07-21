@@ -28,6 +28,7 @@ import {
     loadLiveScoreboardState,
     loadLiveCardDisplayConfig,
     loadLiveHandStackConfig,
+    loadLiveAnnotationConfig,
     loadLiveLayerOrder,
     defaultLiveCardDisplayConfig,
     defaultLiveHandStackConfig,
@@ -230,7 +231,8 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
         life: s.life,
         wins: s.wins,
     });
-    const playerInfo = (side: Side): LivePlayerInfo => toPlayerInfo(sides[side]);
+    const playerInfo = (side: Side): LivePlayerInfo =>
+        toPlayerInfo(sides[side]);
 
     const findAnnotation = (side: Side, annotationId: string) =>
         sides[side].annotations.find((a) => a.id === annotationId);
@@ -289,6 +291,10 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                 config: loadLiveHandStackConfig(),
             });
             sendRef.current({
+                type: 'annotation-config',
+                config: loadLiveAnnotationConfig(),
+            });
+            sendRef.current({
                 type: 'layer-order',
                 order: loadLiveLayerOrder(),
             });
@@ -336,6 +342,10 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
             sendRef.current({
                 type: 'hand-stack-config',
                 config: loadLiveHandStackConfig(),
+            });
+            sendRef.current({
+                type: 'annotation-config',
+                config: loadLiveAnnotationConfig(),
             });
             sendRef.current({
                 type: 'layer-order',
@@ -445,10 +455,22 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
     const placeInHand = (
         side: Side,
         hand: LibraryCardInstance[],
-        entry: LibraryCardInstance,
+        entry: LibraryCardInstance
     ) => {
         const insert = loadLiveHandStackConfig()[side].insert ?? 'append';
         return insert === 'prepend' ? [entry, ...hand] : [...hand, entry];
+    };
+
+    // Same, for a card dropped into an annotation slot. Annotations carry their
+    // own insert setting, so a caster can have the hand append while the
+    // top-of-deck slot prepends.
+    const placeInAnnotation = (
+        side: Side,
+        cards: LibraryCardInstance[],
+        entry: LibraryCardInstance
+    ) => {
+        const insert = loadLiveAnnotationConfig()[side].insert ?? 'append';
+        return insert === 'prepend' ? [entry, ...cards] : [...cards, entry];
     };
 
     const broadcastHand = (side: Side, hand: LibraryCardInstance[]) => {
@@ -634,7 +656,10 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
     const handleImport = (side: Side, decklist: Decklist) => {
         const seen = new Set<string>();
         const library: LibraryCardInstance[] = [];
-        for (const { card } of [...decklist.maindeck, ...(decklist.sideboard ?? [])]) {
+        for (const { card } of [
+            ...decklist.maindeck,
+            ...(decklist.sideboard ?? []),
+        ]) {
             if (seen.has(card.name)) continue;
             const oracleCard = findOracleCard(card.name);
             if (!oracleCard) continue;
@@ -712,10 +737,11 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                             if (
                                 over.id === annotationDropId(annotation.id, s)
                             ) {
-                                const newCards = [
-                                    ...annotation.cards,
-                                    { id: makeId(), card: entry.card },
-                                ];
+                                const newCards = placeInAnnotation(
+                                    s,
+                                    annotation.cards,
+                                    { id: makeId(), card: entry.card }
+                                );
                                 setAnnotationCards(s, annotation.id, newCards);
                                 broadcastAnnotation(annotation.id, s, newCards);
                                 success = true;
@@ -799,7 +825,11 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                         prefix !== 'hand'
                     ) {
                         removeFromSource();
-                        const newHand = placeInHand(side, sides[side].hand, entry);
+                        const newHand = placeInHand(
+                            side,
+                            sides[side].hand,
+                            entry
+                        );
                         setSides((prev) => ({
                             ...prev,
                             [side]: { ...prev[side], hand: newHand },
@@ -816,7 +846,11 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                                 continue;
                             }
                             removeFromSource();
-                            const newTargetCards = [...annotation.cards, entry];
+                            const newTargetCards = placeInAnnotation(
+                                side,
+                                annotation.cards,
+                                entry
+                            );
                             setAnnotationCards(
                                 side,
                                 annotation.id,

@@ -1,3 +1,23 @@
+# [1.3.0](https://github.com/rafael-graunke/spellsplice/compare/v1.2.1...v1.3.0) (2026-07-21)
+
+
+### Bug Fixes
+
+* centers life total on pro tour presets ([9c5dbae](https://github.com/rafael-graunke/spellsplice/commit/9c5dbaec3c991574e60d68e18e04881909182856))
+* **save:** uses project title as filename on save ([c96fb90](https://github.com/rafael-graunke/spellsplice/commit/c96fb9073425e719eb79c74c06bea762c1f9e160))
+
+
+### Features
+
+* **live:** add annotation config to pro tour presets ([88a38bd](https://github.com/rafael-graunke/spellsplice/commit/88a38bd9c16737c45ea2570f45269df291608f27))
+* **live:** add annotation overlay config ([28afa7f](https://github.com/rafael-graunke/spellsplice/commit/28afa7f334b61a319ce0e1ec7d311cb775fc90b9))
+* **live:** add players section and overlay refinements ([e2b8db9](https://github.com/rafael-graunke/spellsplice/commit/e2b8db9922931d96311d22e5414ea36679589281))
+* **live:** add pro-tour presets and preset fields ([2954c04](https://github.com/rafael-graunke/spellsplice/commit/2954c0496ca41acf3ca4b8809ca5e3c3e3cce74e))
+* **live:** extend overlay config and add hand stack limits ([7990c21](https://github.com/rafael-graunke/spellsplice/commit/7990c219d3e4d4e41f5a7ba752a472aebba9cf1a))
+* **live:** revamp overlay settings and add presets ([8749a03](https://github.com/rafael-graunke/spellsplice/commit/8749a03d1e65a819479864eac9cab29979611ecf))
+* **live:** serve built-in overlay presets from public dir ([6c9ac1f](https://github.com/rafael-graunke/spellsplice/commit/6c9ac1f5c709d5d3ba03166e4ba24a3943c05325))
+* **ui:** add accordion and select primitives ([1c778ff](https://github.com/rafael-graunke/spellsplice/commit/1c778ff240c3f5aed41081fcd9d7112810e6418c))
+
 # [1.3.0-rc.1](https://github.com/rafael-graunke/spellsplice/compare/v1.2.1...v1.3.0-rc.1) (2026-07-21)
 
 

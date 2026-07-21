@@ -16,10 +16,10 @@ export default defineConfig(({ command }) => ({
     define: {
         __APP_VERSION__: JSON.stringify(version),
         // Which deploy target this build is for. release.yml sets APP_CHANNEL=beta
-        // before building; promote.yml leaves it unset, so production is the
+        // before building; promote.yml leaves it unset, so stable is the
         // default and an unlabelled build is never mistaken for a beta one.
         __APP_CHANNEL__: JSON.stringify(
-            process.env.APP_CHANNEL ?? (command === 'build' ? 'production' : 'dev')
+            process.env.APP_CHANNEL ?? (command === 'build' ? 'stable' : 'dev')
         ),
     },
     plugins: [

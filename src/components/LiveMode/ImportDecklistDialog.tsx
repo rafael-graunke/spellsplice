@@ -21,7 +21,12 @@ interface ImportDecklistDialogProps {
     ready: boolean;
 }
 
-function ImportDecklistDialog({ open, onOpenChange, onImport, ready }: ImportDecklistDialogProps) {
+function ImportDecklistDialog({
+    open,
+    onOpenChange,
+    onImport,
+    ready,
+}: ImportDecklistDialogProps) {
     const [text, setText] = useState('');
     const [isDragOver, setIsDragOver] = useState(false);
     const [notFoundCards, setNotFoundCards] = useState<string[]>([]);
@@ -65,13 +70,16 @@ function ImportDecklistDialog({ open, onOpenChange, onImport, ready }: ImportDec
                 <DialogHeader>
                     <DialogTitle>Import Decklist</DialogTitle>
                     <DialogDescription>
-                        Paste an MTGO export or drop a file. Cards are checked against the local card database.
+                        Paste an MTGO export or drop a file. Cards are checked
+                        against the local card database.
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-muted-foreground">
-                        {ready ? 'Paste MTGO export or drop a file' : 'Card database still loading…'}
+                        {ready
+                            ? 'Paste MTGO export or drop a file'
+                            : 'Card database still loading…'}
                     </span>
                     <button
                         type="button"
@@ -83,14 +91,20 @@ function ImportDecklistDialog({ open, onOpenChange, onImport, ready }: ImportDec
                 </div>
                 <Textarea
                     value={text}
-                    onChange={(e) => { setText(e.target.value); setNotFoundCards([]); }}
+                    onChange={(e) => {
+                        setText(e.target.value);
+                        setNotFoundCards([]);
+                    }}
                     placeholder="4 Lightning Bolt&#10;4 Goblin Guide (M10)&#10;…"
                     className={cn(
                         'min-h-32 max-h-64 resize-y font-mono text-xs transition-colors',
                         isDragOver && 'border-ring bg-input/50',
-                        notFoundCards.length > 0 && 'border-destructive',
+                        notFoundCards.length > 0 && 'border-destructive'
                     )}
-                    onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                    onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDragOver(true);
+                    }}
                     onDragLeave={() => setIsDragOver(false)}
                     onDrop={handleDrop}
                     disabled={!ready}
@@ -99,7 +113,9 @@ function ImportDecklistDialog({ open, onOpenChange, onImport, ready }: ImportDec
                     <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                         <p className="font-medium mb-1">Cards not found:</p>
                         <ul className="list-disc list-inside space-y-0.5">
-                            {notFoundCards.map((c) => <li key={c}>{c}</li>)}
+                            {notFoundCards.map((c) => (
+                                <li key={c}>{c}</li>
+                            ))}
                         </ul>
                     </div>
                 )}
@@ -108,11 +124,18 @@ function ImportDecklistDialog({ open, onOpenChange, onImport, ready }: ImportDec
                     type="file"
                     accept=".txt,.dec,.dek"
                     className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) readFileAsText(f); e.target.value = ''; }}
+                    onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) readFileAsText(f);
+                        e.target.value = '';
+                    }}
                 />
 
                 <DialogFooter>
-                    <Button onClick={handleImport} disabled={!text.trim() || !ready}>
+                    <Button
+                        onClick={handleImport}
+                        disabled={!text.trim() || !ready}
+                    >
                         Import
                     </Button>
                 </DialogFooter>

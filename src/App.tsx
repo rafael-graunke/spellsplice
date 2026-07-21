@@ -41,6 +41,8 @@ import LiveModeDialog, {
 import {
     LIVE_PROJECT_KEY,
     LIVE_SCOREBOARD_KEY,
+    LIVE_CARD_DISPLAY_KEY,
+    LIVE_HAND_STACK_KEY,
     loadLiveModeConfig,
     DEFAULT_CARD_DISPLAY_DURATION_MS,
 } from '@/lib/liveMode';
@@ -371,6 +373,8 @@ function App() {
             liveModeRef.current?.resetOverlay();
             localStorage.removeItem(LIVE_PROJECT_KEY);
             localStorage.removeItem(LIVE_SCOREBOARD_KEY);
+            localStorage.removeItem(LIVE_CARD_DISPLAY_KEY);
+            localStorage.removeItem(LIVE_HAND_STACK_KEY);
         }
         setMode('welcome');
     }, [mode, resetToFresh]);
@@ -1054,11 +1058,15 @@ function App() {
                     setLiveSettingsOpen(open);
                     // Pick up any duration change the dialog persisted so the
                     // controller's play timer uses the new value right away.
-                    if (!open)
+                    if (!open) {
                         setCardDisplayDuration(
                             loadLiveModeConfig()?.cardDisplayDuration ??
                                 DEFAULT_CARD_DISPLAY_DURATION_MS
                         );
+                        // Pull in any player identity edits the Players section
+                        // persisted so LiveMode's own copy stays in sync.
+                        liveModeRef.current?.syncPlayerInfoFromStorage();
+                    }
                 }}
                 onStart={() => setLiveSettingsOpen(false)}
                 initialSection={liveSettingsSection}
@@ -1089,6 +1097,10 @@ function App() {
                     cardDisplayDuration={cardDisplayDuration}
                     onOpenSettings={() => {
                         setLiveSettingsSection('card-display');
+                        setLiveSettingsOpen(true);
+                    }}
+                    onEditPlayers={() => {
+                        setLiveSettingsSection('players');
                         setLiveSettingsOpen(true);
                     }}
                 />

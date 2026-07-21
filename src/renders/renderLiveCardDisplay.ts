@@ -32,7 +32,8 @@ interface Point {
 }
 
 // Resolve the top-left draw origin for a card of size cardW x cardH from a
-// 9-anchor + margins config, within the drawW x drawH region (offset applied).
+// 9-anchor + signed offset config, within the drawW x drawH region. The anchor
+// gives the flush base position; the offset (+x right, +y down) nudges from it.
 function anchorOrigin(
     config: SingleCardDisplayConfig,
     offsetX: number,
@@ -42,18 +43,20 @@ function anchorOrigin(
     cardW: number,
     cardH: number
 ): Point {
-    const { anchor, margins } = config;
-    const x = anchor.endsWith('left')
-        ? offsetX + margins.left
+    const { anchor } = config;
+    const dx = config.offset?.x ?? 0;
+    const dy = config.offset?.y ?? 0;
+    const baseX = anchor.endsWith('left')
+        ? offsetX
         : anchor.endsWith('right')
-          ? offsetX + drawW - cardW - margins.right
+          ? offsetX + drawW - cardW
           : offsetX + (drawW - cardW) / 2;
-    const y = anchor.startsWith('top')
-        ? offsetY + margins.top
+    const baseY = anchor.startsWith('top')
+        ? offsetY
         : anchor.startsWith('bottom')
-          ? offsetY + drawH - cardH - margins.bottom
+          ? offsetY + drawH - cardH
           : offsetY + (drawH - cardH) / 2;
-    return { x, y };
+    return { x: baseX + dx, y: baseY + dy };
 }
 
 // Fully off the given edge, other axis held at the final position, so the card
@@ -191,7 +194,8 @@ export function renderLiveCardDisplay(
         left: null,
         right: null,
     },
-    now = 0
+    now = 0,
+    frontSide: 'left' | 'right' = 'right'
 ) {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
@@ -199,8 +203,17 @@ export function renderLiveCardDisplay(
     const cardW = stripW;
     const cardH = cardW / CARD_ASPECT;
 
-    // prettier-ignore
-    drawSide(ctx, left, config.left, anims.left, offsetX, offsetY, drawW, drawH, cardW, cardH, now);
-    // prettier-ignore
-    drawSide(ctx, right, config.right, anims.right, offsetX, offsetY, drawW, drawH, cardW, cardH, now);
+    // Paint the non-front side first, front side last (on top) so the most
+    // recently activated card wins when the two displays overlap.
+    const paint = (side: 'left' | 'right') => {
+        if (side === 'left') {
+            // prettier-ignore
+            drawSide(ctx, left, config.left, anims.left, offsetX, offsetY, drawW, drawH, cardW, cardH, now);
+        } else {
+            // prettier-ignore
+            drawSide(ctx, right, config.right, anims.right, offsetX, offsetY, drawW, drawH, cardW, cardH, now);
+        }
+    };
+    paint(frontSide === 'left' ? 'right' : 'left');
+    paint(frontSide);
 }

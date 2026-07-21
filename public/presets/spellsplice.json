@@ -1,0 +1,91 @@
+{
+    "version": "1",
+    "name": "Spellsplice",
+    "scoreboard": {
+        "mode": "shared",
+        "shared": {
+            "svg": "@bundled-default",
+            "anchor": "top-center",
+            "scale": 100,
+            "offset": { "x": 0, "y": 24 },
+            "fieldMappings": [
+                { "id": "left.name", "field": "name", "side": "left" },
+                { "id": "left.deck", "field": "deckName", "side": "left" },
+                { "id": "left.standing", "field": "standing", "side": "left" },
+                { "id": "left.pronouns", "field": "pronouns", "side": "left" },
+                { "id": "left.life", "field": "life", "side": "left" },
+                { "id": "left.wins", "field": "wins", "side": "left" },
+                { "id": "right.name", "field": "name", "side": "right" },
+                { "id": "right.deck", "field": "deckName", "side": "right" },
+                { "id": "right.standing", "field": "standing", "side": "right" },
+                { "id": "right.pronouns", "field": "pronouns", "side": "right" },
+                { "id": "right.life", "field": "life", "side": "right" },
+                { "id": "right.wins", "field": "wins", "side": "right" }
+            ]
+        },
+        "left": {
+            "svg": null,
+            "anchor": "top-center",
+            "scale": 100,
+            "offset": { "x": 0, "y": 24 },
+            "fieldMappings": [
+                { "id": "name", "field": "name", "side": "left" },
+                { "id": "deck", "field": "deckName", "side": "left" },
+                { "id": "standing", "field": "standing", "side": "left" },
+                { "id": "pronouns", "field": "pronouns", "side": "left" },
+                { "id": "life", "field": "life", "side": "left" },
+                { "id": "wins", "field": "wins", "side": "left" }
+            ]
+        },
+        "right": {
+            "svg": null,
+            "anchor": "top-center",
+            "scale": 100,
+            "offset": { "x": 0, "y": 24 },
+            "fieldMappings": [
+                { "id": "name", "field": "name", "side": "right" },
+                { "id": "deck", "field": "deckName", "side": "right" },
+                { "id": "standing", "field": "standing", "side": "right" },
+                { "id": "pronouns", "field": "pronouns", "side": "right" },
+                { "id": "life", "field": "life", "side": "right" },
+                { "id": "wins", "field": "wins", "side": "right" }
+            ]
+        }
+    },
+    "handStack": {
+        "left": {
+            "anchor": "bottom-left",
+            "offset": { "x": 8, "y": -24 },
+            "cardStripWidth": 340,
+            "growth": "bottom-up"
+        },
+        "right": {
+            "anchor": "bottom-right",
+            "offset": { "x": -8, "y": -24 },
+            "cardStripWidth": 340,
+            "growth": "bottom-up"
+        }
+    },
+    "cardDisplay": {
+        "left": {
+            "anchor": "top-left",
+            "offset": { "x": 8, "y": 24 },
+            "animation": {
+                "type": "fade",
+                "duration": 250,
+                "direction": "left"
+            }
+        },
+        "right": {
+            "anchor": "top-right",
+            "offset": { "x": -8, "y": 24 },
+            "animation": {
+                "type": "fade",
+                "duration": 250,
+                "direction": "right"
+            }
+        }
+    },
+    "cardDisplayDuration": 5000,
+    "layerOrder": ["cardDisplay", "hand", "annotations", "scoreboard"]
+}

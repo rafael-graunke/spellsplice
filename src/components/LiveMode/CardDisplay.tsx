@@ -56,7 +56,8 @@ export function CardDisplay({
     const canFlip = isMultiFaceLayout(rendered?.card.layout);
     // Both faces stay mounted so the container can rotateY between them.
     const frontImg = rendered ? ensureImage(rendered.card.name) : null;
-    const backImg = rendered && canFlip ? ensureBackImage(rendered.card.name) : null;
+    const backImg =
+        rendered && canFlip ? ensureBackImage(rendered.card.name) : null;
 
     // Play-timer countdown bar. Keyed on playUntil so each play restarts the
     // animation; playUntil is cleared when the timer fires or the card clears.
@@ -75,10 +76,12 @@ export function CardDisplay({
                     <Settings />
                 </Button>
             </div>
-            <div className={cn(
-                "relative flex w-full aspect-[5/7] items-center justify-center rounded-lg text-xs text-muted-foreground transition-colors",
-                card ? "bg-muted" : "bg-black/20",
-            )}>
+            <div
+                className={cn(
+                    'relative flex w-full aspect-[5/7] items-center justify-center rounded-lg text-xs text-muted-foreground transition-colors',
+                    card ? 'bg-muted' : 'bg-black/20'
+                )}
+            >
                 {rendered && (
                     <div
                         onTransitionEnd={() => {

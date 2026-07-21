@@ -8,11 +8,20 @@ import {
     saveLiveModeConfig,
     loadLiveCardDisplayConfig,
     saveLiveCardDisplayConfig,
+    loadLiveHandStackConfig,
+    saveLiveHandStackConfig,
+    loadLiveAnnotationConfig,
+    saveLiveAnnotationConfig,
+    loadLiveLayerOrder,
+    saveLiveLayerOrder,
+    type LiveLayerId,
     type LiveMessage,
     type LiveOverlayState,
     type LiveDisplayCard,
     type LiveScoreboardState,
     type LiveCardDisplayConfig,
+    type LiveHandStackConfig,
+    type LiveAnnotationConfig,
     type LivePlayerInfo,
     type SingleScoreboardConfig,
 } from '@/lib/liveMode';
@@ -41,7 +50,14 @@ import {
 import { OverlayPresenter } from '@/renders/overlayPresenter';
 
 function defaultPlayerInfo(): LivePlayerInfo {
-    return { name: '', deckName: '', life: 20, wins: 0 };
+    return {
+        name: '',
+        deckName: '',
+        standing: '',
+        pronouns: '',
+        life: 20,
+        wins: 0,
+    };
 }
 
 const WIDTH = 1920;
@@ -72,6 +88,13 @@ function OverlayPage() {
         left: null,
         right: null,
     });
+    // Per-side timestamp of when the current card appeared/was replaced. Used to
+    // paint the most-recently-activated side last (on top) when the two card
+    // displays overlap on screen.
+    const displayOrderRef = useRef<{ left: number; right: number }>({
+        left: 0,
+        right: 0,
+    });
     // Hydrated from localStorage (this page's own, OBS-isolated profile) so a
     // reload before the controller reconnects keeps the last known scoreboard
     // instead of resetting to an empty one.
@@ -83,6 +106,20 @@ function OverlayPage() {
     const cardDisplayConfigRef = useRef<LiveCardDisplayConfig>(
         loadLiveCardDisplayConfig()
     );
+    // Per-side hand stack placement/sizing, seeded from this page's own
+    // localStorage so the very first paint is placed correctly before the
+    // controller sends 'hand-stack-config'.
+    const handStackConfigRef = useRef<LiveHandStackConfig>(
+        loadLiveHandStackConfig()
+    );
+    // Per-side annotation placement/sizing, seeded the same way, before the
+    // controller sends 'annotation-config'.
+    const annotationConfigRef = useRef<LiveAnnotationConfig>(
+        loadLiveAnnotationConfig()
+    );
+    // Overlay paint order, seeded from this page's own localStorage so the very
+    // first paint is stacked correctly before the controller sends 'layer-order'.
+    const layerOrderRef = useRef<LiveLayerId[]>(loadLiveLayerOrder());
     const playerInfoRef = useRef<{
         left: LivePlayerInfo;
         right: LivePlayerInfo;
@@ -136,84 +173,110 @@ function OverlayPage() {
         if (!ctx) return;
         ctx.clearRect(0, 0, WIDTH, HEIGHT);
         const stripW = stripWRef.current;
-        renderLiveCardDisplay(
-            ctx,
-            displayCardRef.current.left,
-            displayCardRef.current.right,
-            0,
-            0,
-            WIDTH,
-            HEIGHT,
-            stripW,
-            cardDisplayConfigRef.current,
-            displayAnimRef.current,
-            performance.now()
-        );
-        renderLiveHand(
-            ctx,
-            stateRef.current.left,
-            stateRef.current.right,
-            0,
-            0,
-            WIDTH,
-            HEIGHT,
-            stripW,
-            handAnimRef.current,
-            performance.now()
-        );
-        renderLiveAnnotations(
-            ctx,
-            annotationsRef.current,
-            0,
-            WIDTH,
-            {
-                left:
-                    getHandStackTopY(stateRef.current.left, 0, HEIGHT, stripW) -
-                    ANNOTATION_HAND_GAP,
-                right:
-                    getHandStackTopY(
-                        stateRef.current.right,
-                        0,
-                        HEIGHT,
-                        stripW
-                    ) - ANNOTATION_HAND_GAP,
-            },
-            stripW,
-            annotationAnimRef.current,
-            performance.now()
-        );
+        const handStack = handStackConfigRef.current;
 
-        const drawScoreboard = (
-            slot: string,
-            config: SingleScoreboardConfig
-        ) => {
-            if (!config.svg) return;
-            const img = getLiveScoreboardImage(
-                slot,
-                config.svg,
-                config.fieldMappings,
-                playerInfoRef.current.left,
-                playerInfoRef.current.right,
-                () => redrawRef.current()
-            );
-            if (img)
-                renderLiveScoreboard(
+        // Each overlay layer's draw step, dispatched below in the configured
+        // paint order (layerOrderRef, bottom -> top).
+        const drawLayer: Record<LiveLayerId, () => void> = {
+            cardDisplay: () =>
+                renderLiveCardDisplay(
                     ctx,
-                    img,
-                    config.anchor,
-                    config.scale,
-                    config.margins,
+                    displayCardRef.current.left,
+                    displayCardRef.current.right,
+                    0,
+                    0,
                     WIDTH,
-                    HEIGHT
-                );
+                    HEIGHT,
+                    stripW,
+                    cardDisplayConfigRef.current,
+                    displayAnimRef.current,
+                    performance.now(),
+                    displayOrderRef.current.left > displayOrderRef.current.right
+                        ? 'left'
+                        : 'right'
+                ),
+            hand: () =>
+                renderLiveHand(
+                    ctx,
+                    stateRef.current.left,
+                    stateRef.current.right,
+                    0,
+                    0,
+                    WIDTH,
+                    HEIGHT,
+                    handStack,
+                    handAnimRef.current,
+                    performance.now()
+                ),
+            annotations: () =>
+                renderLiveAnnotations(
+                    ctx,
+                    annotationsRef.current,
+                    0,
+                    0,
+                    WIDTH,
+                    HEIGHT,
+                    annotationConfigRef.current,
+                    {
+                        anchorBottomY: {
+                            left:
+                                getHandStackTopY(
+                                    stateRef.current.left,
+                                    handStack.left,
+                                    0,
+                                    HEIGHT
+                                ) - ANNOTATION_HAND_GAP,
+                            right:
+                                getHandStackTopY(
+                                    stateRef.current.right,
+                                    handStack.right,
+                                    0,
+                                    HEIGHT
+                                ) - ANNOTATION_HAND_GAP,
+                        },
+                        stripW: {
+                            left: handStack.left.cardStripWidth,
+                            right: handStack.right.cardStripWidth,
+                        },
+                    },
+                    annotationAnimRef.current,
+                    performance.now()
+                ),
+            scoreboard: () => {
+                const drawScoreboard = (
+                    slot: string,
+                    config: SingleScoreboardConfig
+                ) => {
+                    if (!config.svg) return;
+                    const img = getLiveScoreboardImage(
+                        slot,
+                        config.svg,
+                        config.fieldMappings,
+                        playerInfoRef.current.left,
+                        playerInfoRef.current.right,
+                        () => redrawRef.current()
+                    );
+                    if (img)
+                        renderLiveScoreboard(
+                            ctx,
+                            img,
+                            config.anchor,
+                            config.scale,
+                            config.offset,
+                            WIDTH,
+                            HEIGHT
+                        );
+                };
+                const scoreboard = scoreboardRef.current;
+                if (scoreboard.mode === 'shared') {
+                    drawScoreboard('shared', scoreboard.shared);
+                } else {
+                    drawScoreboard('left', scoreboard.left);
+                    drawScoreboard('right', scoreboard.right);
+                }
+            },
         };
-        const scoreboard = scoreboardRef.current;
-        if (scoreboard.mode === 'shared') {
-            drawScoreboard('shared', scoreboard.shared);
-        } else {
-            drawScoreboard('left', scoreboard.left);
-            drawScoreboard('right', scoreboard.right);
-        }
+        for (const id of layerOrderRef.current) drawLayer[id]();
 
         if (fpsDebug) {
             ctx.save();
@@ -427,6 +490,7 @@ function OverlayPage() {
                     // it slides in only after the old one has slid out. Same
                     // card (e.g. a flip) leaves any running anim alone.
                     if (p && n && p.id !== n.id) {
+                        displayOrderRef.current[side] = performance.now();
                         displayAnimRef.current[side] = {
                             phase: 'exit',
                             start: performance.now(),
@@ -440,6 +504,7 @@ function OverlayPage() {
                             anim: cfg,
                         };
                     } else if (n && !p) {
+                        displayOrderRef.current[side] = performance.now();
                         displayAnimRef.current[side] = {
                             phase: 'enter',
                             start: performance.now(),
@@ -469,6 +534,18 @@ function OverlayPage() {
             } else if (msg.type === 'card-display-config') {
                 cardDisplayConfigRef.current = msg.config;
                 saveLiveCardDisplayConfig(msg.config);
+                redraw();
+            } else if (msg.type === 'hand-stack-config') {
+                handStackConfigRef.current = msg.config;
+                saveLiveHandStackConfig(msg.config);
+                redraw();
+            } else if (msg.type === 'annotation-config') {
+                annotationConfigRef.current = msg.config;
+                saveLiveAnnotationConfig(msg.config);
+                redraw();
+            } else if (msg.type === 'layer-order') {
+                layerOrderRef.current = msg.order;
+                saveLiveLayerOrder(msg.order);
                 redraw();
             } else if (msg.type === 'scoreboard-state') {
                 scoreboardRef.current = msg.scoreboard;

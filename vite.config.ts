@@ -12,9 +12,15 @@ const { version } = JSON.parse(readFileSync('./package.json', 'utf-8'));
 // app shell for them.
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
     define: {
         __APP_VERSION__: JSON.stringify(version),
+        // Which deploy target this build is for. release.yml sets APP_CHANNEL=beta
+        // before building; promote.yml leaves it unset, so production is the
+        // default and an unlabelled build is never mistaken for a beta one.
+        __APP_CHANNEL__: JSON.stringify(
+            process.env.APP_CHANNEL ?? (command === 'build' ? 'production' : 'dev')
+        ),
     },
     plugins: [
         react(),
@@ -26,4 +32,4 @@ export default defineConfig({
             '@': path.resolve(__dirname, './src'),
         },
     },
-});
+}));

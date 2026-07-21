@@ -1,0 +1,31 @@
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "spellsplice",
+    "compatibility_date": "2026-07-21",
+
+    // Assets-only Worker: no "main", no ASSETS binding. Client routes like
+    // /overlay have no file on disk, so a direct load (OBS Browser Source,
+    // refresh) needs the host to hand back the app shell with a 200.
+    // main.tsx then renders the right screen from window.location.pathname.
+    "assets": {
+        "directory": "./dist/",
+        "not_found_handling": "single-page-application"
+    },
+
+    // `assets` and `routes` are inheritable, so env.beta picks up the asset
+    // config above. Deployed as a separate Worker named "spellsplice-beta".
+    // custom_domain routes make wrangler create the DNS record and issue the
+    // certificate on deploy.
+    "env": {
+        "beta": {
+            "routes": [{ "pattern": "beta.spellsplice.com", "custom_domain": true }]
+        }
+    }
+
+    // Production stays on its workers.dev URL until app.spellsplice.com is cut
+    // over. A Custom Domain cannot be created on a hostname that already has a
+    // CNAME record, and app. still points at GitHub Pages, so this route is
+    // added only after that record is deleted:
+    //
+    // "routes": [{ "pattern": "app.spellsplice.com", "custom_domain": true }],
+}

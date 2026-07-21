@@ -9,7 +9,8 @@ import { ThemeProvider } from './components/theme-provider.tsx';
 
 const queryClient = new QueryClient();
 
-const Root = window.location.pathname === '/overlay' ? OverlayPage : App;
+const path = window.location.pathname.replace(/\/+$/, '');
+const Root = path === '/overlay' ? OverlayPage : App;
 
 createRoot(document.getElementById('root')!).render(
     <StrictMode>

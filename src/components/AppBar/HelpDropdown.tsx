@@ -96,6 +96,11 @@ function HelpDropdown() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-48">
                     <DropdownMenuGroup>
+                        <DropdownMenuItem asChild>
+                            <a href="https://spellsplice.com/docs" target="_blank" rel="noreferrer">
+                                Documentation
+                            </a>
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setShortcutsOpen(true)}>
                             Shortcuts
                         </DropdownMenuItem>

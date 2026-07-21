@@ -36,6 +36,8 @@ jobs:
       # push-triggered workflow would be skipped by the release commit's [skip ci]
       # or race it and ship the pre-bump version.
       - run: npm run build
+        env:
+          APP_CHANNEL: beta
 
       - uses: cloudflare/wrangler-action@v4
         with:

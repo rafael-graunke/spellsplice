@@ -2,6 +2,7 @@
     "$schema": "node_modules/wrangler/config-schema.json",
     "name": "spellsplice",
     "compatibility_date": "2026-07-21",
+    "routes": [{ "pattern": "app.spellsplice.com", "custom_domain": true }],
 
     // Assets-only Worker: no "main", no ASSETS binding. Client routes like
     // /overlay have no file on disk, so a direct load (OBS Browser Source,
@@ -21,11 +22,4 @@
             "routes": [{ "pattern": "beta.spellsplice.com", "custom_domain": true }]
         }
     }
-
-    // Production stays on its workers.dev URL until app.spellsplice.com is cut
-    // over. A Custom Domain cannot be created on a hostname that already has a
-    // CNAME record, and app. still points at GitHub Pages, so this route is
-    // added only after that record is deleted:
-    //
-    // "routes": [{ "pattern": "app.spellsplice.com", "custom_domain": true }],
 }

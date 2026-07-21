@@ -19,7 +19,7 @@ export function PlayerHand({ side, cards, onClear }: PlayerHandProps) {
             ref={setNodeRef}
             className={cn(
                 'flex flex-1 min-h-0 flex-col gap-1 overflow-hidden rounded-lg border bg-muted p-2 transition-colors',
-                isOver && 'border-ring bg-input/50',
+                isOver && 'border-ring bg-input/50'
             )}
         >
             <div className="flex items-center justify-between mb-2 shrink-0">
@@ -36,10 +36,16 @@ export function PlayerHand({ side, cards, onClear }: PlayerHandProps) {
             </div>
             <div className="flex flex-1 min-h-0 flex-col gap-1 overflow-y-auto">
                 {cards.length === 0 ? (
-                    <p className="text-xs text-muted-foreground text-center py-2">No cards in hand</p>
+                    <p className="text-xs text-muted-foreground text-center py-2">
+                        No cards in hand
+                    </p>
                 ) : (
                     cards.map(({ id, card }) => (
-                        <DraggableCard key={id} id={`hand:${side}:${id}`} card={card} />
+                        <DraggableCard
+                            key={id}
+                            id={`hand:${side}:${id}`}
+                            card={card}
+                        />
                     ))
                 )}
             </div>

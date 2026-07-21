@@ -1,14 +1,6 @@
 import { useEffect, useState } from 'react';
-import {
-    MinusIcon,
-    PencilIcon,
-    PlusIcon,
-    CheckIcon,
-    Trophy,
-    Heart,
-} from 'lucide-react';
+import { MinusIcon, PencilIcon, PlusIcon, Trophy, Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { Separator } from '../ui/separator';
 
@@ -17,8 +9,8 @@ interface PlayerStateProps {
     deckName: string;
     life: number;
     wins: number;
-    onChangeName: (name: string) => void;
-    onChangeDeckName: (deckName: string) => void;
+    // Opens the Players config (name/deck/standing/pronouns live there now).
+    onEdit: () => void;
     onLifeChange: (life: number) => void;
     onWinsChange: (wins: number) => void;
     reverse?: boolean;
@@ -29,13 +21,11 @@ export function PlayerState({
     deckName,
     life,
     wins,
-    onChangeName,
-    onChangeDeckName,
+    onEdit,
     onLifeChange,
     onWinsChange,
     reverse = false,
 }: PlayerStateProps) {
-    const [editing, setEditing] = useState(false);
     const [lifeDraft, setLifeDraft] = useState(String(life));
 
     useEffect(() => {
@@ -59,38 +49,21 @@ export function PlayerState({
             )}
         >
             <div className="flex items-center gap-2">
-                {editing ? (
-                    <div className="flex flex-1 flex-col gap-1">
-                        <Input
-                            className="h-7"
-                            value={name}
-                            placeholder="Player name"
-                            onChange={(e) => onChangeName(e.target.value)}
-                        />
-                        <Input
-                            className="h-7"
-                            value={deckName}
-                            placeholder="Deck name"
-                            onChange={(e) => onChangeDeckName(e.target.value)}
-                        />
-                    </div>
-                ) : (
-                    <div className="flex flex-col items-start min-w-0">
-                        <p className="text-md font-medium truncate">
-                            {name || 'Player name'}
-                        </p>
-                        <p className="text-sm font-medium text-muted-foreground truncate">
-                            {deckName || 'Deck name'}
-                        </p>
-                    </div>
-                )}
+                <div className="flex flex-col items-start min-w-0">
+                    <p className="text-md font-medium truncate">
+                        {name || 'Player name'}
+                    </p>
+                    <p className="text-sm font-medium text-muted-foreground truncate">
+                        {deckName || 'Deck name'}
+                    </p>
+                </div>
                 <Button
                     className="cursor-pointer"
                     variant="ghost"
                     size="icon-sm"
-                    onClick={() => setEditing((v) => !v)}
+                    onClick={onEdit}
                 >
-                    {editing ? <CheckIcon /> : <PencilIcon />}
+                    <PencilIcon />
                 </Button>
             </div>
 
@@ -103,9 +76,11 @@ export function PlayerState({
                 <div className="flex items-center justify-center gap-3 p-1 pl-2 rounded-md border bg-black/20">
                     <div className="flex items-center justify-start gap-2">
                         <Heart className="w-4 h-4" />
-                        <p className="text-sm text-muted-foreground tabular-nums">Life</p>
+                        <p className="text-sm text-muted-foreground tabular-nums">
+                            Life
+                        </p>
                     </div>
-                    <Separator orientation="vertical" className="w-full"/>
+                    <Separator orientation="vertical" className="w-full" />
                     <div className="flex items-center justify-center gap-1">
                         <Button
                             className="cursor-pointer"
@@ -141,7 +116,9 @@ export function PlayerState({
                 <div className="flex items-center justify-center gap-3 p-1 pl-2 rounded-md border bg-black/20">
                     <div className="flex items-center w-full justify-start gap-2">
                         <Trophy className="w-4 h-4" />
-                        <p className="text-sm text-muted-foreground tabular-nums">Wins</p>
+                        <p className="text-sm text-muted-foreground tabular-nums">
+                            Wins
+                        </p>
                     </div>
                     <Separator orientation="vertical" className="w-full" />
                     <div className="flex items-center justify-center gap-2">

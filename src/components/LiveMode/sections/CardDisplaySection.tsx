@@ -42,12 +42,12 @@ function CardDisplaySection({
     return (
         <div className="flex flex-col gap-6">
             <div>
-                <h2 className="text-base font-medium mb-4">Card Display</h2>
+                <h2 className="text-lg font-semibold mb-4">Card Display</h2>
                 <div className="flex flex-col gap-4">
                     <div className="flex flex-col gap-1.5">
                         <label
                             htmlFor="card-display-duration"
-                            className="text-sm font-medium"
+                            className="text-sm font-regular"
                         >
                             Card display duration (seconds)
                         </label>
@@ -61,16 +61,18 @@ function CardDisplaySection({
                             onBlur={handleBlur}
                             className="w-28"
                         />
-                        <p className="text-xs text-muted-foreground">
-                            How long a played card stays on screen before it
-                            auto-clears.
-                        </p>
                     </div>
                 </div>
             </div>
 
             <div>
-                <h3 className="text-sm font-semibold mb-3">Left Player</h3>
+                <div className="flex items-center gap-3 mb-3">
+                    <div className="h-px flex-1 bg-border" />
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
+                        Left Player
+                    </h3>
+                    <div className="h-px flex-1 bg-border" />
+                </div>
                 <CardDisplayConfigEditor
                     config={cardDisplayConfig.left}
                     onChange={(left) =>
@@ -83,7 +85,13 @@ function CardDisplaySection({
                 />
             </div>
             <div>
-                <h3 className="text-sm font-semibold mb-3">Right Player</h3>
+                <div className="flex items-center gap-3 mb-3">
+                    <div className="h-px flex-1 bg-border" />
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
+                        Right Player
+                    </h3>
+                    <div className="h-px flex-1 bg-border" />
+                </div>
                 <CardDisplayConfigEditor
                     config={cardDisplayConfig.right}
                     onChange={(right) =>

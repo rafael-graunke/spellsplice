@@ -1,5 +1,13 @@
-import type { LiveHandCard } from '@/lib/liveMode';
+import type { LiveAnnotationConfig, LiveHandCard } from '@/lib/liveMode';
 import { getStripH, drawCardStrip } from './renderCardStrips';
+import {
+    drawOverflowPill,
+    stackAnchorX,
+    stackAnchorY,
+    stackFacesLeft,
+    stackTopY,
+    visibleStripCount,
+} from './stackLayout';
 
 const CONT_PAD_Y = 10;
 const TITLE_FONT_SIZE = 20;
@@ -56,6 +64,24 @@ interface Box {
     liveCards: LiveHandCard[]; // snapshot (surviving + entering) cards
     exiting: AnnotationAnim[]; // cards animating out of this slot+side
     preCards: LiveHandCard[]; // snapshot with exiting cards re-inserted
+    hiddenCount: number; // cards past maxSlotHeight, summarised by a `+N` pill
+}
+
+// Rebuilds the stack as it was before the given cards were removed, by
+// re-inserting each at its captured `oldIndex`. Gives every card a "before"
+// position so the gap a removal leaves can be animated closed.
+function insertByOldIndex(
+    cards: LiveHandCard[],
+    removed: AnnotationAnim[]
+): LiveHandCard[] {
+    const out = [...cards];
+    for (const a of [...removed].sort(
+        (x, y) => (x.oldIndex ?? out.length) - (y.oldIndex ?? out.length)
+    )) {
+        const oi = Math.min(a.oldIndex ?? out.length, out.length);
+        out.splice(oi, 0, a.card);
+    }
+    return out;
 }
 
 // Builds the render boxes for one side. A slot is rendered when it holds cards
@@ -65,6 +91,7 @@ function buildBoxes(
     annotations: Record<string, LiveAnnotationData>,
     isLeft: boolean,
     stripW: number,
+    maxSlotHeight: number | undefined,
     anims: Map<string, AnnotationAnim>,
     now: number
 ): Box[] {
@@ -72,14 +99,31 @@ function buildBoxes(
     const boxes: Box[] = [];
 
     for (const [annotationId, data] of Object.entries(annotations)) {
-        const liveCards = isLeft ? data.left : data.right;
-        const snapshotIds = new Set(liveCards.map((c) => c.id));
-        const exiting = [...anims.values()].filter(
+        const allCards = isLeft ? data.left : data.right;
+        // Cap this slot's cards to what fits under maxSlotHeight; the tail is
+        // summarised by a pill. The cap is per slot, so a tall slot never steals
+        // room from the ones below it in the column.
+        const visibleCount = visibleStripCount(allCards, stripW, maxSlotHeight);
+        const liveCards = allCards.slice(0, visibleCount);
+        const hiddenCount = allCards.length - visibleCount;
+        const snapshotIds = new Set(allCards.map((c) => c.id));
+        const leaving = [...anims.values()].filter(
             (a) =>
                 a.side === side &&
                 a.phase === 'exit' &&
                 a.annotationId === annotationId &&
                 !snapshotIds.has(a.card.id)
+        );
+        // Whether a leaving card was on screen is a question about the stack it
+        // left, not the one that remains: reconstruct the pre-removal list and
+        // measure the cap against that. Testing against the post-removal count
+        // drops the exit of any card that was last in its slot.
+        const preAll = insertByOldIndex(allCards, leaving);
+        const preVisible = visibleStripCount(preAll, stripW, maxSlotHeight);
+        const exiting = leaving.filter(
+            // A card removed from beyond the cap was never drawn, so it has no
+            // exit to play; letting it through would pop a hidden card in.
+            (a) => preAll.indexOf(a.card) < preVisible
         );
         if (liveCards.length === 0 && exiting.length === 0) continue;
 
@@ -103,15 +147,7 @@ function buildBoxes(
             enterAnims.length === liveCards.length;
         const isContainerExit = liveCards.length === 0 && exiting.length > 0;
 
-        const preCards: LiveHandCard[] = [...liveCards];
-        for (const a of [...exiting].sort(
-            (x, y) =>
-                (x.oldIndex ?? preCards.length) -
-                (y.oldIndex ?? preCards.length)
-        )) {
-            const oi = Math.min(a.oldIndex ?? preCards.length, preCards.length);
-            preCards.splice(oi, 0, a.card);
-        }
+        const preCards = insertByOldIndex(liveCards, exiting);
 
         let mode: BoxMode = 'per-card';
         let containerT = 1;
@@ -149,6 +185,7 @@ function buildBoxes(
             liveCards,
             exiting,
             preCards,
+            hiddenCount,
         });
     }
     return boxes;
@@ -185,9 +222,17 @@ export function renderLiveAnnotations(
     ctx: CanvasRenderingContext2D,
     annotations: Record<string, LiveAnnotationData>,
     offsetX: number,
+    offsetY: number,
     drawW: number,
-    anchorBottomY: { left: number; right: number },
-    stripW: number,
+    drawH: number,
+    config: LiveAnnotationConfig,
+    // Placement inherited from the hand stack, used when a side has
+    // `follow: true`: the Y the column's bottom pins to (the hand's top edge)
+    // and the hand's strip width, so annotations sit directly above the hand.
+    followFrom: {
+        anchorBottomY: { left: number; right: number };
+        stripW: { left: number; right: number };
+    },
     anims: Map<string, AnnotationAnim> = new Map(),
     now = 0
 ) {
@@ -195,23 +240,61 @@ export function renderLiveAnnotations(
     ctx.imageSmoothingQuality = 'high';
 
     for (const isLeft of [true, false]) {
-        const boxes = buildBoxes(annotations, isLeft, stripW, anims, now);
+        const side: 'left' | 'right' = isLeft ? 'left' : 'right';
+        const cfg = config[side];
+        // Following means matching the hand's strip width so the two align.
+        const sw = cfg.follow ? followFrom.stripW[side] : cfg.cardStripWidth;
+        // The per-slot cap is independent of `follow`: following inherits
+        // placement and width from the hand, not how tall a slot may grow.
+        const boxes = buildBoxes(
+            annotations,
+            isLeft,
+            sw,
+            cfg.maxSlotHeight,
+            anims,
+            now
+        );
         if (boxes.length === 0) continue;
 
         const totalH =
             boxes.reduce((s, b) => s + b.contH, 0) + GAP * (boxes.length - 1);
-        let y = (isLeft ? anchorBottomY.left : anchorBottomY.right) - totalH;
+        // Following pins the column's bottom to the hand's top edge; otherwise
+        // the column is anchored and grown independently.
+        let y = cfg.follow
+            ? followFrom.anchorBottomY[side] - totalH
+            : stackTopY(
+                  stackAnchorY(cfg.anchor, cfg.offset, offsetY, drawH),
+                  totalH,
+                  cfg.growth
+              );
+
+        // Which frame edge cards slide in from (and out to). Following pins the
+        // column to the hand's corner, so the player side is the near edge;
+        // otherwise it follows the configured anchor, as the hand stack does.
+        // Without this, a left player anchored right would slide its cards in
+        // from the far side of the frame.
+        const facesLeft = cfg.follow
+            ? isLeft
+            : stackFacesLeft(cfg.anchor, side);
 
         for (const box of boxes) {
-            const finalX = isLeft
-                ? offsetX + 8
-                : offsetX + drawW - box.contW - 8;
-            const offscreenX = isLeft ? offsetX - box.contW : offsetX + drawW;
+            const finalX = cfg.follow
+                ? isLeft
+                    ? offsetX + 8
+                    : offsetX + drawW - box.contW - 8
+                : stackAnchorX(
+                      cfg.anchor,
+                      cfg.offset,
+                      offsetX,
+                      drawW,
+                      box.contW
+                  );
+            const offscreenX = facesLeft
+                ? offsetX - box.contW
+                : offsetX + drawW;
             const firstStripY = y + CONT_PAD_Y + TITLE_AREA_H;
             const cumH = (list: LiveHandCard[], upTo: number) =>
-                list
-                    .slice(0, upTo)
-                    .reduce((s, c) => s + stripHOf(c, stripW), 0);
+                list.slice(0, upTo).reduce((s, c) => s + stripHOf(c, sw), 0);
 
             // Container modes: the whole box (background + all cards) slides as
             // one unit; cards do not animate individually.
@@ -241,9 +324,17 @@ export function renderLiveAnnotations(
                         1,
                         hc.card.mana_cost,
                         hc.card.colors,
-                        stripW
+                        sw
                     );
                 }
+                if (box.hiddenCount > 0)
+                    drawOverflowPill(
+                        ctx,
+                        contX + box.contW / 2,
+                        y + box.contH,
+                        box.hiddenCount,
+                        sw
+                    );
                 y += box.contH + GAP;
                 continue;
             }
@@ -296,7 +387,7 @@ export function renderLiveAnnotations(
                     alpha,
                     hc.card.mana_cost,
                     hc.card.colors,
-                    stripW
+                    sw
                 );
             }
 
@@ -317,9 +408,18 @@ export function renderLiveAnnotations(
                     1 - t,
                     a.card.card.mana_cost,
                     a.card.card.colors,
-                    stripW
+                    sw
                 );
             }
+
+            if (box.hiddenCount > 0)
+                drawOverflowPill(
+                    ctx,
+                    finalX + box.contW / 2,
+                    y + box.contH,
+                    box.hiddenCount,
+                    sw
+                );
 
             y += box.contH + GAP;
         }

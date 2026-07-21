@@ -7,7 +7,11 @@ interface Props {
     onForceRefresh: () => void;
 }
 
-const BUSY_STATUSES: OracleCardsStatus[] = ['checking', 'downloading', 'storing'];
+const BUSY_STATUSES: OracleCardsStatus[] = [
+    'checking',
+    'downloading',
+    'storing',
+];
 
 function CardDatabaseSection({ status, onForceRefresh }: Props) {
     const busy = BUSY_STATUSES.includes(status);
@@ -18,9 +22,11 @@ function CardDatabaseSection({ status, onForceRefresh }: Props) {
                 <h2 className="text-base font-medium mb-4">Card Database</h2>
                 <div className="flex flex-col gap-4">
                     <p className="text-xs text-muted-foreground">
-                        Card names, mana costs, and images come from Scryfall&apos;s bulk data, cached locally in
-                        your browser. If a card looks wrong or out of date (missing mana pips, wrong art, wrong
-                        name), force a full re-download.
+                        Card names, mana costs, and images come from
+                        Scryfall&apos;s bulk data, cached locally in your
+                        browser. If a card looks wrong or out of date (missing
+                        mana pips, wrong art, wrong name), force a full
+                        re-download.
                     </p>
 
                     {status !== 'idle' && (
@@ -29,27 +35,37 @@ function CardDatabaseSection({ status, onForceRefresh }: Props) {
                                 <>
                                     <Loader2 className="size-4 animate-spin text-yellow-500" />
                                     <span className="text-yellow-500">
-                                        {status === 'downloading' ? 'Downloading card database...' : 'Updating card database...'}
+                                        {status === 'downloading'
+                                            ? 'Downloading card database...'
+                                            : 'Updating card database...'}
                                     </span>
                                 </>
                             )}
                             {status === 'ready' && (
                                 <>
                                     <CheckCircle2 className="size-4 text-green-500" />
-                                    <span className="text-green-500">Card database up to date</span>
+                                    <span className="text-green-500">
+                                        Card database up to date
+                                    </span>
                                 </>
                             )}
                             {status === 'error' && (
                                 <>
                                     <XCircle className="size-4 text-red-500" />
-                                    <span className="text-red-500">Card database update failed</span>
+                                    <span className="text-red-500">
+                                        Card database update failed
+                                    </span>
                                 </>
                             )}
                         </div>
                     )}
 
                     <div>
-                        <Button variant="outline" onClick={onForceRefresh} disabled={busy}>
+                        <Button
+                            variant="outline"
+                            onClick={onForceRefresh}
+                            disabled={busy}
+                        >
                             Force Update
                         </Button>
                     </div>

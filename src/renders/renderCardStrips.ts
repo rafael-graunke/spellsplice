@@ -135,6 +135,8 @@ export function drawCardStrip(
     const placeholderBg = CARD_COLOR_HEX[getCardColorKey(colors)];
     if (manaCost && !(img instanceof HTMLImageElement)) ensureManaFontLoaded();
 
+    const curveW = Math.round((stripW * STRIP_CURVE_W) / STRIP_W);
+
     if (crop.curveClip) {
         // fill() is anti-aliased; clip() is not. Use an offscreen canvas + destination-in mask.
         const tmp = new OffscreenCanvas(stripW, stripH);
@@ -159,7 +161,7 @@ export function drawCardStrip(
 
         tmpCtx.globalCompositeOperation = 'destination-in';
         tmpCtx.beginPath();
-        clipStripPath(tmpCtx, 0, 0, stripW, stripH, STRIP_CURVE_W);
+        clipStripPath(tmpCtx, 0, 0, stripW, stripH, curveW);
         tmpCtx.fill();
 
         ctx.save();

@@ -7,7 +7,7 @@ import {
     PopoverTrigger,
 } from '@/components/ui/popover';
 
-type Channel = 'production' | 'beta' | 'dev';
+type Channel = 'stable' | 'beta' | 'dev';
 
 // The three deploy channels, ordered stable -> bleeding edge. `url` is null for
 // dev because it only ever runs on the developer's own machine, so there is
@@ -22,7 +22,7 @@ const CHANNELS: {
     badge: string;
 }[] = [
     {
-        id: 'production',
+        id: 'stable',
         label: 'Stable',
         url: 'https://app.spellsplice.com',
         blurb: 'Fully tested. Can lag behind the newest features.',

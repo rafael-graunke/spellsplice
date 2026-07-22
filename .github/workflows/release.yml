@@ -1,40 +1,28 @@
-name: Release
+name: Deploy Beta
+
+# Every push to main ships straight to beta. No version bump, no changelog, no
+# tag, no GitHub release -- beta is just "latest main". Releases are cut only by
+# promote.yml, which runs semantic-release when you promote to stable.
 
 on:
   push:
     branches: [main]
 
 jobs:
-  release:
+  beta:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
     steps:
+      # fetch-depth: 0 pulls tags so vite's `git describe` can stamp the version
+      # as <last-tag>-<commits>-g<sha> (e.g. 1.3.0-14-ga1b2c3d).
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: false
-          token: ${{ secrets.RELEASE_TOKEN }}
-      - run: git fetch origin "+refs/notes/*:refs/notes/*" || true
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npx semantic-release
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-          GIT_AUTHOR_NAME: github-actions[bot]
-          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-          GIT_COMMITTER_NAME: github-actions[bot]
-          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
 
-      # Build after semantic-release so the working tree carries the bumped
-      # package.json, which vite.config.ts reads into __APP_VERSION__. A separate
-      # push-triggered workflow would be skipped by the release commit's [skip ci]
-      # or race it and ship the pre-bump version.
       - run: npm run build
         env:
           APP_CHANNEL: beta

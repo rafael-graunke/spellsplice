@@ -4,8 +4,6 @@ import type { Player } from '../components/types/player';
 import {
     applyGainLife,
     applyLoseLife,
-    applyStackDeck,
-    applyUnstackDeck,
     applyWin,
     applyReset,
 } from './stateHandlers';
@@ -59,6 +57,129 @@ export function deriveHandWithTimestamps(
     }
 
     return hand;
+}
+
+// Derives the current contents of every annotation slot for a player by
+// replaying persistent ANNOTATE_CARD / UNANNOTATE_CARD events up to `time`.
+// Additive model: ANNOTATE appends cards, UNANNOTATE removes cards (empty
+// cards clears the whole slot). Cards carry `enteredAt` for slide-in animation.
+export function deriveAnnotations(
+    events: TrackEvent[],
+    time: number,
+): Record<string, CardWithTimestamp[]> {
+    const persistent = events
+        .filter((e) => !e.resizable && e.time <= time)
+        .sort((a, b) => a.time - b.time);
+
+    const slots: Record<string, CardWithTimestamp[]> = {};
+
+    for (const event of persistent) {
+        if (event.type === 'RESET') {
+            for (const id of Object.keys(slots)) slots[id] = [];
+            continue;
+        }
+        const slotId = event.meta?.annotationId;
+        if (!slotId) continue;
+
+        if (event.type === 'ANNOTATE_CARD' && event.meta?.cards) {
+            const incoming = event.meta.cards.map((card) => ({ card, enteredAt: event.time }));
+            slots[slotId] = [...(slots[slotId] ?? []), ...incoming];
+        } else if (event.type === 'UNANNOTATE_CARD') {
+            if (!event.meta?.cards?.length) {
+                slots[slotId] = [];
+                continue;
+            }
+            const counts = new Map<string, number>();
+            for (const c of event.meta.cards) {
+                counts.set(c.name, (counts.get(c.name) ?? 0) + 1);
+            }
+            slots[slotId] = (slots[slotId] ?? []).filter(({ card }) => {
+                const remaining = counts.get(card.name) ?? 0;
+                if (remaining > 0) {
+                    counts.set(card.name, remaining - 1);
+                    return false;
+                }
+                return true;
+            });
+        }
+    }
+
+    return slots;
+}
+
+export interface AnnotationExit {
+    removed: Card[];
+    time: number;
+}
+
+export interface DerivedAnnotations {
+    slots: Record<string, CardWithTimestamp[]>;
+    // Most recent removal per slot that falls within `window` seconds of `time`,
+    // for exit animation. Overwritten as later removals are replayed, so it holds
+    // the latest.
+    exits: Record<string, AnnotationExit>;
+}
+
+// Single-pass variant used by the renderer: derives current slot contents AND
+// the cards recently removed from each slot (for slide-out animation) in one
+// replay, avoiding a full re-derive per UNANNOTATE event.
+export function deriveAnnotationsWithExits(
+    events: TrackEvent[],
+    time: number,
+    window: number,
+): DerivedAnnotations {
+    const persistent = events
+        .filter((e) => !e.resizable && e.time <= time)
+        .sort((a, b) => a.time - b.time);
+
+    const slots: Record<string, CardWithTimestamp[]> = {};
+    const exits: Record<string, AnnotationExit> = {};
+    const cutoff = time - window;
+
+    for (const event of persistent) {
+        if (event.type === 'RESET') {
+            for (const id of Object.keys(slots)) {
+                const before = slots[id];
+                if (before.length > 0 && event.time > cutoff) {
+                    exits[id] = { removed: before.map((c) => c.card), time: event.time };
+                }
+                slots[id] = [];
+            }
+            continue;
+        }
+        const slotId = event.meta?.annotationId;
+        if (!slotId) continue;
+
+        if (event.type === 'ANNOTATE_CARD' && event.meta?.cards) {
+            const bucket = (slots[slotId] ??= []);
+            for (const card of event.meta.cards) bucket.push({ card, enteredAt: event.time });
+        } else if (event.type === 'UNANNOTATE_CARD') {
+            const before = slots[slotId] ?? [];
+            let removed: Card[];
+            if (!event.meta?.cards?.length) {
+                removed = before.map((c) => c.card);
+                slots[slotId] = [];
+            } else {
+                const counts = new Map<string, number>();
+                for (const c of event.meta.cards) counts.set(c.name, (counts.get(c.name) ?? 0) + 1);
+                removed = [];
+                slots[slotId] = before.filter(({ card }) => {
+                    const rem = counts.get(card.name) ?? 0;
+                    if (rem > 0) {
+                        counts.set(card.name, rem - 1);
+                        removed.push(card);
+                        return false;
+                    }
+                    return true;
+                });
+            }
+            if (event.time > cutoff && removed.length > 0) {
+                exits[slotId] = { removed, time: event.time };
+            }
+        }
+    }
+
+    return { slots, exits };
 }
 
 export function derivePlayerState(
@@ -139,10 +260,6 @@ function applyEvent(state: Player, event: TrackEvent): Player {
             return applyGainLife(state, event);
         case 'LOSE_LIFE':
             return applyLoseLife(state, event);
-        case 'STACK_DECK':
-            return applyStackDeck(state, event);
-        case 'UNSTACK_DECK':
-            return applyUnstackDeck(state, event);
         case 'WIN':
             return applyWin(state);
         case 'HIDE_UI':

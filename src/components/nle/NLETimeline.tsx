@@ -9,6 +9,7 @@ import type { NLETrackGroup } from '../types/nle';
 import { TrackType, TrackTypeIconMap } from '../types/nle';
 import type { TrackEvent } from '../types/event';
 import { EventType } from '../types/event';
+import { DEFAULT_ANNOTATION_SLOT_ID } from '../types/config';
 import { useTimelineScroll } from './hooks/useTimelineScroll';
 import { useTimelineZoom } from './hooks/useTimelineZoom';
 import { useTimelineViewport } from './hooks/useTimelineViewport';
@@ -113,11 +114,11 @@ function NLECreateDialog({ open, onOpenChange, setIsPlaying, onCreateEvent }: NL
                         <CommandItem onSelect={() => handleSelect({ type: EventType.RevealFromHand })}>
                             Reveal from Hand
                         </CommandItem>
-                        <CommandItem onSelect={() => handleSelect({ type: EventType.StackDeck, meta: { cards: [] } })}>
-                            Stack Deck
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.AnnotateCard, meta: { annotationId: DEFAULT_ANNOTATION_SLOT_ID, cards: [] } })}>
+                            Annotate Card
                         </CommandItem>
-                        <CommandItem onSelect={() => handleSelect({ type: EventType.UnstackDeck })}>
-                            Unstack Deck
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.UnannotateCard, meta: { annotationId: DEFAULT_ANNOTATION_SLOT_ID, cards: [] } })}>
+                            Clear Annotation
                         </CommandItem>
                         <CommandItem onSelect={() => handleSelect({ type: EventType.DisplayCard, duration: 5, resizable: true })}>
                             Display Card

@@ -7,8 +7,8 @@ import {
     EventBackground,
     Eye,
     Heal,
-    UnstackDeck,
-    StackDeck,
+    Unannotate,
+    Annotate,
     Win,
 } from '@/assets/icons';
 import { EventColorMap } from '../types/event';
@@ -25,8 +25,8 @@ export const iconMap: Partial<Record<EventType, SvgIcon>> = {
     LOSE_LIFE: Damage,
     GAIN_LIFE: Heal,
     REVEAL_FROM_HAND: Eye,
-    STACK_DECK: StackDeck,
-    UNSTACK_DECK: UnstackDeck,
+    ANNOTATE_CARD: Annotate,
+    UNANNOTATE_CARD: Unannotate,
     WIN: Win,
     HIDE_UI: SquircleDashed,
     SHOW_UI: Squircle,

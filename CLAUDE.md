@@ -12,8 +12,6 @@ npm run preview   # Preview production build
 npx prettier --write .  # Format all files
 ```
 
-Interaction tests use Storybook play functions (`storybook/test`). When a UI bug is reported, write a failing play function to reproduce it before fixing. Portal-rendered UI (Radix context menus, dropdowns) requires `screen` not `within(canvasElement)`.
-
 ## What This Is
 
 Spellsplice is a Magic: The Gathering video overlay editor. Users import video/audio sources, arrange clips on a non-linear timeline, and build a synchronized track of in-game events (life changes, draws, discards, etc.) that are overlaid on the exported video.
@@ -32,7 +30,7 @@ Spellsplice is a Magic: The Gathering video overlay editor. Users import video/a
 - Players autosave to `localStorage` under `spellsplice-project` on every change; restored on load. Only cleared by an explicit File > New, not on unload.
 
 Layout: top AppBar + left Sources panel + main area (react-resizable-panels), vertical split:
-- **AppBar** — always rendered, but its File menu is mode-aware (`FileDropdown`'s `mode` prop): disabled on Welcome, New/Open/Save/Export…/Settings/Relink Media on Timeline, New/Settings (websocket URL config, reusing `LiveModeDialog`) on Live Mode. File > New always clears the current mode's stored state and returns to Welcome. Keyboard shortcuts (Ctrl+S, Ctrl+O, Ctrl+Alt+N, Ctrl+,) are gated the same way. Shows unsaved-changes confirmation dialog (Timeline only).
+- **AppBar** — always rendered, but its File menu is mode-aware (`FileDropdown`'s `mode` prop): disabled on Welcome, New/Open/Save/Export…/Settings/Relink Media on Timeline, New/Settings (websocket URL config, reusing `LiveModeDialog`) on Live Mode. File > New always clears the current mode's stored state and returns to Welcome. Keyboard shortcuts (Ctrl+S, Ctrl+O, Ctrl+Alt+N, Ctrl+,) are gated the same way. Shows unsaved-changes confirmation dialog (Timeline only). Right side holds `ChannelMenu` (badge + version, popover to switch channels) - see Deploy Channels & Releases.
 - **Sources panel** (left) — holds imported `MediaSource` files. Drag & drop or file-picker to add video/audio. Shows thumbnail + clip-use count per source. Red dot badge when any source is offline. Link icon opens `RelinkDialog` to reattach offline sources.
 - **VideoPreview** (top-left, 75%) — renders video frames to a `<canvas>` via `drawImage` on a rAF loop. A hidden `<video>` element handles decoding/audio. Renders player state overlays and active windowed event banners directly on the canvas. Uses `derivedCacheRef` with a `validUntil` timestamp to skip redundant state derivation between frames.
 - **Inspector** (top-right, 25%) — edits the selected event's `meta` fields. Per-type form components.
@@ -212,6 +210,28 @@ Output is always 1920×1080, letterboxed. Frame rate: 30 or 60 fps (user selects
 ## UI Stack
 
 shadcn/ui + Radix UI + Tailwind CSS v4. Components live in `src/components/ui/`. Path alias `@/*` maps to `src/*`. SVG icons auto-imported from `src/assets/icons/` via vite-plugin-svgr.
+
+## Deploy Channels & Releases
+
+Hosted on Cloudflare Workers static assets (`wrangler.jsonc`, assets-only Worker, SPA fallback). Three channels:
+
+| Channel | URL | Deploy |
+|---------|-----|--------|
+| `dev` | localhost | `npm run dev` (local only) |
+| `beta` | beta.spellsplice.com | every push to main, continuous |
+| `stable` | app.spellsplice.com | manual promotion only |
+
+**Build-time constants** (`vite.config.ts`, injected via `define`):
+- `__APP_CHANNEL__` (`'stable' | 'beta' | 'dev'`) — from `process.env.APP_CHANNEL`, defaulting to `stable` on build and `dev` on serve. `release.yml` sets `APP_CHANNEL=beta`.
+- `__APP_VERSION__` — `stable` uses the bare `package.json` version (e.g. `1.3.0`); every other channel uses `git describe --tags` (e.g. `1.3.0-6-g3fc32cb`): unique per commit, ordered, traceable. The tag's leading `v` is stripped so the string is bare semver. `git describe` needs tags in the checkout (CI uses `fetch-depth: 0`).
+
+**ChannelMenu** (`src/components/AppBar/ChannelMenu.tsx`) — right-side AppBar badge showing current channel + version; click opens a popover listing all three channels with switch links (beta/stable are links, dev is local-only, current is marked). Badge colours are semantic (green = stable, amber = beta, blue = dev). `index.tsx` tints the whole bar to match on beta/dev; stable gets no tint (the default, unremarkable state).
+
+**Release model** — releases are cut only at promotion, not per commit:
+- **`release.yml` (Deploy Beta)** — on push to main. Build + `wrangler deploy --env=beta`. No version bump, no changelog, no tag, no GitHub release. Beta = latest main, all commit types.
+- **`promote.yml` (Promote to Production)** — manual `workflow_dispatch`. Runs `semantic-release`, which batches every commit since the last tag into a single version bump + `CHANGELOG.md` entry + tag + GitHub release, then builds and `wrangler deploy --env=""` (stable). semantic-release pushes a `chore(release): x.y.z [skip ci]` commit; the `[skip ci]` stops it re-triggering the beta deploy. Promoting does not redeploy beta, so beta's version label stays stale until the next push to main.
+
+Because `semantic-release` runs only at promotion, commit type still matters for versioning: `feat`/`fix` drive the next bump; `ci`/`build`/`chore`/`docs` do not. A commit that changes the release pipeline itself should be `ci`/`build`, never `fix` (which would wrongly bump).
 
 ## Roadmap
 

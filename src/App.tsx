@@ -20,6 +20,7 @@ import type { Player } from './components/types/player';
 import type { TrackEvent, EventMeta } from './components/types/event';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { exportProject, importProject } from '@/lib/projectExport';
+import { migrateLegacyEvents } from '@/lib/migrateProject';
 import { RelinkDialog } from './components/Sources/RelinkDialog';
 import { getFileDuration, generateThumbnail } from '@/lib/generateThumbnail';
 import VideoPreview from './components/VideoPreview';
@@ -29,6 +30,7 @@ import { usePlayerTracks } from './components/Timeline/hooks/usePlayerTracks';
 import AppBar from './components/AppBar';
 import { ExportDialog } from './components/ExportDialog';
 import SettingsDialog from './components/Settings/SettingsDialog';
+import type { Section as SettingsSection } from './components/Settings/SettingsDialog';
 import type { ProjectConfig } from './components/types/config';
 import { DEFAULT_PROJECT_CONFIG } from './components/types/config';
 import { Sources } from './components/Sources';
@@ -70,7 +72,6 @@ const initialPlayers: PlayerInit[] = [
         lifeTotal: 20,
         wins: 0,
         cards: [],
-        topStack: [],
     },
     {
         id: 'player2',
@@ -79,7 +80,6 @@ const initialPlayers: PlayerInit[] = [
         lifeTotal: 20,
         wins: 0,
         cards: [],
-        topStack: [],
     },
 ];
 
@@ -157,6 +157,7 @@ function App() {
     const [isDirty, setIsDirty] = useState(false);
     const [exportDialogOpen, setExportDialogOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [settingsSection, setSettingsSection] = useState<SettingsSection>('metadata');
     const [relinkDialogOpen, setRelinkDialogOpen] = useState(
         () => (savedStateInit?.sources?.length ?? 0) > 0
     );
@@ -214,7 +215,7 @@ function App() {
         initialPlayers,
         currentTimeRef,
         setSelectedEvents,
-        savedStateInit?.players,
+        savedStateInit?.players ? migrateLegacyEvents(savedStateInit.players) : undefined,
         savedStateInit?.clipsByTrack,
         savedStateInit?.trackOverrides
     );
@@ -326,7 +327,7 @@ function App() {
             clearAutosaveRef.current = true;
             isFirstConfigRender.current = true;
             resetPlayers(
-                manifest.players,
+                migrateLegacyEvents(manifest.players),
                 manifest.clipsByTrack ?? {},
                 manifest.trackOverrides ?? {}
             );
@@ -453,7 +454,14 @@ function App() {
         () => setExportDialogOpen(false),
         []
     );
-    const handleOpenSettings = useCallback(() => setSettingsOpen(true), []);
+    const handleOpenSettings = useCallback(() => {
+        setSettingsSection('metadata');
+        setSettingsOpen(true);
+    }, []);
+    const handleManageSlots = useCallback(() => {
+        setSettingsSection('annotations');
+        setSettingsOpen(true);
+    }, []);
 
     const inspectorPlayer = selectedEvents[0]
         ? (players.find((p) =>
@@ -1051,6 +1059,7 @@ function App() {
                 onConfigChange={setProjectConfig}
                 players={players}
                 onUpdatePlayer={handleUpdatePlayer}
+                initialSection={settingsSection}
             />
             <LiveModeDialog
                 open={liveSettingsOpen}
@@ -1142,6 +1151,7 @@ function App() {
                                     overlayStartHidden={
                                         projectConfig.overlayStartHidden
                                     }
+                                    annotationSlots={projectConfig.annotationSlots}
                                     duration={duration}
                                     videoClips={videoClips}
                                     audioClips={audioClips}
@@ -1158,6 +1168,8 @@ function App() {
                                     editObject={selectedEvents}
                                     onUpdate={handleInspectorUpdate}
                                     player={inspectorPlayer}
+                                    annotationSlots={projectConfig.annotationSlots}
+                                    onManageSlots={handleManageSlots}
                                     autoFocus={
                                         selectedEvents[0]?.id === newEventId
                                     }

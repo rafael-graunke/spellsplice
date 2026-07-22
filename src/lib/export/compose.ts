@@ -1,8 +1,9 @@
 import type { Player } from '@/components/types/player';
+import type { AnnotationSlot } from '@/components/types/config';
 import { derivePlayerState, getActiveWindowedEvents, deriveUIVisibility } from '@/lib/deriveState';
 import { renderPlayerState } from '@/renders/renderPlayerState';
 import { renderHandStack } from '@/renders/renderHandStack';
-import { renderDeckStack } from '@/renders/renderDeckStack';
+import { renderAnnotations } from '@/renders/renderAnnotations';
 import { ensureImage } from '@/lib/cardCache';
 
 const VERT_SRC = `
@@ -138,6 +139,7 @@ export class Compositor {
         d20Img: HTMLImageElement | null,
         eyeImg: HTMLImageElement | null,
         overlayStartHidden = false,
+        annotationSlots: AnnotationSlot[] = [],
     ): void {
         const { overlayCtx, overlayCanvas, gl } = this;
         const { drawW, drawH, offsetX, offsetY, outW, outH } = this;
@@ -151,7 +153,7 @@ export class Compositor {
         const ctx2d = overlayCtx as unknown as CanvasRenderingContext2D;
         renderPlayerState(ctx2d, playerStates, offsetX, offsetY, drawW, drawH, d20Img, uiVisibility);
         renderHandStack(ctx2d, players, time, offsetX, offsetY, drawW, drawH, eyeImg, uiVisibility);
-        renderDeckStack(ctx2d, players, time, offsetX, offsetY, drawW, drawH, uiVisibility);
+        renderAnnotations(ctx2d, players, time, offsetX, offsetY, drawW, drawH, annotationSlots, uiVisibility);
 
         const CARD_ANIM_DURATION = 0.35;
         const cardEaseOut = (t: number) => 1 - Math.pow(1 - t, 3);

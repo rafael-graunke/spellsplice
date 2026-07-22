@@ -3,6 +3,7 @@ import type { RefObject } from 'react';
 import type { Player } from './types/player';
 import type { Clip } from './types/clip';
 import type { MediaSource } from './types/source';
+import type { AnnotationSlot } from './types/config';
 import { getNextChangeTime } from '@/lib/deriveState';
 import { Compositor } from '@/lib/export/compose';
 import { subscribeImageLoad } from '@/lib/cardCache';
@@ -17,6 +18,7 @@ interface VideoPreviewProps {
     setIsPlaying: (playing: boolean) => void;
     players: Player[];
     overlayStartHidden?: boolean;
+    annotationSlots?: AnnotationSlot[];
     duration?: number;
     videoClips?: Clip[];
     audioClips?: Clip[];
@@ -35,6 +37,7 @@ function VideoPreview({
     setIsPlaying,
     players,
     overlayStartHidden = false,
+    annotationSlots = [],
     duration = Infinity,
     videoClips = [],
     audioClips = [],
@@ -51,6 +54,7 @@ function VideoPreview({
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const playersRef = useRef(players);
     const overlayStartHiddenRef = useRef(overlayStartHidden);
+    const annotationSlotsRef = useRef(annotationSlots);
     const prevTimeRef = useRef(-1);
     const d20Ref = useRef<HTMLImageElement | null>(null);
     const eyeRef = useRef<HTMLImageElement | null>(null);
@@ -180,6 +184,7 @@ function VideoPreview({
 
     isPlayingRef.current = isPlaying;
     overlayStartHiddenRef.current = overlayStartHidden;
+    annotationSlotsRef.current = annotationSlots;
     durationRef.current = duration;
 
     const renderFrame = () => {
@@ -202,15 +207,15 @@ function VideoPreview({
         }
 
         if (overlayStale) {
-            compositor.updateOverlay(playersRef.current, time, d20Ref.current, eyeRef.current, overlayStartHiddenRef.current);
+            compositor.updateOverlay(playersRef.current, time, d20Ref.current, eyeRef.current, overlayStartHiddenRef.current, annotationSlotsRef.current);
             const ANIM_DURATION = 0.35;
             const anyAnimating = playersRef.current.some((p) =>
                 p.track.events.some((e) => {
                     if (
                         e.type === 'ADD_TO_HAND' ||
                         e.type === 'REMOVE_FROM_HAND' ||
-                        e.type === 'STACK_DECK' ||
-                        e.type === 'UNSTACK_DECK' ||
+                        e.type === 'ANNOTATE_CARD' ||
+                        e.type === 'UNANNOTATE_CARD' ||
                         e.type === 'HIDE_UI' ||
                         e.type === 'SHOW_UI'
                     ) {

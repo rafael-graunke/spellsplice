@@ -5,6 +5,7 @@ const debug = (msg: string) => {
 import type { Clip } from '@/components/types/clip';
 import type { MediaSource } from '@/components/types/source';
 import type { Player } from '@/components/types/player';
+import type { AnnotationSlot } from '@/components/types/config';
 import { getNextChangeTime } from '@/lib/deriveState';
 import { getVideoTrackMeta, streamVideoChunks, streamAudioChunks, getAudioTrackMeta, extractAudioFromFile } from './demux';
 import type { AudioTrackMeta } from './demux';
@@ -17,6 +18,7 @@ import { Compositor } from './compose';
 export interface ExportOptions {
     fps?: number;
     overlayStartHidden?: boolean;
+    annotationSlots?: AnnotationSlot[];
 }
 
 export interface ExportProgress {
@@ -114,7 +116,7 @@ export async function exportVideo(
     signal: AbortSignal,
     options: ExportOptions = {},
 ): Promise<void> {
-    const { fps = 60, overlayStartHidden = false } = options;
+    const { fps = 60, overlayStartHidden = false, annotationSlots = [] } = options;
     const sourceMap = new Map(sources.map(s => [s.id, s]));
     const sortedVideoClips = [...videoClips].sort((a, b) => a.time - b.time);
     const sortedAudioClips = [...audioClips].sort((a, b) => a.time - b.time);
@@ -208,12 +210,12 @@ export async function exportVideo(
 
     const updateOverlay = (targetSec: number) => {
         if (targetSec < overlayValidUntil) return;
-        compositor.updateOverlay(players, targetSec, d20Img, eyeImg, overlayStartHidden);
+        compositor.updateOverlay(players, targetSec, d20Img, eyeImg, overlayStartHidden, annotationSlots);
         overlayValidUntil = getNextChangeTime(tracks, targetSec);
         const anyAnimating = players.some(p =>
             p.track.events.some(e => {
                 if (e.type === 'ADD_TO_HAND' || e.type === 'REMOVE_FROM_HAND' ||
-                    e.type === 'STACK_DECK' || e.type === 'UNSTACK_DECK' ||
+                    e.type === 'ANNOTATE_CARD' || e.type === 'UNANNOTATE_CARD' ||
                     e.type === 'HIDE_UI' || e.type === 'SHOW_UI') {
                     return e.time <= targetSec && e.time > targetSec - ANIM_DURATION;
                 }

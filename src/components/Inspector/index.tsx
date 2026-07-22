@@ -1,16 +1,19 @@
 import React from 'react';
 import type { TrackEvent, EventMeta } from '../types/event';
 import type { Player } from '../types/player';
+import type { AnnotationSlot } from '../types/config';
 import { EventFields } from './EventFields';
 
 interface InspectorProps {
     editObject: TrackEvent[] | null;
     onUpdate: (eventId: number, meta: EventMeta) => void;
     player?: Player | null;
+    annotationSlots?: AnnotationSlot[];
+    onManageSlots?: () => void;
     autoFocus?: boolean;
 }
 
-function Inspector({ editObject, onUpdate, player, autoFocus }: InspectorProps) {
+function Inspector({ editObject, onUpdate, player, annotationSlots, onManageSlots, autoFocus }: InspectorProps) {
     const event = editObject?.[0] ?? null;
     const count = editObject?.length ?? 0;
 
@@ -36,6 +39,8 @@ function Inspector({ editObject, onUpdate, player, autoFocus }: InspectorProps) 
                         event={event}
                         onUpdate={(meta) => onUpdate(event.id, meta)}
                         player={player}
+                        slots={annotationSlots}
+                        onManageSlots={onManageSlots}
                         autoFocus={autoFocus}
                     />
                 </div>

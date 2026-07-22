@@ -3,6 +3,7 @@ import type { Card } from './card';
 export interface EventMeta {
     cards?: Card[];
     amount?: number;
+    annotationId?: string;
 }
 
 export const EventType = {
@@ -11,8 +12,6 @@ export const EventType = {
     LoseLife: 'LOSE_LIFE',
     GainLife: 'GAIN_LIFE',
     RevealFromHand: 'REVEAL_FROM_HAND',
-    StackDeck: 'STACK_DECK',
-    UnstackDeck: 'UNSTACK_DECK',
     AnnotateCard: 'ANNOTATE_CARD',
     UnannotateCard: 'UNANNOTATE_CARD',
     DisplayCard: 'DISPLAY_CARD',
@@ -57,18 +56,6 @@ export const EventColorMap: Record<EventType, EventColor> = {
         stroke: 'stroke-lime-600',
     },
     REVEAL_FROM_HAND: {
-        text: 'text-slate-500',
-        bg: 'bg-slate-500',
-        fill: 'fill-slate-500',
-        stroke: 'stroke-slate-500',
-    },
-    STACK_DECK: {
-        text: 'text-slate-500',
-        bg: 'bg-slate-500',
-        fill: 'fill-slate-500',
-        stroke: 'stroke-slate-500',
-    },
-    UNSTACK_DECK: {
         text: 'text-slate-500',
         bg: 'bg-slate-500',
         fill: 'fill-slate-500',

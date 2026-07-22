@@ -78,7 +78,7 @@ function ChannelMenu() {
                 >
                     {active.label.toUpperCase()}
                 </span>
-                <span className="text-xs text-muted-foreground">v{__APP_VERSION__}</span>
+                <span className="text-xs text-muted-foreground">{__APP_VERSION__}</span>
                 <ChevronDownIcon className="size-3 text-muted-foreground" />
             </PopoverTrigger>
             <PopoverContent align="end" className="w-72">

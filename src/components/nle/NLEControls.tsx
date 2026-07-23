@@ -38,12 +38,12 @@ function ZoomControls({ zoom, onZoomChange }: ZoomControlsProps) {
 interface PlaybackControlsProps {
     isPlaying: boolean;
     setIsPlaying: (playing: boolean) => void;
-    setCurrentTime: (time: number) => void;
+    onSeek: (time: number) => void;
     currentTimeRef: RefObject<number>;
     duration: number;
 }
 
-function PlaybackControls({ isPlaying, setIsPlaying, setCurrentTime, currentTimeRef, duration }: PlaybackControlsProps) {
+function PlaybackControls({ isPlaying, setIsPlaying, onSeek, currentTimeRef, duration }: PlaybackControlsProps) {
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement;
@@ -56,16 +56,16 @@ function PlaybackControls({ isPlaying, setIsPlaying, setCurrentTime, currentTime
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [isPlaying, duration, setIsPlaying, setCurrentTime, currentTimeRef]);
+    }, [isPlaying, duration, setIsPlaying, onSeek, currentTimeRef]);
 
     return (
         <div className="flex flex-row gap-6 items-center">
-            <SkipBack className="cursor-pointer" onClick={() => setCurrentTime(0)} />
+            <SkipBack className="cursor-pointer" onClick={() => onSeek(0)} />
             {isPlaying
                 ? <Pause size={28} className="cursor-pointer" onClick={() => setIsPlaying(false)} />
                 : <Play size={28} className="cursor-pointer" onClick={() => setIsPlaying(true)} />
             }
-            <SkipForward className="cursor-pointer" onClick={() => setCurrentTime(duration)} />
+            <SkipForward className="cursor-pointer" onClick={() => onSeek(duration)} />
         </div>
     );
 }
@@ -78,7 +78,7 @@ interface NLEControlsProps extends ZoomControlsProps, PlaybackControlsProps {
 function NLEControls({
     isPlaying,
     setIsPlaying,
-    setCurrentTime,
+    onSeek,
     currentTimeRef,
     duration,
     zoom,
@@ -102,7 +102,7 @@ function NLEControls({
                 <PlaybackControls
                     isPlaying={isPlaying}
                     setIsPlaying={setIsPlaying}
-                    setCurrentTime={setCurrentTime}
+                    onSeek={onSeek}
                     currentTimeRef={currentTimeRef}
                     duration={duration}
                 />

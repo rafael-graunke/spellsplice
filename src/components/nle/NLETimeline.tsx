@@ -163,7 +163,7 @@ interface NLETimelineProps {
     isPlaying: boolean;
     setIsPlaying: (playing: boolean) => void;
     currentTimeRef: RefObject<number>;
-    setCurrentTime: (t: number) => void;
+    onSeek: (t: number) => void;
     trackGroups: NLETrackGroup[];
     onUndo: () => void;
     onRedo: () => void;
@@ -198,7 +198,7 @@ function NLETimelineInner({
     isPlaying,
     setIsPlaying,
     currentTimeRef,
-    setCurrentTime,
+    onSeek,
     trackGroups,
     onUndo,
     onRedo,
@@ -398,9 +398,9 @@ function NLETimelineInner({
     }, []); // stable — reads only refs
 
     const handleSetCurrentTime = useCallback((t: number) => {
-        setCurrentTime(t);
+        onSeek(t);
         updateCursorPosition();
-    }, [setCurrentTime, updateCursorPosition]);
+    }, [onSeek, updateCursorPosition]);
 
     useEffect(() => subscribe((_x) => updateCursorPosition()), [subscribe, updateCursorPosition]);
 
@@ -629,7 +629,7 @@ function NLETimelineInner({
             <NLEControls
                 isPlaying={isPlaying}
                 setIsPlaying={setIsPlaying}
-                setCurrentTime={setCurrentTime}
+                onSeek={onSeek}
                 currentTimeRef={currentTimeRef}
                 duration={duration}
                 zoom={zoomPercent}

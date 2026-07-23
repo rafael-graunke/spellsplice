@@ -23,7 +23,7 @@ import { exportProject, importProject } from '@/lib/projectExport';
 import { migrateLegacyEvents } from '@/lib/migrateProject';
 import { RelinkDialog } from './components/Sources/RelinkDialog';
 import { getFileDuration, generateThumbnail } from '@/lib/generateThumbnail';
-import VideoPreview from './components/VideoPreview';
+import VideoPreview, { type VideoPreviewHandle } from './components/VideoPreview';
 import type { VideoState } from './components/types/video';
 import { Inspector } from './components/Inspector';
 import { usePlayerTracks } from './components/Timeline/hooks/usePlayerTracks';
@@ -146,7 +146,6 @@ function App() {
             DEFAULT_CARD_DISPLAY_DURATION_MS
     );
     const [isPlaying, setIsPlaying] = useState(false);
-    const [currentTime, setCurrentTime] = useState(0);
     const [video, setVideo] = useState<VideoState | null>(null);
     const [sources, setSources] = useState<MediaSource[]>(
         () =>
@@ -183,14 +182,15 @@ function App() {
     const skipDirtyRef = useRef(false);
     const clearAutosaveRef = useRef(false);
     const currentTimeRef = useRef(0);
+    const videoPreviewRef = useRef<VideoPreviewHandle>(null);
 
-    // Keep the ref in sync with state only while paused/seeking. During playback
-    // VideoPreview's 60fps loop owns currentTimeRef; syncing it back to the
-    // throttled 10Hz `currentTime` here would yank it backward every tick (visible
-    // cursor/animation jump). Seek-during-play is handled by VideoPreview itself.
-    useEffect(() => {
-        if (!isPlaying) currentTimeRef.current = currentTime;
-    }, [currentTime, isPlaying]);
+    // Playback time lives entirely in currentTimeRef (VideoPreview's loop owns it,
+    // the timeline cursor reads it imperatively). Seeks route here instead of
+    // through App state, so App never re-renders per tick during playback.
+    const handleSeek = useCallback((t: number) => {
+        currentTimeRef.current = t;
+        videoPreviewRef.current?.seek(t);
+    }, []);
 
     useEffect(() => {
         localStorage.setItem(MODE_KEY, mode);
@@ -390,7 +390,8 @@ function App() {
 
             setSources(offlineSources);
             setSelectedEvents([]);
-            setCurrentTime(0);
+            currentTimeRef.current = 0;
+            videoPreviewRef.current?.seek(0);
             setIsPlaying(false);
             setIsDirty(false);
             setProjectConfig(
@@ -413,7 +414,8 @@ function App() {
         setVideo(null);
         setSources([]);
         setSelectedEvents([]);
-        setCurrentTime(0);
+        currentTimeRef.current = 0;
+        videoPreviewRef.current?.seek(0);
         setIsPlaying(false);
         setIsDirty(false);
         setProjectConfig(DEFAULT_PROJECT_CONFIG);
@@ -1197,10 +1199,9 @@ function App() {
                                 className="bg-muted/20"
                             >
                                 <VideoPreview
+                                    ref={videoPreviewRef}
                                     isPlaying={isPlaying}
-                                    currentTime={currentTime}
                                     currentTimeRef={currentTimeRef}
-                                    setCurrentTime={setCurrentTime}
                                     setIsPlaying={setIsPlaying}
                                     players={players}
                                     overlayConfig={overlayConfig}
@@ -1236,7 +1237,7 @@ function App() {
                             isPlaying={isPlaying}
                             setIsPlaying={setIsPlaying}
                             currentTimeRef={currentTimeRef}
-                            setCurrentTime={setCurrentTime}
+                            onSeek={handleSeek}
                             trackGroups={trackGroups}
                             initialZoom={zoom}
                             onZoomChange={setZoom}

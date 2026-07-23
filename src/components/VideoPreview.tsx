@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { forwardRef, memo, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import type { Player } from './types/player';
 import type { Clip } from './types/clip';
@@ -13,11 +13,15 @@ import { subscribeImageLoad } from '@/lib/cardCache';
 import { Slider } from '@/components/ui/slider';
 import { Volume2, VolumeX } from 'lucide-react';
 
+export interface VideoPreviewHandle {
+    // Seek from outside (timeline/skip buttons) without routing time through
+    // App state. Paused -> paints one frame; playing -> re-detects clips.
+    seek(t: number): void;
+}
+
 interface VideoPreviewProps {
     isPlaying: boolean;
-    currentTime: number;
     currentTimeRef: RefObject<number>;
-    setCurrentTime: React.Dispatch<React.SetStateAction<number>>;
     setIsPlaying: (playing: boolean) => void;
     players: Player[];
     overlayConfig: OverlayConfig;
@@ -31,11 +35,9 @@ interface VideoPreviewProps {
     onVolumeChange?: (v: number) => void;
 }
 
-function VideoPreview({
+const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function VideoPreview({
     isPlaying,
-    currentTime,
     currentTimeRef,
-    setCurrentTime,
     setIsPlaying,
     players,
     overlayConfig,
@@ -47,7 +49,7 @@ function VideoPreview({
     mutedAudioTrackIds,
     volume = 100,
     onVolumeChange,
-}: VideoPreviewProps) {
+}: VideoPreviewProps, ref) {
     const setVolume = onVolumeChange ?? NOOP;
     const [isHovered, setIsHovered] = useState(false);
     const volumeRef = useRef(volume / 100);
@@ -89,9 +91,6 @@ function VideoPreview({
         outputTimeAtStart: number;
         sourceTimeAtStart: number;
     } | null>(null);
-    // Last time the render loop pushed to React state — used to distinguish user seeks
-    // from the render loop's own throttled setCurrentTime calls.
-    const lastLoopSetTimeRef = useRef<number>(0);
     const hiddenVideoTrackIdsRef = useRef(new Set(hiddenVideoTrackIds ?? []));
     const mutedAudioTrackIdsRef = useRef(new Set(mutedAudioTrackIds ?? []));
 
@@ -337,12 +336,10 @@ function VideoPreview({
         // If playback starts at end of timeline (e.g. after reaching duration), restart from 0.
         if (currentTimeRef.current >= durationRef.current) {
             currentTimeRef.current = 0;
-            setCurrentTime(0);
         }
 
         let handle: number;
         let lastTs = performance.now();
-        let lastSetTime = 0;
 
         const loop = (ts: number) => {
             const t = currentTimeRef.current;
@@ -457,15 +454,11 @@ function VideoPreview({
                 next = Math.min(t + (ts - lastTs) / 1000, durationRef.current);
             }
             lastTs = ts;
+            // currentTimeRef is the single source of truth; the playhead cursor
+            // reads it imperatively (usePlayhead rAF), so no React state update
+            // per tick -> App never re-renders during playback.
             currentTimeRef.current = next;
-            if (ts - lastSetTime > 100) {
-                lastLoopSetTimeRef.current = next;
-                setCurrentTime(next);
-                lastSetTime = ts;
-            }
             if (next >= durationRef.current) {
-                lastLoopSetTimeRef.current = next;
-                setCurrentTime(next);
                 setIsPlaying(false);
                 renderFrameRef.current();
                 return;
@@ -477,39 +470,44 @@ function VideoPreview({
         return () => cancelAnimationFrame(handle);
     }, [isPlaying]);
 
-    // Seek sync — fires on currentTime state changes.
-    // When paused: seek source elements and render preview frame.
-    // When playing: only act on user-initiated large seeks (not the render loop's own throttled updates).
-    useEffect(() => {
+    // Imperative seek — the timeline / skip buttons call this instead of routing
+    // a currentTime value through App state (which re-rendered the whole tree
+    // ~10Hz). Paused: seek source media + paint one frame. Playing: reset active-
+    // clip tracking so the render loop re-detects from the new position. An
+    // explicit call is unambiguously a user seek, so no delta heuristic is needed.
+    const seek = (t: number) => {
+        const time = Math.max(0, Math.min(durationRef.current, t));
+        currentTimeRef.current = time;
         if (!isPlayingRef.current) {
             pauseAllSourceVideos();
             clipPlaybackSnapshotRef.current = null;
             audioPlaybackSnapshotRef.current = null;
-            currentTimeRef.current = currentTime;
+            // Overlay must re-derive at the new time; the seek no longer rides a
+            // React re-render, so invalidate the cache explicitly.
+            derivedCacheRef.current = null;
 
-            const activeVideoClip = getActiveVideoClip(currentTime);
+            const activeVideoClip = getActiveVideoClip(time);
             if (activeVideoClip) {
                 const el = sourceVideoEls.current.get(activeVideoClip.sourceId);
-                if (el) seekSourceEl(el, activeVideoClip, currentTime, false);
-            } else {
-                renderFrameRef.current();
+                // Repaints again via 'seeked' once the video lands on the frame.
+                if (el) seekSourceEl(el, activeVideoClip, time, false);
             }
-            const activeAudioClip = getActiveAudioClip(currentTime);
+            const activeAudioClip = getActiveAudioClip(time);
             if (activeAudioClip) {
                 const el = sourceAudioEls.current.get(activeAudioClip.sourceId);
-                if (el) seekSourceEl(el, activeAudioClip, currentTime, false);
+                if (el) seekSourceEl(el, activeAudioClip, time, false);
             }
-        } else if (Math.abs(currentTime - lastLoopSetTimeRef.current) > 0.5) {
-            // User seeked while playing — the render loop's own updates are small (~0.1s at 10Hz),
-            // so a delta > 0.5s means the user dragged the playhead.
-            currentTimeRef.current = currentTime;
+            // Always paint one frame now (overlay + current video texture), so a
+            // paused seek is never silent even if 'seeked' doesn't fire.
+            renderFrameRef.current();
+        } else {
             activeVideoClipIdRef.current = null;
             activeAudioClipIdRef.current = null;
             clipPlaybackSnapshotRef.current = null;
             audioPlaybackSnapshotRef.current = null;
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentTime]);
+    };
+    useImperativeHandle(ref, () => ({ seek }));
 
     return (
         <div
@@ -521,15 +519,14 @@ function VideoPreview({
             {isHovered && <VideoControls volume={volume} onVolumeChange={setVolume} />}
         </div>
     );
-}
+});
 
 // Stable no-op fallback so the memo below isn't defeated by a fresh closure when
 // no onVolumeChange is supplied.
 const NOOP = () => {};
 
-// Split out + memoized: VideoPreview re-renders ~10Hz during playback (it needs
-// currentTime for its seek effect), but the volume controls only depend on
-// `volume`, so they should not reconcile every tick.
+// Split out + memoized so hover/prop-driven re-renders of VideoPreview don't
+// reconcile the controls (they only depend on `volume`).
 const VideoControls = memo(function VideoControls({
     volume,
     onVolumeChange,

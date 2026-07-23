@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { memo, useRef, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import NLECursor from './NLECursor';
 import type { NLECursorHandle } from './NLECursor';
 import type { RefObject } from 'react';
@@ -193,7 +193,7 @@ interface NLETimelineProps {
     displayCardDuration?: number;
 }
 
-export function NLETimeline({
+function NLETimelineInner({
     duration,
     isPlaying,
     setIsPlaying,
@@ -803,3 +803,10 @@ export function NLETimeline({
         </div>
     );
 }
+
+// Memoized: App re-renders ~10Hz during playback (currentTime state), but this
+// tree takes currentTimeRef (imperative playhead), not currentTime, so its props
+// are stable across ticks. Without memo the whole timeline (every track + each
+// event's Radix menu stack) reconciled on every tick. See usePlayerTracks for
+// the useCallback-stable handlers this relies on.
+export const NLETimeline = memo(NLETimelineInner);

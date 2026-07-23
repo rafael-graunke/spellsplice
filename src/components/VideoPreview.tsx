@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import type { Player } from './types/player';
 import type { Clip } from './types/clip';
@@ -48,7 +48,7 @@ function VideoPreview({
     volume = 100,
     onVolumeChange,
 }: VideoPreviewProps) {
-    const setVolume = onVolumeChange ?? (() => {});
+    const setVolume = onVolumeChange ?? NOOP;
     const [isHovered, setIsHovered] = useState(false);
     const volumeRef = useRef(volume / 100);
 
@@ -518,26 +518,43 @@ function VideoPreview({
             onMouseLeave={() => setIsHovered(false)}
         >
             <canvas ref={canvasRef} className="max-w-full max-h-full" style={{ aspectRatio: '16/9' }} />
-            {isHovered && (
-                <div className="absolute bottom-3 right-3 flex items-center gap-2 rounded-md bg-black/60 px-3 py-2 backdrop-blur-sm">
-                    <button
-                        onClick={() => setVolume(volume === 0 ? 100 : 0)}
-                        className="text-white/80 hover:text-white transition-colors"
-                    >
-                        {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
-                    </button>
-                    <Slider
-                        value={[volume]}
-                        onValueChange={([v]) => setVolume(v)}
-                        min={0}
-                        max={100}
-                        step={1}
-                        className="w-24"
-                    />
-                </div>
-            )}
+            {isHovered && <VideoControls volume={volume} onVolumeChange={setVolume} />}
         </div>
     );
 }
+
+// Stable no-op fallback so the memo below isn't defeated by a fresh closure when
+// no onVolumeChange is supplied.
+const NOOP = () => {};
+
+// Split out + memoized: VideoPreview re-renders ~10Hz during playback (it needs
+// currentTime for its seek effect), but the volume controls only depend on
+// `volume`, so they should not reconcile every tick.
+const VideoControls = memo(function VideoControls({
+    volume,
+    onVolumeChange,
+}: {
+    volume: number;
+    onVolumeChange: (v: number) => void;
+}) {
+    return (
+        <div className="absolute bottom-3 right-3 flex items-center gap-2 rounded-md bg-black/60 px-3 py-2 backdrop-blur-sm">
+            <button
+                onClick={() => onVolumeChange(volume === 0 ? 100 : 0)}
+                className="text-white/80 hover:text-white transition-colors"
+            >
+                {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+            </button>
+            <Slider
+                value={[volume]}
+                onValueChange={([v]) => onVolumeChange(v)}
+                min={0}
+                max={100}
+                step={1}
+                className="w-24"
+            />
+        </div>
+    );
+});
 
 export default VideoPreview;

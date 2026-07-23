@@ -10,7 +10,7 @@ function ProjectMetadataSection({ config, onConfigChange }: Props) {
     return (
         <div className="flex flex-col gap-6">
             <div>
-                <h2 className="text-base font-medium mb-4">Project Metadata</h2>
+                <h2 className="text-lg font-semibold mb-4">Project Metadata</h2>
                 <div className="flex flex-col gap-4">
                     <div className="flex flex-col gap-1.5">
                         <label htmlFor="project-title" className="text-sm font-medium">Title</label>

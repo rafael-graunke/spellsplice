@@ -292,6 +292,74 @@ export function ensureBorderCrop(
     return { img: 'loading', frame: null };
 }
 
+export interface CardImageRequest {
+    name: string;
+    edition?: string;
+    key: 'normal' | 'border_crop';
+}
+
+// Blocks until every requested image is decoded. The preview can draw a
+// placeholder and repaint when the art arrives, but a placeholder baked into an
+// exported video can never be fixed, so export must wait.
+//
+// Resolves early if progress stalls for `stallMs` (a card that simply cannot be
+// resolved must not hang the export forever) or if `signal` aborts; the caller
+// decides what to do with whatever is still `missing`.
+export function preloadCardImages(
+    requests: CardImageRequest[],
+    onProgress?: (done: number, total: number) => void,
+    signal?: AbortSignal,
+    stallMs = 15000,
+): Promise<{ missing: CardImageRequest[] }> {
+    const seen = new Set<string>();
+    const slots = requests.filter((r) => {
+        const k = `${r.name}|${r.edition ?? '*'}|${r.key}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+    });
+    if (slots.length === 0) return Promise.resolve({ missing: [] });
+
+    const ready = (s: CardImageRequest) =>
+        cardImageCache[s.name]?.[s.edition ?? '*']?.[s.key] instanceof HTMLImageElement;
+    const kick = (s: CardImageRequest) => {
+        if (s.key === 'normal') ensureImage(s.name, s.edition);
+        else ensureBorderCrop(s.name, s.edition);
+    };
+
+    return new Promise((resolve) => {
+        let lastDone = -1;
+        let lastProgressAt = Date.now();
+        let unsub: () => void = () => {};
+
+        const finish = () => {
+            unsub();
+            clearInterval(timer);
+            resolve({ missing: slots.filter((s) => !ready(s)) });
+        };
+
+        const check = () => {
+            let done = 0;
+            for (const s of slots) {
+                if (ready(s)) done++;
+                else kick(s);
+            }
+            if (done !== lastDone) {
+                lastDone = done;
+                lastProgressAt = Date.now();
+                onProgress?.(done, slots.length);
+            }
+            if (done === slots.length || signal?.aborted) return finish();
+            if (Date.now() - lastProgressAt > stallMs) return finish();
+        };
+
+        // `timer` must exist before check() can run, since finish() clears it.
+        const timer = setInterval(check, 250);
+        unsub = subscribeImageLoad(check);
+        check();
+    });
+}
+
 // Front-load image BYTES for a batch of cards without decoding them, so a live
 // reveal pays only a single quick decode (no network) and unrevealed cards
 // never cost a full decoded bitmap. URLs come from cache or the offline oracle

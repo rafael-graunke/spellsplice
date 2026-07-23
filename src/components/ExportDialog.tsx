@@ -70,7 +70,18 @@ export function ExportDialog({ open, onClose, videoClips, audioClips, sources, p
         setProgress(null);
         setError(null);
         try {
-            await exportVideo(videoClips, audioClips, sources, players, setProgress, abort.signal, { fps, overlayStartHidden: config.overlayStartHidden, annotationSlots: config.annotationSlots });
+            await exportVideo(videoClips, audioClips, sources, players, setProgress, abort.signal, {
+                fps,
+                overlay: {
+                    overlayStartHidden: config.overlayStartHidden,
+                    annotationSlots: config.annotationSlots,
+                    scoreboard: config.scoreboard,
+                    handStack: config.handStack,
+                    cardDisplay: config.cardDisplay,
+                    annotationConfig: config.annotationConfig,
+                    layers: config.layers,
+                },
+            });
             setStatus('done');
         } catch (err) {
             if (err instanceof DOMException && err.name === 'AbortError') {

@@ -10,17 +10,19 @@ import { cn } from '@/lib/utils';
 
 interface Props {
     players: Player[];
-    onUpdatePlayer: (playerId: string, updates: { name?: string; deckName?: string; decklist?: Decklist }) => void;
+    onUpdatePlayer: (playerId: string, updates: { name?: string; deckName?: string; decklist?: Decklist; pronouns?: string; standing?: string }) => void;
 }
 
 interface PlayerRowProps {
     player: Player;
-    onUpdate: (updates: { name?: string; deckName?: string; decklist?: Decklist }) => void;
+    onUpdate: (updates: { name?: string; deckName?: string; decklist?: Decklist; pronouns?: string; standing?: string }) => void;
 }
 
 function PlayerRow({ player, onUpdate }: PlayerRowProps) {
     const [name, setName] = useState(player.name);
     const [deckName, setDeckName] = useState(player.deckName ?? '');
+    const [pronouns, setPronouns] = useState(player.pronouns ?? '');
+    const [standing, setStanding] = useState(player.standing ?? '');
     const [decklistExpanded, setDecklistExpanded] = useState(false);
     const [decklistText, setDecklistText] = useState('');
     const [isDragOver, setIsDragOver] = useState(false);
@@ -117,6 +119,35 @@ function PlayerRow({ player, onUpdate }: PlayerRowProps) {
                     </div>
                 </div>
 
+                <div className="flex gap-3">
+                    <div className="flex flex-col gap-1 flex-1">
+                        <label className="text-xs font-medium text-muted-foreground">Pronouns</label>
+                        <Input
+                            value={pronouns}
+                            onChange={(e) => setPronouns(e.target.value)}
+                            onBlur={() => {
+                                const trimmed = pronouns.trim();
+                                const current = player.pronouns ?? '';
+                                if (trimmed !== current) onUpdate({ pronouns: trimmed || undefined });
+                            }}
+                            placeholder="Optional (e.g. she/her)"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-1 flex-1">
+                        <label className="text-xs font-medium text-muted-foreground">Standing</label>
+                        <Input
+                            value={standing}
+                            onChange={(e) => setStanding(e.target.value)}
+                            onBlur={() => {
+                                const trimmed = standing.trim();
+                                const current = player.standing ?? '';
+                                if (trimmed !== current) onUpdate({ standing: trimmed || undefined });
+                            }}
+                            placeholder="Optional (e.g. 3-1)"
+                        />
+                    </div>
+                </div>
+
                 <button
                     type="button"
                     onClick={() => {
@@ -209,7 +240,7 @@ function PlayersSection({ players, onUpdatePlayer }: Props) {
     return (
         <div className="flex flex-col gap-6">
             <div>
-                <h2 className="text-base font-medium mb-4">Players</h2>
+                <h2 className="text-lg font-semibold mb-4">Players</h2>
                 <div className="flex flex-col gap-3">
                     {players.map((player) => (
                         <PlayerRow

@@ -75,10 +75,41 @@ export function getLiveScoreboardImage(
         onReady();
     };
     img.onerror = () => {
-        if (entry.pendingKey === substituted) entry.pendingKey = null;
+        if (entry.pendingKey !== substituted) return;
+        entry.pendingKey = null;
+        // Notify anyway: a waiter blocking on readiness (the export pipeline)
+        // must not hang on a scoreboard that fails to decode.
+        onReady();
     };
     img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(substituted)}`;
     return entry.cachedImg;
+}
+
+// Awaits the decoded scoreboard image *for these exact inputs*, so a
+// deterministic consumer (the export pipeline) never composites a stale board.
+//
+// getLiveScoreboardImage deliberately keeps returning the previously decoded
+// image while a new substitution decodes — good for the live overlay, which
+// repaints on the ready callback, but fatal for export, which bakes whatever it
+// is handed. Resolving on "an image exists" therefore lagged every scoreboard
+// change by one update. Instead, wait until the slot has no decode in flight,
+// which means the cached image corresponds to these inputs.
+export function preloadScoreboardImage(
+    slot: string,
+    svg: string,
+    mappings: ScoreboardFieldMapping[],
+    left: LivePlayerInfo,
+    right: LivePlayerInfo,
+): Promise<void> {
+    return new Promise((resolve) => {
+        const tick = () => {
+            // Re-entry hits the ref-equality fast path, so this is cheap.
+            getLiveScoreboardImage(slot, svg, mappings, left, right, tick);
+            const entry = cache.get(slot);
+            if (!entry || entry.pendingKey === null) resolve();
+        };
+        tick();
+    });
 }
 
 export function renderLiveScoreboard(

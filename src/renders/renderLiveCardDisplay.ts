@@ -95,9 +95,9 @@ function drawCard(
     if (!liveCard) return;
     const img =
         liveCard.flipped && isMultiFaceLayout(liveCard.card.layout)
-            ? (ensureBackImage(liveCard.card.name) ??
-              ensureImage(liveCard.card.name))
-            : ensureImage(liveCard.card.name);
+            ? (ensureBackImage(liveCard.card.name, liveCard.edition) ??
+              ensureImage(liveCard.card.name, liveCard.edition))
+            : ensureImage(liveCard.card.name, liveCard.edition);
 
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -188,7 +188,9 @@ export function renderLiveCardDisplay(
     offsetY: number,
     drawW: number,
     drawH: number,
-    stripW: number,
+    // A single width (Live Mode) or per-side widths (Timeline, whose card strip
+    // width is configured per player).
+    stripW: number | { left: number; right: number },
     config: LiveCardDisplayConfig = defaultLiveCardDisplayConfig(),
     anims: { left: DisplayAnim | null; right: DisplayAnim | null } = {
         left: null,
@@ -200,12 +202,14 @@ export function renderLiveCardDisplay(
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    const cardW = stripW;
-    const cardH = cardW / CARD_ASPECT;
+    const widthFor = (side: 'left' | 'right') =>
+        typeof stripW === 'number' ? stripW : stripW[side];
 
     // Paint the non-front side first, front side last (on top) so the most
     // recently activated card wins when the two displays overlap.
     const paint = (side: 'left' | 'right') => {
+        const cardW = widthFor(side);
+        const cardH = cardW / CARD_ASPECT;
         if (side === 'left') {
             // prettier-ignore
             drawSide(ctx, left, config.left, anims.left, offsetX, offsetY, drawW, drawH, cardW, cardH, now);

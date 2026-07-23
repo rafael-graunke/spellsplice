@@ -29,6 +29,11 @@ export interface LiveModeConfig {
 export interface LiveHandCard {
     id: string;
     card: OracleCard;
+    // Optional, set only by the Timeline overlay (Live Mode has no notion of
+    // either). `edition` selects a specific printing's art; `revealed` draws the
+    // eye badge. Undefined in Live Mode, so its rendering is unchanged.
+    edition?: string;
+    revealed?: boolean;
 }
 
 export interface LiveDisplayCard extends LiveHandCard {

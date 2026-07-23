@@ -28,7 +28,7 @@ function AnnotationSlotsSection({ config, onConfigChange }: Props) {
     return (
         <div className="flex flex-col gap-6">
             <div>
-                <h2 className="text-base font-medium mb-1">Annotations</h2>
+                <h2 className="text-lg font-semibold mb-1">Annotations</h2>
                 <p className="text-xs text-muted-foreground mb-4">
                     Named slots that annotation events target. Slot titles show on the overlay.
                 </p>

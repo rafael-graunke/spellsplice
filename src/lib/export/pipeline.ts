@@ -5,8 +5,15 @@ const debug = (msg: string) => {
 import type { Clip } from '@/components/types/clip';
 import type { MediaSource } from '@/components/types/source';
 import type { Player } from '@/components/types/player';
-import type { AnnotationSlot } from '@/components/types/config';
-import { getNextChangeTime } from '@/lib/deriveState';
+import { derivePlayerState, getNextChangeTime } from '@/lib/deriveState';
+import { toPlayerInfo } from '@/lib/overlayData';
+import { preloadScoreboardImage } from '@/renders/renderLiveScoreboard';
+import { cardDisplayAnimSeconds, collectCardImageRequests } from '@/lib/overlayData';
+import { preloadCardImages } from '@/lib/cardCache';
+import { HAND_ANIM_DURATION } from '@/renders/renderLiveHand';
+import { ANNOTATION_ANIM_DURATION } from '@/renders/renderLiveAnnotation';
+import { UI_FADE_MS } from '@/lib/deriveState';
+import type { OverlayConfig } from './compose';
 import { getVideoTrackMeta, streamVideoChunks, streamAudioChunks, getAudioTrackMeta, extractAudioFromFile } from './demux';
 import type { AudioTrackMeta } from './demux';
 import { transcodeToOpus } from './transcode';
@@ -17,8 +24,7 @@ import { Compositor } from './compose';
 
 export interface ExportOptions {
     fps?: number;
-    overlayStartHidden?: boolean;
-    annotationSlots?: AnnotationSlot[];
+    overlay: OverlayConfig;
 }
 
 export interface ExportProgress {
@@ -32,7 +38,12 @@ export interface ExportProgress {
 
 const OUT_W = 1920;
 const OUT_H = 1080;
-const ANIM_DURATION = 0.35;
+// Longest shared-renderer animation, so the overlay keeps repainting through it.
+const ANIM_DURATION = Math.max(
+    HAND_ANIM_DURATION / 1000,
+    ANNOTATION_ANIM_DURATION / 1000,
+    UI_FADE_MS / 1000,
+);
 
 function loadImg(src: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
@@ -114,9 +125,12 @@ export async function exportVideo(
     players: Player[],
     onProgress: (p: ExportProgress) => void,
     signal: AbortSignal,
-    options: ExportOptions = {},
+    options: ExportOptions,
 ): Promise<void> {
-    const { fps = 60, overlayStartHidden = false, annotationSlots = [] } = options;
+    const { fps = 60, overlay } = options;
+    const videoLayerHidden = overlay.layers.some((l) => l.id === 'video' && !l.visible);
+    // DISPLAY_CARD uses its own configured enter/exit animation length.
+    const cardAnim = cardDisplayAnimSeconds(overlay.cardDisplay);
     const sourceMap = new Map(sources.map(s => [s.id, s]));
     const sortedVideoClips = [...videoClips].sort((a, b) => a.time - b.time);
     const sortedAudioClips = [...audioClips].sort((a, b) => a.time - b.time);
@@ -161,15 +175,27 @@ export async function exportVideo(
     if (!decoderSupport.supported)
         throw new Error(`VideoDecoder does not support codec "${decoderConfig.codec}" on this browser.`);
 
-    const scale = Math.min(OUT_W / decoderConfig.codedWidth!, OUT_H / decoderConfig.codedHeight!);
-    const drawW = Math.round(decoderConfig.codedWidth! * scale);
-    const drawH = Math.round(decoderConfig.codedHeight! * scale);
-    const offsetX = Math.round((OUT_W - drawW) / 2);
-    const offsetY = Math.round((OUT_H - drawH) / 2);
+    const eyeImg = await loadImg('/assets/eye.svg').catch(() => null);
 
-    const imgResults = await Promise.allSettled([loadImg('/assets/d20.svg'), loadImg('/assets/eye.svg')]);
-    const d20Img = imgResults[0].status === 'fulfilled' ? imgResults[0].value : null;
-    const eyeImg = imgResults[1].status === 'fulfilled' ? imgResults[1].value : null;
+    // Every card image must be decoded before the first frame: the preview can
+    // draw a placeholder and repaint once the art arrives, but a placeholder
+    // baked into the output is permanent.
+    emit('loading', 'Loading card images…');
+    const { missing } = await preloadCardImages(
+        collectCardImageRequests(players),
+        (done, total) => emit('loading', `Loading card images… ${done}/${total}`),
+        signal,
+    );
+    if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    if (missing.length > 0) {
+        const names = [...new Set(missing.map((m) => (m.edition ? `${m.name} (${m.edition})` : m.name)))];
+        const shown = names.slice(0, 5).join(', ');
+        throw new Error(
+            `Could not load art for ${names.length} card${names.length > 1 ? 's' : ''}: ` +
+                `${shown}${names.length > 5 ? ', …' : ''}. ` +
+                'Exporting now would bake placeholders into the video — check the card names/printings and retry.',
+        );
+    }
 
     emit('audio', 'Extracting audio…');
     // For WebM, encode audio-file sources directly to Opus (avoids AAC which is unavailable on Linux Chromium).
@@ -193,7 +219,9 @@ export async function exportVideo(
     const muxer = await createMuxer(format, writableStream, { fps, width: OUT_W, height: OUT_H, audioMeta: muxerAudioMeta });
     const encoder = new Encoder(codec, fps, OUT_W, OUT_H, (chunk, meta) => muxer.addVideoChunk(chunk, meta));
     const compositor = new Compositor(OUT_W, OUT_H);
-    compositor.setLayout(drawW, drawH, offsetX, offsetY);
+    // Fixed 1920x1080 layout, matching the preview, so anchored overlay layers
+    // land identically in the exported file. Video stretches to fill.
+    compositor.setLayout(OUT_W, OUT_H, 0, 0);
 
     const tracks = players.map(p => p.track);
     let overlayValidUntil = -Infinity;
@@ -208,21 +236,40 @@ export async function exportVideo(
         error: (e) => { decoderError = e; },
     });
 
-    const updateOverlay = (targetSec: number) => {
+    const preloadScoreboards = async (targetSec: number) => {
+        const states = players.map((p) => derivePlayerState(p, p.track.events, targetSec));
+        const left = states[0] ? toPlayerInfo(states[0]) : null;
+        const right = states[1] ? toPlayerInfo(states[1]) : left;
+        if (!left || !right) return;
+        const sb = overlay.scoreboard;
+        const cfgs = sb.mode === 'shared'
+            ? ([['shared', sb.shared]] as const)
+            : ([['left', sb.left], ['right', sb.right]] as const);
+        await Promise.all(
+            cfgs
+                .filter(([, c]) => c.svg)
+                .map(([slot, c]) => preloadScoreboardImage(slot, c.svg!, c.fieldMappings, left, right)),
+        );
+    };
+
+    const updateOverlay = async (targetSec: number) => {
         if (targetSec < overlayValidUntil) return;
-        compositor.updateOverlay(players, targetSec, d20Img, eyeImg, overlayStartHidden, annotationSlots);
+        await preloadScoreboards(targetSec);
+        compositor.updateOverlay(players, targetSec, eyeImg, overlay);
         overlayValidUntil = getNextChangeTime(tracks, targetSec);
         const anyAnimating = players.some(p =>
             p.track.events.some(e => {
                 if (e.type === 'ADD_TO_HAND' || e.type === 'REMOVE_FROM_HAND' ||
                     e.type === 'ANNOTATE_CARD' || e.type === 'UNANNOTATE_CARD' ||
-                    e.type === 'HIDE_UI' || e.type === 'SHOW_UI') {
+                    e.type === 'HIDE_UI' || e.type === 'SHOW_UI' ||
+                    // RESET clears hand + annotations, both of which animate out.
+                    e.type === 'RESET') {
                     return e.time <= targetSec && e.time > targetSec - ANIM_DURATION;
                 }
                 if (e.type === 'DISPLAY_CARD' && e.duration != null) {
                     const end = e.time + e.duration;
                     return e.time <= targetSec && targetSec < end &&
-                        (targetSec - e.time < ANIM_DURATION || end - targetSec <= ANIM_DURATION);
+                        (targetSec - e.time < cardAnim || end - targetSec <= cardAnim);
                 }
                 return false;
             }),
@@ -233,7 +280,7 @@ export async function exportVideo(
             for (const p of players) {
                 for (const e of p.track.events) {
                     if (e.type === 'DISPLAY_CARD' && e.duration != null) {
-                        const exitStart = e.time + e.duration - ANIM_DURATION;
+                        const exitStart = e.time + e.duration - cardAnim;
                         if (exitStart > targetSec && exitStart < overlayValidUntil) {
                             overlayValidUntil = exitStart;
                         }
@@ -248,8 +295,8 @@ export async function exportVideo(
     const encodeAt = async (frame: VideoFrame | null) => {
         const targetSec = targetTimes[frameIdx];
         const timestampUs = Math.round(targetSec * 1e6);
-        updateOverlay(targetSec);
-        if (frame) compositor.uploadVideoFrame(frame);
+        await updateOverlay(targetSec);
+        if (frame && !videoLayerHidden) compositor.uploadVideoFrame(frame);
         else compositor.uploadBlackFrame();
         const composed = compositor.compose(timestampUs, Math.round(1e6 / fps));
         encoder.encode(composed, frameIdx % (Math.round(fps) * 10) === 0);

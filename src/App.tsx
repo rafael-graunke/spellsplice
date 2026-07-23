@@ -303,6 +303,21 @@ function App() {
     const projectConfigRef = useRef(projectConfig);
     projectConfigRef.current = projectConfig;
 
+    // Overlay-appearance slice for the preview/export, memoized so its reference
+    // changes only when the config does — VideoPreview repaints on that change.
+    const overlayConfig = useMemo(
+        () => ({
+            overlayStartHidden: projectConfig.overlayStartHidden,
+            annotationSlots: projectConfig.annotationSlots,
+            scoreboard: projectConfig.scoreboard,
+            handStack: projectConfig.handStack,
+            cardDisplay: projectConfig.cardDisplay,
+            annotationConfig: projectConfig.annotationConfig,
+            layers: projectConfig.layers,
+        }),
+        [projectConfig],
+    );
+
     const clipsByTrackRef = useRef(clipsByTrack);
     clipsByTrackRef.current = clipsByTrack;
     const trackOverridesRef = useRef(trackOverrides);
@@ -459,7 +474,7 @@ function App() {
         setSettingsOpen(true);
     }, []);
     const handleManageSlots = useCallback(() => {
-        setSettingsSection('annotations');
+        setSettingsSection('annotation-slots');
         setSettingsOpen(true);
     }, []);
 
@@ -1148,10 +1163,7 @@ function App() {
                                     setCurrentTime={setCurrentTime}
                                     setIsPlaying={setIsPlaying}
                                     players={players}
-                                    overlayStartHidden={
-                                        projectConfig.overlayStartHidden
-                                    }
-                                    annotationSlots={projectConfig.annotationSlots}
+                                    overlayConfig={overlayConfig}
                                     duration={duration}
                                     videoClips={videoClips}
                                     audioClips={audioClips}
@@ -1188,6 +1200,7 @@ function App() {
                             trackGroups={trackGroups}
                             initialZoom={zoom}
                             onZoomChange={setZoom}
+                            displayCardDuration={projectConfig.cardDisplayDuration / 1000}
                             onUndo={undo}
                             onRedo={redo}
                             canUndo={canUndo}

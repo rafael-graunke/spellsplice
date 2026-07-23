@@ -13,6 +13,10 @@ import { subscribeImageLoad } from '@/lib/cardCache';
 import { Slider } from '@/components/ui/slider';
 import { Volume2, VolumeX } from 'lucide-react';
 
+// Per-frame overlay-raster budget (dev warning only). ~half a 60fps frame,
+// leaving headroom for video upload + GL draw.
+const OVERLAY_FRAME_BUDGET_MS = 8;
+
 export interface VideoPreviewHandle {
     // Seek from outside (timeline/skip buttons) without routing time through
     // App state. Paused -> paints one frame; playing -> re-detects clips.
@@ -206,7 +210,17 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
         }
 
         if (overlayStale) {
+            // Dev-only guard: updateOverlay runs every frame during animation, so
+            // a slow one is jank. Warn if it blows the per-frame budget (see the
+            // overlay performance invariants in CLAUDE.md).
+            const t0 = import.meta.env.DEV ? performance.now() : 0;
             compositor.updateOverlay(playersRef.current, time, eyeRef.current, overlayConfigRef.current, onScoreboardReady);
+            if (import.meta.env.DEV) {
+                const ms = performance.now() - t0;
+                if (ms > OVERLAY_FRAME_BUDGET_MS) {
+                    console.warn(`[overlay] updateOverlay ${ms.toFixed(1)}ms > ${OVERLAY_FRAME_BUDGET_MS}ms budget @ t=${time.toFixed(2)}s`);
+                }
+            }
             // Shared renderer animation lengths (ms -> s); UI fade is separate.
             const HAND_ANIM = HAND_ANIM_DURATION / 1000;
             const ANNO_ANIM = ANNOTATION_ANIM_DURATION / 1000;

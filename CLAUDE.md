@@ -135,13 +135,50 @@ Changes call `handleUpdateMeta(playerId, eventId, meta)` from `usePlayerTracks`.
 
 ## Rendering (`src/renders/`)
 
-**renderPlayerState.ts** — canvas 2D rendering of player info boxes (name, life total, hand size) at bottom corners of the video frame.
+**Timeline and Live Mode share ONE overlay renderer set.** The four `renderLive*` renderers are pure
+canvas functions driven by the same config (`liveMode.ts` types). Timeline is derived-state, so
+`src/lib/overlayData.ts` synthesizes their inputs from the event replay; Live Mode feeds them from its
+socket state. Do not fork a timeline-specific renderer — extend the shared one with an optional,
+undefined-defaulted param (as `edition`/`revealed`/`eyeIcon` were added) so both modes stay identical.
 
-**renderCardStrips.ts** — shared utility for drawing card title-bar crop strips on canvas. `EDITION_CROPS` for specific set codes (alpha/beta/etc.), `FRAME_CROPS` for frame year. Exports `drawCardStrip`, `STRIP_W`, `getStripH`.
+- **renderCardStrips.ts** — shared card title-bar crop strips. Exports `drawCardStrip`, `STRIP_W`,
+  `getStripH`. Caches the curve-masked strip per `name|edition|stripW` (masking is the expensive part).
+- **renderLiveHand.ts** — hand stack. Anchor/offset/growth/insert/maxHeight from `LiveHandStackConfig`;
+  enter/exit anims keyed by stable `card.id`; overflow `+N` pill; exports `getHandStackTopY`.
+- **renderLiveAnnotation.ts** — per-slot annotation boxes with `follow` (pin above hand), container
+  enter/exit vs per-card modes.
+- **renderLiveCardDisplay.ts** — featured DISPLAY_CARD per side; fade/slide animation; DFC back-face.
+- **renderLiveScoreboard.ts** — SVG-template scoreboard. `getLiveScoreboardImage` caches the decoded
+  image by substituted-SVG string; `preloadScoreboardImage` awaits a decode for export.
 
-**renderHandStack.ts** — canvas 2D rendering of hand-stack overlays. Renders a crop strip per card in hand using `renderCardStrips`. Eye icon (semi-transparent) marks revealed cards. Left player: left edge; right player: right edge.
+**overlayData.ts** — the derived-state → live-renderer-input adapter (`toHand`, `toAnnotations`,
+`toDisplayCards`, `toPlayerInfo`, `collectCardImageRequests`). Animations use `now = time * 1000` /
+`start = eventTime * 1000` so scrub and export are deterministic.
 
-**renderDeckStack.ts** — canvas 2D rendering of deck-stack overlays with entrance animation (`ANIM_DURATION` 0.35s, ease-out). Draws stacked card strips with title and slide-in animation keyed by `validUntil` timestamp.
+`Compositor.updateOverlay` (`src/lib/export/compose.ts`) runs the layer-order dispatch loop; the
+whole-overlay HIDE_UI/SHOW_UI fade is the `uOverlayAlpha` shader uniform, not per-renderer.
+
+### Overlay render performance — invariants (do NOT regress)
+
+`updateOverlay` runs **every frame** during any animation (`validUntil = time + 0.001` in
+`VideoPreview.tsx` / `pipeline.ts`). The overlay was made smooth by these rules; breaking one brings
+the jank back:
+
+- **No per-frame allocation / no per-frame re-decode in the draw path.** Cache expensive raster
+  (masked strips in `renderCardStrips.ts`) and parse (scoreboard SVG) keyed on content; invalidate
+  only when the content changes, never per frame.
+- **Feed ref-equality caches a STABLE reference.** `getLiveScoreboardImage`'s fast path is keyed on
+  reference equality of its inputs; `Compositor.stableInfo` exists solely to reuse the same
+  `LivePlayerInfo` object while its fields are unchanged. Never pass a freshly-allocated object into
+  such a cache every frame (that was the original scoreboard lag — a full SVG reparse per frame).
+- **Derive animation from event timestamps, never `performance.now()`** — required for deterministic
+  scrub + export.
+- **Export must block on async assets; never bake a placeholder or a stale frame.** The preview may
+  draw a placeholder and repaint when art arrives, but a video is permanent. `pipeline.ts` gates on
+  `preloadCardImages` (fails naming the missing cards) and on `preloadScoreboardImage` (waits for the
+  decode matching the current state). Any new async-loaded overlay asset needs the same export gate.
+- A dev-only frame-cost warning fires from `renderFrame` (`VideoPreview.tsx`) when a frame exceeds a
+  budget — watch the console when touching the render path.
 
 ## Card Cache (`src/lib/cardCache.ts`)
 

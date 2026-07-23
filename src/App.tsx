@@ -31,6 +31,12 @@ import AppBar from './components/AppBar';
 import { ExportDialog } from './components/ExportDialog';
 import SettingsDialog from './components/Settings/SettingsDialog';
 import type { Section as SettingsSection } from './components/Settings/SettingsDialog';
+import TimelineCardsLoader from './components/TimelineCardsLoader';
+import {
+    ensureOracleCards,
+    forceRefreshOracleCards,
+    type OracleCardsStatus,
+} from '@/lib/oracleCards';
 import type { ProjectConfig } from './components/types/config';
 import { DEFAULT_PROJECT_CONFIG } from './components/types/config';
 import { Sources } from './components/Sources';
@@ -158,6 +164,8 @@ function App() {
     const [exportDialogOpen, setExportDialogOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [settingsSection, setSettingsSection] = useState<SettingsSection>('metadata');
+    const [cardStatus, setCardStatus] = useState<OracleCardsStatus>('idle');
+    const [cardsReady, setCardsReady] = useState(false);
     const [relinkDialogOpen, setRelinkDialogOpen] = useState(
         () => (savedStateInit?.sources?.length ?? 0) > 0
     );
@@ -176,13 +184,46 @@ function App() {
     const clearAutosaveRef = useRef(false);
     const currentTimeRef = useRef(0);
 
+    // Keep the ref in sync with state only while paused/seeking. During playback
+    // VideoPreview's 60fps loop owns currentTimeRef; syncing it back to the
+    // throttled 10Hz `currentTime` here would yank it backward every tick (visible
+    // cursor/animation jump). Seek-during-play is handled by VideoPreview itself.
     useEffect(() => {
-        currentTimeRef.current = currentTime;
-    }, [currentTime]);
+        if (!isPlaying) currentTimeRef.current = currentTime;
+    }, [currentTime, isPlaying]);
 
     useEffect(() => {
         localStorage.setItem(MODE_KEY, mode);
     }, [mode]);
+
+    // Load the shared card database on entering timeline. The module dedupes
+    // with live mode, so at most one download happens. First run blocks (below);
+    // a stale copy resolves immediately and refreshes in the background.
+    useEffect(() => {
+        if (mode !== 'timeline') return;
+        ensureOracleCards(setCardStatus)
+            .then(() => setCardsReady(true))
+            .catch(() => {});
+    }, [mode]);
+
+    const handleRetryCards = useCallback(() => {
+        setCardsReady(false);
+        forceRefreshOracleCards(setCardStatus)
+            .then(() => setCardsReady(true))
+            .catch(() => {});
+    }, []);
+
+    const handleForceRefreshCards = useCallback(() => {
+        forceRefreshOracleCards(setCardStatus).catch(() => {});
+    }, []);
+
+    // Stable identities so React.memo(AppBar) holds across the ~10Hz playback
+    // re-renders (inline lambdas here would re-render the whole AppBar + menus).
+    const handleOpenRelinkMedia = useCallback(() => setRelinkDialogOpen(true), []);
+    const handleOpenLiveSettings = useCallback(() => {
+        setLiveSettingsSection('connection');
+        setLiveSettingsOpen(true);
+    }, []);
 
     const {
         players,
@@ -1061,11 +1102,8 @@ function App() {
                 onImport={handleImport}
                 onExportVideo={handleOpenExportDialog}
                 onOpenSettings={handleOpenSettings}
-                onRelinkMedia={() => setRelinkDialogOpen(true)}
-                onOpenLiveSettings={() => {
-                    setLiveSettingsSection('connection');
-                    setLiveSettingsOpen(true);
-                }}
+                onRelinkMedia={handleOpenRelinkMedia}
+                onOpenLiveSettings={handleOpenLiveSettings}
             />
             <SettingsDialog
                 open={settingsOpen}
@@ -1075,6 +1113,8 @@ function App() {
                 players={players}
                 onUpdatePlayer={handleUpdatePlayer}
                 initialSection={settingsSection}
+                cardStatus={cardStatus}
+                onForceRefreshCards={handleForceRefreshCards}
             />
             <LiveModeDialog
                 open={liveSettingsOpen}
@@ -1134,6 +1174,8 @@ function App() {
                     onOpenProject={handleImport}
                     onStartLiveMode={() => setMode('live')}
                 />
+            ) : !cardsReady ? (
+                <TimelineCardsLoader status={cardStatus} onRetry={handleRetryCards} />
             ) : (
                 <ResizablePanelGroup orientation="vertical" className="flex-1">
                     <ResizablePanel minSize={100} defaultSize="60%">
@@ -1143,9 +1185,7 @@ function App() {
                                     sources={sources}
                                     setSources={setSources}
                                     clipsByTrack={clipsByTrack}
-                                    onOpenRelinkDialog={() =>
-                                        setRelinkDialogOpen(true)
-                                    }
+                                    onOpenRelinkDialog={handleOpenRelinkMedia}
                                     onRelink={handleRelinkSource}
                                     onDelete={handleDeleteSource}
                                 />

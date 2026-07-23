@@ -1,5 +1,6 @@
 import { slowFetch } from './scryfallQueue';
-import { findOracleCard, isMultiFaceLayout } from './oracleCards';
+import { findOracleCard, isMultiFaceLayout, getPrintings } from './oracleCards';
+import type { OracleCard } from './oracleCards';
 
 type SetData = { image_uris: Record<string, string>; frame?: string; layout?: string };
 
@@ -132,12 +133,65 @@ function editionEndpoint(cardName: string, edition?: string): string {
     return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`;
 }
 
-function ensureCardData(cardName: string, edition?: string): void {
-    const inFlightKey = `${cardName}|${edition ?? '*'}`;
-    if (inFlight.has(inFlightKey)) return;
-    inFlight.add(inFlightKey);
+// Resolve one printing's image links + frame + layout from the offline
+// per-edition bulk. Returns null if the card (or that edition) isn't stored.
+async function localSetData(
+    cardName: string,
+    edition?: string,
+): Promise<{ setData: SetData; storeKey: string } | null> {
+    const printings = await getPrintings(cardName);
+    if (!printings.length) return null;
 
-    slowFetch(editionEndpoint(cardName, edition))
+    let p: OracleCard | undefined;
+    if (edition) {
+        const hashIdx = edition.indexOf('#');
+        if (hashIdx > -1) {
+            const set = edition.slice(0, hashIdx);
+            const num = edition.slice(hashIdx + 1);
+            p = printings.find((x) => x.edition === set && x.cn === num);
+        } else {
+            p = printings.find((x) => x.edition === edition);
+        }
+    } else {
+        p = printings[0];
+    }
+    if (!p) return null;
+
+    const uris: Record<string, string> = {};
+    if (p.image_uris?.normal) uris.normal = p.image_uris.normal;
+    if (p.image_uris?.border_crop) uris.border_crop = p.image_uris.border_crop;
+    if (p.image_uris?.normal_back) uris.normal_back = p.image_uris.normal_back;
+    if (p.image_uris?.border_crop_back) uris.border_crop_back = p.image_uris.border_crop_back;
+    const setData: SetData = {
+        image_uris: uris,
+        ...(p.frame && { frame: p.frame }),
+        ...(p.layout && { layout: p.layout }),
+    };
+    return { setData, storeKey: edition ?? (p.edition as string) };
+}
+
+// Commit resolved set data to the caches, decode its images, and persist.
+function applySetData(
+    cardName: string,
+    edition: string | undefined,
+    storeKey: string,
+    setData: SetData,
+): void {
+    if (!cardDataCache[cardName]) cardDataCache[cardName] = {};
+    cardDataCache[cardName][storeKey] = setData;
+    if (!edition) cardDataCache[cardName]['*'] = setData;
+    loadImagesForSet(cardName, storeKey, setData.image_uris);
+    if (!edition) loadImagesForSet(cardName, '*', setData.image_uris);
+    try { localStorage.setItem(CARD_CACHE_KEY, JSON.stringify(cardDataCache)); } catch { /* quota */ }
+}
+
+// Scryfall fallback for a card/edition missing from the offline bulk.
+function fetchCardDataFromScryfall(
+    cardName: string,
+    edition: string | undefined,
+    inFlightKey: string,
+): Promise<void> {
+    return slowFetch(editionEndpoint(cardName, edition))
         .then((r) => r.json())
         .then((data) => {
             const face = data.card_faces?.[0];
@@ -154,16 +208,25 @@ function ensureCardData(cardName: string, edition?: string): void {
                 ...(data.frame && { frame: data.frame }),
                 ...(data.layout && { layout: data.layout }),
             };
+            applySetData(cardName, edition, edition ?? (data.set as string), setData);
+        })
+        .catch(() => { inFlight.delete(inFlightKey); });
+}
 
-            const storeKey = edition ?? (data.set as string);
-            if (!cardDataCache[cardName]) cardDataCache[cardName] = {};
-            cardDataCache[cardName][storeKey] = setData;
-            if (!edition) cardDataCache[cardName]['*'] = setData;
+// Populate cardDataCache for a card/edition: offline bulk first, Scryfall only
+// on a local miss. Fire-and-forget; images decode asynchronously.
+function ensureCardData(cardName: string, edition?: string): void {
+    const inFlightKey = `${cardName}|${edition ?? '*'}`;
+    if (inFlight.has(inFlightKey)) return;
+    inFlight.add(inFlightKey);
 
-            loadImagesForSet(cardName, storeKey, uris);
-            if (!edition) loadImagesForSet(cardName, '*', uris);
-
-            try { localStorage.setItem(CARD_CACHE_KEY, JSON.stringify(cardDataCache)); } catch {}
+    localSetData(cardName, edition)
+        .then((local) => {
+            if (local) {
+                applySetData(cardName, edition, local.storeKey, local.setData);
+                return;
+            }
+            return fetchCardDataFromScryfall(cardName, edition, inFlightKey);
         })
         .catch(() => { inFlight.delete(inFlightKey); });
 }
@@ -424,6 +487,17 @@ export async function verifyCard(cardName: string, edition?: string): Promise<bo
     const key = edition ?? '*';
     if (cardDataCache[cardName]?.[key]) return true;
 
+    // Offline bulk first; a hit both verifies and seeds the cache.
+    const local = await localSetData(cardName, edition);
+    if (local) {
+        if (!cardDataCache[cardName]) cardDataCache[cardName] = {};
+        cardDataCache[cardName][key] = local.setData;
+        if (!edition) cardDataCache[cardName]['*'] = local.setData;
+        try { localStorage.setItem(CARD_CACHE_KEY, JSON.stringify(cardDataCache)); } catch { /* quota */ }
+        return true;
+    }
+
+    // Fallback: the card may be newer than the cached bulk.
     const response = await slowFetch(editionEndpoint(cardName, edition));
     if (response.status === 404) return false;
     if (!response.ok) throw new Error(`HTTP ${response.status}`);

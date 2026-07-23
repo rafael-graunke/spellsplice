@@ -14,7 +14,7 @@ interface SourcesProps {
     onDelete?: (sourceId: string) => void;
 }
 
-export function Sources({ sources, setSources, clipsByTrack, onOpenRelinkDialog, onRelink, onDelete }: SourcesProps) {
+function SourcesInner({ sources, setSources, clipsByTrack, onOpenRelinkDialog, onRelink, onDelete }: SourcesProps) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [isDragOver, setIsDragOver] = React.useState(false);
 
@@ -136,3 +136,7 @@ export function Sources({ sources, setSources, clipsByTrack, onOpenRelinkDialog,
         </div>
     );
 }
+
+// Memoized so App's ~10Hz playback re-renders don't reconcile the source list
+// (its props are stable during playback).
+export const Sources = React.memo(SourcesInner);

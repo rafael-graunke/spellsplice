@@ -14,6 +14,8 @@ import ScoreboardSection from '@/components/LiveMode/sections/ScoreboardSection'
 import HandStackSection from '@/components/LiveMode/sections/HandStackSection';
 import CardDisplaySection from '@/components/LiveMode/sections/CardDisplaySection';
 import AnnotationsSection from '@/components/LiveMode/sections/AnnotationsSection';
+import CardDatabaseSection from '@/components/LiveMode/sections/CardDatabaseSection';
+import type { OracleCardsStatus } from '@/lib/oracleCards';
 
 export type Section =
     | 'metadata'
@@ -24,7 +26,8 @@ export type Section =
     | 'scoreboard'
     | 'hand'
     | 'card-display'
-    | 'annotations';
+    | 'annotations'
+    | 'card-database';
 
 type NavLeaf = { id: Section; label: string };
 type NavNode = NavLeaf | { label: string; children: NavLeaf[] };
@@ -47,6 +50,7 @@ const NAV_ITEMS: NavNode[] = [
             { id: 'annotations', label: 'Annotations' },
         ],
     },
+    { id: 'card-database', label: 'Card Database' },
 ];
 
 interface SettingsDialogProps {
@@ -58,13 +62,15 @@ interface SettingsDialogProps {
     onUpdatePlayer: (playerId: string, updates: { name?: string; deckName?: string; decklist?: Decklist; pronouns?: string; standing?: string }) => void;
     // Which section to show when the dialog opens (defaults to Project Metadata).
     initialSection?: Section;
+    cardStatus: OracleCardsStatus;
+    onForceRefreshCards: () => void;
 }
 
 type ContentProps = Omit<SettingsDialogProps, 'open' | 'onOpenChange'>;
 
 // Inner content is mounted fresh each time the dialog opens, so `initialSection`
 // seeds the selected tab on every open without a setState-in-effect.
-function SettingsContent({ config, onConfigChange, players, onUpdatePlayer, initialSection }: ContentProps) {
+function SettingsContent({ config, onConfigChange, players, onUpdatePlayer, initialSection, cardStatus, onForceRefreshCards }: ContentProps) {
     const [selectedSection, setSelectedSection] = useState<Section>(initialSection ?? 'metadata');
     const isOverlaySection = OVERLAY_ANCHORS.includes(selectedSection);
 
@@ -235,6 +241,9 @@ function SettingsContent({ config, onConfigChange, players, onUpdatePlayer, init
                     )}
                     {selectedSection === 'overlay' && (
                         <OverlayAppearanceSection config={config} onConfigChange={onConfigChange} />
+                    )}
+                    {selectedSection === 'card-database' && (
+                        <CardDatabaseSection status={cardStatus} onForceRefresh={onForceRefreshCards} />
                     )}
                     {isOverlaySection && (
                         <div className="flex flex-col gap-6">

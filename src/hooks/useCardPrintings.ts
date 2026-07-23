@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useCallback, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { slowFetch } from '@/lib/scryfallQueue';
+import { getPrintings } from '@/lib/oracleCards';
 
 export interface Printing {
     set: string;
@@ -16,34 +17,51 @@ interface ScryfallList {
     data: Printing[];
     has_more: boolean;
     next_page?: string;
-    total_cards?: number;
+}
+
+// Fallback for cards missing from the local bulk (e.g. a set newer than the
+// cached copy): walk every page of the Scryfall prints search.
+async function fetchFromScryfall(name: string): Promise<Printing[]> {
+    const out: Printing[] = [];
+    let url: string | undefined =
+        `https://api.scryfall.com/cards/search?q=!"${encodeURIComponent(name)}"&unique=prints&order=released`;
+    while (url) {
+        const res = await slowFetch(url);
+        if (!res.ok) break;
+        const page = (await res.json()) as ScryfallList;
+        out.push(...page.data);
+        url = page.has_more ? page.next_page : undefined;
+    }
+    return out;
 }
 
 export function useCardPrintings(name: string) {
-    const query = useInfiniteQuery({
+    const query = useQuery({
         queryKey: ['printings', name],
-        queryFn: async ({ pageParam }: { pageParam: string | undefined }) => {
-            const url =
-                pageParam ??
-                `https://api.scryfall.com/cards/search?q=!"${encodeURIComponent(name)}"&unique=prints&order=released`;
-            const res = await slowFetch(url);
-            return res.json() as Promise<ScryfallList>;
+        queryFn: async (): Promise<Printing[]> => {
+            const local = await getPrintings(name);
+            if (local.length > 0) {
+                return local.map((c) => ({
+                    set: c.edition ?? '',
+                    set_name: c.set_name ?? c.edition ?? '',
+                    collector_number: c.cn ?? '',
+                    image_uris: {
+                        normal: c.image_uris?.normal,
+                        border_crop: c.image_uris?.border_crop,
+                    },
+                    frame: c.frame,
+                    layout: c.layout,
+                }));
+            }
+            return fetchFromScryfall(name);
         },
-        getNextPageParam: (last) => (last.has_more ? last.next_page : undefined),
-        initialPageParam: undefined as string | undefined,
         enabled: name.length > 0,
         staleTime: Infinity,
     });
 
-    useEffect(() => {
-        if (query.hasNextPage && !query.isFetchingNextPage) {
-            query.fetchNextPage();
-        }
-    }, [query.hasNextPage, query.isFetchingNextPage, query.fetchNextPage]);
-
     const printings = useMemo(
         () =>
-            (query.data?.pages ?? []).flatMap((p) => p.data).map((c) => ({
+            (query.data ?? []).map((c) => ({
                 ...c,
                 image_uris: c.image_uris ?? c.card_faces?.[0]?.image_uris ?? {},
             })),
@@ -63,15 +81,12 @@ export function useCardPrintings(name: string) {
         [setCounts],
     );
 
-    const totalCards = query.data?.pages[0]?.total_cards;
-    const isStreaming = query.hasNextPage || query.isFetchingNextPage;
-
     return {
         printings,
         editionKey,
-        totalCards,
+        totalCards: printings.length,
         loadedCount: printings.length,
-        isStreaming,
+        isStreaming: false,
         isFetching: query.isFetching,
     };
 }

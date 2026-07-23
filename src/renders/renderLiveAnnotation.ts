@@ -316,7 +316,7 @@ export function renderLiveAnnotations(
                     const hc = cards[j];
                     drawCardStrip(
                         ctx,
-                        { name: hc.card.name },
+                        { name: hc.card.name, ...(hc.edition ? { edition: hc.edition } : {}) },
                         contX,
                         firstStripY + cumH(cards, j),
                         isLeft,
@@ -379,7 +379,7 @@ export function renderLiveAnnotations(
 
                 drawCardStrip(
                     ctx,
-                    { name: hc.card.name },
+                    { name: hc.card.name, ...(hc.edition ? { edition: hc.edition } : {}) },
                     x,
                     cardY,
                     isLeft,
@@ -400,7 +400,7 @@ export function renderLiveAnnotations(
 
                 drawCardStrip(
                     ctx,
-                    { name: a.card.card.name },
+                    { name: a.card.card.name, ...(a.card.edition ? { edition: a.card.edition } : {}) },
                     x,
                     preY,
                     isLeft,

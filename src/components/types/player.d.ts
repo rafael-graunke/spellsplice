@@ -17,4 +17,6 @@ export interface Player {
     wins: number;
     deckName?: string;
     decklist?: Decklist;
+    pronouns?: string;
+    standing?: string;
 }

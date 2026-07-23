@@ -70,7 +70,10 @@ export function renderLiveHand(
     drawH: number,
     config: LiveHandStackConfig,
     anims: Map<string, HandAnim> = new Map(),
-    now = 0
+    now = 0,
+    // Timeline passes an eye icon so cards marked `revealed` get the badge; Live
+    // Mode passes nothing, so nothing changes there.
+    eyeIcon: HTMLImageElement | null = null
 ) {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
@@ -164,7 +167,11 @@ export function renderLiveHand(
         // Surviving + entering cards (everything still in the snapshot).
         for (let j = 0; j < hand.length; j++) {
             const hc = hand[j];
-            const cardData: Card = { name: hc.card.name };
+            const cardData: Card = {
+                name: hc.card.name,
+                ...(hc.edition ? { edition: hc.edition } : {}),
+                ...(hc.revealed ? { revealed: true } : {}),
+            };
             const finalY = slotY(hand, j);
 
             let x = finalX;
@@ -190,7 +197,7 @@ export function renderLiveHand(
                 x,
                 y,
                 isLeft,
-                null,
+                eyeIcon,
                 alpha,
                 hc.card.mana_cost,
                 hc.card.colors,
@@ -207,11 +214,15 @@ export function renderLiveHand(
 
             drawCardStrip(
                 ctx,
-                { name: a.card.card.name },
+                {
+                    name: a.card.card.name,
+                    ...(a.card.edition ? { edition: a.card.edition } : {}),
+                    ...(a.card.revealed ? { revealed: true } : {}),
+                },
                 x,
                 preY,
                 isLeft,
-                null,
+                eyeIcon,
                 1 - t,
                 a.card.card.mana_cost,
                 a.card.card.colors,

@@ -116,6 +116,13 @@ function drawStripImage(
     ctx.restore();
 }
 
+// Cache of curve-masked card strips (the expensive destination-in composite),
+// keyed by name|edition|stripW. The masked strip is identical every frame once
+// the border-crop image has loaded, so caching it turns an animating hand from
+// N OffscreenCanvas allocations + masks per frame into N cheap drawImage calls.
+const stripCache = new Map<string, OffscreenCanvas>();
+const STRIP_CACHE_MAX = 600;
+
 export function drawCardStrip(
     ctx: CanvasRenderingContext2D,
     card: Card,
@@ -139,30 +146,45 @@ export function drawCardStrip(
 
     if (crop.curveClip) {
         // fill() is anti-aliased; clip() is not. Use an offscreen canvas + destination-in mask.
-        const tmp = new OffscreenCanvas(stripW, stripH);
-        const tmpCtx = tmp.getContext('2d')!;
-        tmpCtx.imageSmoothingEnabled = true;
-        tmpCtx.imageSmoothingQuality = 'high';
+        // Only cache the loaded-image strip; the placeholder is transient (redrawn
+        // once the image loads) and depends on mana/colors, so it is not cached.
+        const loaded = img instanceof HTMLImageElement;
+        const cacheKey = `${card.name}|${card.edition ?? ''}|${stripW}`;
+        let tmp = loaded ? stripCache.get(cacheKey) : undefined;
 
-        if (img instanceof HTMLImageElement) {
-            drawStripImage(tmpCtx, img, crop, 0, 0, stripW, stripH);
-        } else {
-            tmpCtx.fillStyle = placeholderBg;
-            tmpCtx.fillRect(0, 0, stripW, stripH);
-            tmpCtx.fillStyle = PLACEHOLDER_TEXT;
-            tmpCtx.font = 'bold 22px sans-serif';
-            tmpCtx.textBaseline = 'middle';
-            tmpCtx.textAlign = 'left';
-            tmpCtx.fillText(card.name, 10, Math.round(stripH / 2));
-            if (manaCost) {
-                drawManaCostRow(tmpCtx, manaCost, stripW - 10, Math.round(stripH / 2), stripH * 0.32);
+        if (!tmp) {
+            tmp = new OffscreenCanvas(stripW, stripH);
+            const tmpCtx = tmp.getContext('2d')!;
+            tmpCtx.imageSmoothingEnabled = true;
+            tmpCtx.imageSmoothingQuality = 'high';
+
+            if (img instanceof HTMLImageElement) {
+                drawStripImage(tmpCtx, img, crop, 0, 0, stripW, stripH);
+            } else {
+                tmpCtx.fillStyle = placeholderBg;
+                tmpCtx.fillRect(0, 0, stripW, stripH);
+                tmpCtx.fillStyle = PLACEHOLDER_TEXT;
+                tmpCtx.font = 'bold 22px sans-serif';
+                tmpCtx.textBaseline = 'middle';
+                tmpCtx.textAlign = 'left';
+                tmpCtx.fillText(card.name, 10, Math.round(stripH / 2));
+                if (manaCost) {
+                    drawManaCostRow(tmpCtx, manaCost, stripW - 10, Math.round(stripH / 2), stripH * 0.32);
+                }
+            }
+
+            tmpCtx.globalCompositeOperation = 'destination-in';
+            tmpCtx.beginPath();
+            clipStripPath(tmpCtx, 0, 0, stripW, stripH, curveW);
+            tmpCtx.fill();
+
+            if (loaded) {
+                if (stripCache.size >= STRIP_CACHE_MAX) {
+                    stripCache.delete(stripCache.keys().next().value!);
+                }
+                stripCache.set(cacheKey, tmp);
             }
         }
-
-        tmpCtx.globalCompositeOperation = 'destination-in';
-        tmpCtx.beginPath();
-        clipStripPath(tmpCtx, 0, 0, stripW, stripH, curveW);
-        tmpCtx.fill();
 
         ctx.save();
         ctx.globalAlpha = alpha;

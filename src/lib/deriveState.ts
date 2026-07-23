@@ -11,6 +11,10 @@ import {
 export interface CardWithTimestamp {
     card: Card;
     enteredAt: number;
+    // Stable per-instance identity, derived from the event that introduced the
+    // card. Lets the overlay renderers key animations (and reflow) on a specific
+    // copy rather than matching by name, which mis-animates duplicates.
+    id: string;
 }
 
 export function deriveHandWithTimestamps(
@@ -22,13 +26,17 @@ export function deriveHandWithTimestamps(
         .filter((e) => !e.resizable && e.time <= time)
         .sort((a, b) => a.time - b.time);
 
-    let hand: CardWithTimestamp[] = player.cards.map((card) => ({ card, enteredAt: 0 }));
+    let hand: CardWithTimestamp[] = player.cards.map((card, i) => ({
+        card,
+        enteredAt: 0,
+        id: `init:${i}`,
+    }));
 
     for (const event of persistent) {
         if (event.type === 'ADD_TO_HAND' && event.meta?.cards) {
             const incoming = [...event.meta.cards]
                 .reverse()
-                .map((card) => ({ card, enteredAt: event.time }));
+                .map((card, i) => ({ card, enteredAt: event.time, id: `${event.id}:${i}` }));
             hand = [...hand, ...incoming];
         } else if (event.type === 'REMOVE_FROM_HAND' && event.meta?.cards) {
             const counts = new Map<string, number>();
@@ -46,10 +54,10 @@ export function deriveHandWithTimestamps(
         } else if (event.type === 'REVEAL_FROM_HAND' && event.meta?.cards) {
             const counts = new Map<string, number>();
             for (const c of event.meta.cards) counts.set(c.name, (counts.get(c.name) ?? 0) + 1);
-            hand = hand.map(({ card, enteredAt }) => {
+            hand = hand.map(({ card, enteredAt, id }) => {
                 const rem = counts.get(card.name) ?? 0;
-                if (rem > 0) { counts.set(card.name, rem - 1); return { card: { ...card, revealed: true }, enteredAt }; }
-                return { card, enteredAt };
+                if (rem > 0) { counts.set(card.name, rem - 1); return { card: { ...card, revealed: true }, enteredAt, id }; }
+                return { card, enteredAt, id };
             });
         } else if (event.type === 'RESET') {
             hand = [];
@@ -82,7 +90,11 @@ export function deriveAnnotations(
         if (!slotId) continue;
 
         if (event.type === 'ANNOTATE_CARD' && event.meta?.cards) {
-            const incoming = event.meta.cards.map((card) => ({ card, enteredAt: event.time }));
+            const incoming = event.meta.cards.map((card, i) => ({
+                card,
+                enteredAt: event.time,
+                id: `${event.id}:${i}`,
+            }));
             slots[slotId] = [...(slots[slotId] ?? []), ...incoming];
         } else if (event.type === 'UNANNOTATE_CARD') {
             if (!event.meta?.cards?.length) {
@@ -108,7 +120,9 @@ export function deriveAnnotations(
 }
 
 export interface AnnotationExit {
-    removed: Card[];
+    // Removed instances plus the index they occupied in the pre-removal stack,
+    // so the renderer can animate them out from their old slot and close the gap.
+    removed: Array<{ entry: CardWithTimestamp; oldIndex: number }>;
     time: number;
 }
 
@@ -141,7 +155,10 @@ export function deriveAnnotationsWithExits(
             for (const id of Object.keys(slots)) {
                 const before = slots[id];
                 if (before.length > 0 && event.time > cutoff) {
-                    exits[id] = { removed: before.map((c) => c.card), time: event.time };
+                    exits[id] = {
+                        removed: before.map((entry, oldIndex) => ({ entry, oldIndex })),
+                        time: event.time,
+                    };
                 }
                 slots[id] = [];
             }
@@ -152,22 +169,24 @@ export function deriveAnnotationsWithExits(
 
         if (event.type === 'ANNOTATE_CARD' && event.meta?.cards) {
             const bucket = (slots[slotId] ??= []);
-            for (const card of event.meta.cards) bucket.push({ card, enteredAt: event.time });
+            event.meta.cards.forEach((card, i) =>
+                bucket.push({ card, enteredAt: event.time, id: `${event.id}:${i}` }),
+            );
         } else if (event.type === 'UNANNOTATE_CARD') {
             const before = slots[slotId] ?? [];
-            let removed: Card[];
+            let removed: Array<{ entry: CardWithTimestamp; oldIndex: number }>;
             if (!event.meta?.cards?.length) {
-                removed = before.map((c) => c.card);
+                removed = before.map((entry, oldIndex) => ({ entry, oldIndex }));
                 slots[slotId] = [];
             } else {
                 const counts = new Map<string, number>();
                 for (const c of event.meta.cards) counts.set(c.name, (counts.get(c.name) ?? 0) + 1);
                 removed = [];
-                slots[slotId] = before.filter(({ card }) => {
-                    const rem = counts.get(card.name) ?? 0;
+                slots[slotId] = before.filter((entry, oldIndex) => {
+                    const rem = counts.get(entry.card.name) ?? 0;
                     if (rem > 0) {
-                        counts.set(card.name, rem - 1);
-                        removed.push(card);
+                        counts.set(entry.card.name, rem - 1);
+                        removed.push({ entry, oldIndex });
                         return false;
                     }
                     return true;
@@ -206,7 +225,10 @@ export function getActiveWindowedEvents(
 }
 
 // Returns the next time after `time` at which derived state would change.
-const UI_ANIM_DURATION = 0.35;
+// HIDE_UI / SHOW_UI is a plain fade of the whole overlay over this fixed
+// duration (no sliding). Single knob for the transition length.
+export const UI_FADE_MS = 350;
+const UI_ANIM_DURATION = UI_FADE_MS / 1000;
 const uiEaseOut = (t: number) => 1 - Math.pow(1 - t, 3);
 
 export function deriveUIVisibility(players: Player[], time: number, startHidden = false): number {

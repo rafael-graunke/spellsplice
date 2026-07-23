@@ -3,9 +3,12 @@ import type { RefObject } from 'react';
 import type { Player } from './types/player';
 import type { Clip } from './types/clip';
 import type { MediaSource } from './types/source';
-import type { AnnotationSlot } from './types/config';
-import { getNextChangeTime } from '@/lib/deriveState';
+import { getNextChangeTime, UI_FADE_MS } from '@/lib/deriveState';
 import { Compositor } from '@/lib/export/compose';
+import type { OverlayConfig } from '@/lib/export/compose';
+import { cardDisplayAnimSeconds } from '@/lib/overlayData';
+import { HAND_ANIM_DURATION } from '@/renders/renderLiveHand';
+import { ANNOTATION_ANIM_DURATION } from '@/renders/renderLiveAnnotation';
 import { subscribeImageLoad } from '@/lib/cardCache';
 import { Slider } from '@/components/ui/slider';
 import { Volume2, VolumeX } from 'lucide-react';
@@ -17,8 +20,7 @@ interface VideoPreviewProps {
     setCurrentTime: React.Dispatch<React.SetStateAction<number>>;
     setIsPlaying: (playing: boolean) => void;
     players: Player[];
-    overlayStartHidden?: boolean;
-    annotationSlots?: AnnotationSlot[];
+    overlayConfig: OverlayConfig;
     duration?: number;
     videoClips?: Clip[];
     audioClips?: Clip[];
@@ -36,8 +38,7 @@ function VideoPreview({
     setCurrentTime,
     setIsPlaying,
     players,
-    overlayStartHidden = false,
-    annotationSlots = [],
+    overlayConfig,
     duration = Infinity,
     videoClips = [],
     audioClips = [],
@@ -53,10 +54,8 @@ function VideoPreview({
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const playersRef = useRef(players);
-    const overlayStartHiddenRef = useRef(overlayStartHidden);
-    const annotationSlotsRef = useRef(annotationSlots);
+    const overlayConfigRef = useRef(overlayConfig);
     const prevTimeRef = useRef(-1);
-    const d20Ref = useRef<HTMLImageElement | null>(null);
     const eyeRef = useRef<HTMLImageElement | null>(null);
     const compositorRef = useRef<Compositor | null>(null);
     const derivedCacheRef = useRef<{ validUntil: number } | null>(null);
@@ -125,12 +124,6 @@ function VideoPreview({
 
     useEffect(() => {
         const img = new Image();
-        img.onload = () => { d20Ref.current = img; };
-        img.src = '/assets/d20.svg';
-    }, []);
-
-    useEffect(() => {
-        const img = new Image();
         img.onload = () => { eyeRef.current = img; };
         img.src = '/assets/eye.svg';
     }, []);
@@ -183,9 +176,15 @@ function VideoPreview({
     }, []);
 
     isPlayingRef.current = isPlaying;
-    overlayStartHiddenRef.current = overlayStartHidden;
-    annotationSlotsRef.current = annotationSlots;
+    overlayConfigRef.current = overlayConfig;
     durationRef.current = duration;
+
+    // Scoreboard SVGs decode asynchronously; when one becomes ready, invalidate
+    // the overlay cache and repaint so it appears on the next frame.
+    const onScoreboardReady = () => {
+        derivedCacheRef.current = null;
+        renderFrameRef.current();
+    };
 
     const renderFrame = () => {
         const compositor = compositorRef.current;
@@ -200,15 +199,21 @@ function VideoPreview({
         const activeVideoClip = getActiveVideoClip(time);
         const frameEl = activeVideoClip ? sourceVideoEls.current.get(activeVideoClip.sourceId) : null;
         const videoHidden = !!activeVideoClip?.trackId && hiddenVideoTrackIdsRef.current.has(activeVideoClip.trackId);
-        if (!videoHidden && frameEl?.videoWidth) {
+        const videoLayerHidden = overlayConfigRef.current.layers.some((l) => l.id === 'video' && !l.visible);
+        if (!videoHidden && !videoLayerHidden && frameEl?.videoWidth) {
             compositor.uploadVideoElement(frameEl);
         } else {
             compositor.uploadBlackFrame();
         }
 
         if (overlayStale) {
-            compositor.updateOverlay(playersRef.current, time, d20Ref.current, eyeRef.current, overlayStartHiddenRef.current, annotationSlotsRef.current);
-            const ANIM_DURATION = 0.35;
+            compositor.updateOverlay(playersRef.current, time, eyeRef.current, overlayConfigRef.current, onScoreboardReady);
+            // Shared renderer animation lengths (ms -> s); UI fade is separate.
+            const HAND_ANIM = HAND_ANIM_DURATION / 1000;
+            const ANNO_ANIM = ANNOTATION_ANIM_DURATION / 1000;
+            const ANIM_DURATION = Math.max(HAND_ANIM, ANNO_ANIM, UI_FADE_MS / 1000);
+            // DISPLAY_CARD uses its own configured enter/exit animation length.
+            const cardAnim = cardDisplayAnimSeconds(overlayConfigRef.current.cardDisplay);
             const anyAnimating = playersRef.current.some((p) =>
                 p.track.events.some((e) => {
                     if (
@@ -217,7 +222,10 @@ function VideoPreview({
                         e.type === 'ANNOTATE_CARD' ||
                         e.type === 'UNANNOTATE_CARD' ||
                         e.type === 'HIDE_UI' ||
-                        e.type === 'SHOW_UI'
+                        e.type === 'SHOW_UI' ||
+                        // RESET clears the hand and every annotation slot, both
+                        // of which animate out.
+                        e.type === 'RESET'
                     ) {
                         return e.time <= time && e.time > time - ANIM_DURATION;
                     }
@@ -226,7 +234,7 @@ function VideoPreview({
                         return (
                             e.time <= time &&
                             time < end &&
-                            (time - e.time < ANIM_DURATION || end - time <= ANIM_DURATION)
+                            (time - e.time < cardAnim || end - time <= cardAnim)
                         );
                     }
                     return false;
@@ -239,7 +247,7 @@ function VideoPreview({
                 for (const p of playersRef.current) {
                     for (const e of p.track.events) {
                         if (e.type === 'DISPLAY_CARD' && e.duration != null) {
-                            const exitStart = e.time + e.duration - ANIM_DURATION;
+                            const exitStart = e.time + e.duration - cardAnim;
                             if (exitStart > time && exitStart < validUntil) {
                                 validUntil = exitStart;
                             }
@@ -279,6 +287,13 @@ function VideoPreview({
         hiddenVideoTrackIdsRef.current = new Set(hiddenVideoTrackIds);
         if (!isPlayingRef.current) renderFrameRef.current();
     }, [hiddenVideoTrackIds]);
+
+    // Repaint once when overlay-appearance settings change, so edits are visible
+    // without needing to play/pause.
+    useEffect(() => {
+        derivedCacheRef.current = null;
+        if (!isPlayingRef.current) renderFrameRef.current();
+    }, [overlayConfig]);
 
     useEffect(() => {
         mutedAudioTrackIdsRef.current = new Set(mutedAudioTrackIds);

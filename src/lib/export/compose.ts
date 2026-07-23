@@ -1,10 +1,36 @@
 import type { Player } from '@/components/types/player';
-import type { AnnotationSlot } from '@/components/types/config';
-import { derivePlayerState, getActiveWindowedEvents, deriveUIVisibility } from '@/lib/deriveState';
-import { renderPlayerState } from '@/renders/renderPlayerState';
-import { renderHandStack } from '@/renders/renderHandStack';
-import { renderAnnotations } from '@/renders/renderAnnotations';
-import { ensureImage } from '@/lib/cardCache';
+import type { AnnotationSlot, TimelineLayer } from '@/components/types/config';
+import type {
+    LiveScoreboardState,
+    LiveHandStackConfig,
+    LiveCardDisplayConfig,
+    LiveAnnotationConfig,
+    LiveLayerId,
+    LivePlayerInfo,
+    SingleScoreboardConfig,
+} from '@/lib/liveMode';
+import { derivePlayerState, deriveUIVisibility } from '@/lib/deriveState';
+import { renderLiveHand, getHandStackTopY } from '@/renders/renderLiveHand';
+import { renderLiveAnnotations } from '@/renders/renderLiveAnnotation';
+import { renderLiveCardDisplay } from '@/renders/renderLiveCardDisplay';
+import { renderLiveScoreboard, getLiveScoreboardImage } from '@/renders/renderLiveScoreboard';
+import { toPlayerInfo, toHand, toAnnotations, toDisplayCards, toNow } from '@/lib/overlayData';
+
+// Gap between the annotation column and the hand stack it follows, matching the
+// live overlay page.
+const ANNOTATION_HAND_GAP = 50;
+
+// Overlay-appearance config passed into the compositor each frame. Shared by the
+// preview (VideoPreview) and export (pipeline) callers.
+export interface OverlayConfig {
+    overlayStartHidden?: boolean;
+    annotationSlots: AnnotationSlot[];
+    scoreboard: LiveScoreboardState;
+    handStack: LiveHandStackConfig;
+    cardDisplay: LiveCardDisplayConfig;
+    annotationConfig: LiveAnnotationConfig;
+    layers: TimelineLayer[];
+}
 
 const VERT_SRC = `
 attribute vec2 aPosition;
@@ -21,6 +47,9 @@ precision mediump float;
 uniform sampler2D uVideo;
 uniform sampler2D uOverlay;
 uniform vec4 uVideoRect;
+// Global overlay opacity, driving the HIDE_UI / SHOW_UI fade. Applied here so no
+// renderer needs to know about it.
+uniform float uOverlayAlpha;
 varying vec2 vTexCoord;
 void main() {
     vec4 base;
@@ -35,9 +64,26 @@ void main() {
         base = vec4(0.0, 0.0, 0.0, 1.0);
     }
     vec4 overlay = texture2D(uOverlay, vTexCoord);
-    gl_FragColor = mix(base, overlay, overlay.a);
+    gl_FragColor = mix(base, overlay, overlay.a * uOverlayAlpha);
 }
 `;
+
+// Returns `prev` when every field matches `fresh`, so callers keep a stable
+// object reference across frames while the scoreboard data is unchanged.
+function stableInfo(fresh: LivePlayerInfo, prev: LivePlayerInfo | null): LivePlayerInfo {
+    if (
+        prev &&
+        prev.name === fresh.name &&
+        prev.deckName === fresh.deckName &&
+        prev.standing === fresh.standing &&
+        prev.pronouns === fresh.pronouns &&
+        prev.life === fresh.life &&
+        prev.wins === fresh.wins
+    ) {
+        return prev;
+    }
+    return fresh;
+}
 
 export class Compositor {
     private gl: WebGLRenderingContext;
@@ -48,12 +94,18 @@ export class Compositor {
     private videoTex: WebGLTexture;
     private overlayTex: WebGLTexture;
     private uVideoRect: WebGLUniformLocation;
+    private uOverlayAlpha: WebGLUniformLocation;
     private outW: number;
     private outH: number;
     private drawW = 0;
     private drawH = 0;
     private offsetX = 0;
     private offsetY = 0;
+    // Cached scoreboard player-info objects, reused by reference while their
+    // field values are unchanged. getLiveScoreboardImage's fast path is keyed on
+    // reference equality, so stable refs avoid re-parsing the SVG every frame.
+    private sbLeft: LivePlayerInfo | null = null;
+    private sbRight: LivePlayerInfo | null = null;
 
     constructor(outWidth: number, outHeight: number, canvas?: HTMLCanvasElement | OffscreenCanvas) {
         this.outW = outWidth;
@@ -90,6 +142,8 @@ export class Compositor {
         gl.uniform1i(gl.getUniformLocation(this.program, 'uVideo'), 0);
         gl.uniform1i(gl.getUniformLocation(this.program, 'uOverlay'), 1);
         this.uVideoRect = gl.getUniformLocation(this.program, 'uVideoRect')!;
+        this.uOverlayAlpha = gl.getUniformLocation(this.program, 'uOverlayAlpha')!;
+        gl.uniform1f(this.uOverlayAlpha, 1);
 
         this.videoTex = this.createTex(gl.TEXTURE0);
         this.overlayTex = this.createTex(gl.TEXTURE1);
@@ -136,10 +190,9 @@ export class Compositor {
     updateOverlay(
         players: Player[],
         time: number,
-        d20Img: HTMLImageElement | null,
         eyeImg: HTMLImageElement | null,
-        overlayStartHidden = false,
-        annotationSlots: AnnotationSlot[] = [],
+        config: OverlayConfig,
+        onScoreboardReady: () => void = () => {},
     ): void {
         const { overlayCtx, overlayCanvas, gl } = this;
         const { drawW, drawH, offsetX, offsetY, outW, outH } = this;
@@ -147,60 +200,107 @@ export class Compositor {
         overlayCtx.clearRect(0, 0, outW, outH);
 
         const playerStates = players.map((p) => derivePlayerState(p, p.track.events, time));
-        const activeEvents = players.map((p) => getActiveWindowedEvents(p.track.events, time));
-        const uiVisibility = deriveUIVisibility(players, time, overlayStartHidden);
-
         const ctx2d = overlayCtx as unknown as CanvasRenderingContext2D;
-        renderPlayerState(ctx2d, playerStates, offsetX, offsetY, drawW, drawH, d20Img, uiVisibility);
-        renderHandStack(ctx2d, players, time, offsetX, offsetY, drawW, drawH, eyeImg, uiVisibility);
-        renderAnnotations(ctx2d, players, time, offsetX, offsetY, drawW, drawH, annotationSlots, uiVisibility);
+        const now = toNow(time);
 
-        const CARD_ANIM_DURATION = 0.35;
-        const cardEaseOut = (t: number) => 1 - Math.pow(1 - t, 3);
-        const cardH = drawH * 0.5;
-        const cardW = cardH * (223 / 310);
-        const offscreenY = offsetY + drawH;
-        let cardOffset = 0;
-        activeEvents.forEach((events) => {
-            events.forEach((event) => {
-                const card = event.meta?.cards?.[0];
-                if (!card?.name) return;
-                const cached = ensureImage(card.name, card.edition);
-                const cardX = offsetX + drawW / 2 - cardW / 2 + cardOffset * (cardW + 8);
-                const finalCardY = offsetY + drawH / 2 - cardH / 2;
+        // HIDE_UI / SHOW_UI fades the whole overlay via the shader uniform, so no
+        // renderer needs to know about it.
+        gl.useProgram(this.program);
+        gl.uniform1f(this.uOverlayAlpha, deriveUIVisibility(players, time, config.overlayStartHidden));
 
-                const enterAge = time - event.time;
-                const exitAge = event.duration != null ? event.time + event.duration - time : Infinity;
-                let cardY = finalCardY;
-                if (enterAge < CARD_ANIM_DURATION) {
-                    const t = cardEaseOut(enterAge / CARD_ANIM_DURATION);
-                    cardY = offscreenY + (finalCardY - offscreenY) * t;
-                } else if (exitAge <= CARD_ANIM_DURATION) {
-                    const t = cardEaseOut((CARD_ANIM_DURATION - exitAge) / CARD_ANIM_DURATION);
-                    cardY = finalCardY + (offscreenY - finalCardY) * t;
-                }
+        // Hands are synthesized first: annotations with `follow` pin themselves
+        // above the rendered hand stack.
+        const hands = players.map((p, i) =>
+            toHand(p, time, config.handStack[i === 0 ? 'left' : 'right'], i === 0 ? 'left' : 'right'),
+        );
+        const leftHand = hands[0]?.cards ?? [];
+        const rightHand = hands[1]?.cards ?? [];
+        const handAnims = new Map([...(hands[0]?.anims ?? []), ...(hands[1]?.anims ?? [])]);
 
-                overlayCtx.save();
-                overlayCtx.globalAlpha = uiVisibility;
-                overlayCtx.beginPath();
-                const corner_scale = card.edition?.startsWith("lea") ? 0.07 : 0.045;
-                overlayCtx.roundRect(cardX, cardY, cardW, cardH, cardW * corner_scale);
-                overlayCtx.clip();
-                if (cached instanceof HTMLImageElement) {
-                    overlayCtx.drawImage(cached, cardX, cardY, cardW, cardH);
-                } else {
-                    overlayCtx.fillStyle = '#3a0257';
-                    overlayCtx.fill();
-                    overlayCtx.fillStyle = '#ffffff';
-                    overlayCtx.font = `bold ${Math.round(cardH * 0.05)}px sans-serif`;
-                    overlayCtx.textBaseline = 'top';
-                    overlayCtx.textAlign = 'left';
-                    overlayCtx.fillText(card.name, cardX + 25, cardY + 25);
-                }
-                overlayCtx.restore();
-                cardOffset++;
-            });
-        });
+        const drawScoreboard = () => {
+            if (!playerStates[0]) return;
+            this.sbLeft = stableInfo(toPlayerInfo(playerStates[0]), this.sbLeft);
+            const leftInfo = this.sbLeft;
+            if (playerStates[1]) {
+                this.sbRight = stableInfo(toPlayerInfo(playerStates[1]), this.sbRight);
+            }
+            const rightInfo = playerStates[1] ? this.sbRight! : leftInfo;
+            const sb = config.scoreboard;
+            const drawOne = (slot: string, cfg: SingleScoreboardConfig) => {
+                if (!cfg.svg) return;
+                const img = getLiveScoreboardImage(slot, cfg.svg, cfg.fieldMappings, leftInfo, rightInfo, onScoreboardReady);
+                if (!img) return;
+                renderLiveScoreboard(ctx2d, img, cfg.anchor, cfg.scale, cfg.offset, outW, outH);
+            };
+            if (sb.mode === 'shared') drawOne('shared', sb.shared);
+            else {
+                drawOne('left', sb.left);
+                drawOne('right', sb.right);
+            }
+        };
+
+        const drawLayer: Record<LiveLayerId, () => void> = {
+            scoreboard: drawScoreboard,
+            hand: () =>
+                renderLiveHand(ctx2d, leftHand, rightHand, offsetX, offsetY, drawW, drawH, config.handStack, handAnims, now, eyeImg),
+            annotations: () => {
+                const { annotations, anims } = toAnnotations(players, time, config.annotationSlots, {
+                    left: config.annotationConfig.left.insert === 'prepend',
+                    right: config.annotationConfig.right.insert === 'prepend',
+                });
+                renderLiveAnnotations(
+                    ctx2d,
+                    annotations,
+                    offsetX,
+                    offsetY,
+                    drawW,
+                    drawH,
+                    config.annotationConfig,
+                    {
+                        anchorBottomY: {
+                            left: getHandStackTopY(leftHand, config.handStack.left, offsetY, drawH) - ANNOTATION_HAND_GAP,
+                            right: getHandStackTopY(rightHand, config.handStack.right, offsetY, drawH) - ANNOTATION_HAND_GAP,
+                        },
+                        stripW: {
+                            left: config.handStack.left.cardStripWidth,
+                            right: config.handStack.right.cardStripWidth,
+                        },
+                    },
+                    anims,
+                    now,
+                );
+            },
+            cardDisplay: () => {
+                const d = toDisplayCards(players, time, {
+                    left: config.cardDisplay.left.animation,
+                    right: config.cardDisplay.right.animation,
+                });
+                renderLiveCardDisplay(
+                    ctx2d,
+                    d.left,
+                    d.right,
+                    offsetX,
+                    offsetY,
+                    drawW,
+                    drawH,
+                    {
+                        left: config.handStack.left.cardStripWidth,
+                        right: config.handStack.right.cardStripWidth,
+                    },
+                    config.cardDisplay,
+                    d.anims,
+                    now,
+                    d.frontSide,
+                );
+            },
+        };
+
+        // Paint overlay layers bottom -> top per the configured order, skipping
+        // hidden ones and the base video (handled by the caller's texture upload).
+        for (const layer of config.layers) {
+            if (!layer.visible || layer.id === 'video') continue;
+            drawLayer[layer.id]?.();
+        }
 
         gl.activeTexture(gl.TEXTURE1);
         gl.bindTexture(gl.TEXTURE_2D, this.overlayTex);

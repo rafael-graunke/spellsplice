@@ -226,7 +226,7 @@ export function usePlayerTracks(
 
     const handleUpdatePlayer = useCallback((
         playerId: string,
-        updates: { name?: string; deckName?: string; decklist?: Decklist }
+        updates: { name?: string; deckName?: string; decklist?: Decklist; pronouns?: string; standing?: string }
     ) => {
         record((draft) => {
             const player = draft.players.find((p) => p.id === playerId);

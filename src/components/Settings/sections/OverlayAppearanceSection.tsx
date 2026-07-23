@@ -10,7 +10,7 @@ function OverlayAppearanceSection({ config, onConfigChange }: Props) {
     return (
         <div className="flex flex-col gap-6">
             <div>
-                <h2 className="text-base font-medium mb-4">Overlay Appearance</h2>
+                <h2 className="text-lg font-semibold mb-4">Overlay Behaviour</h2>
                 <div className="flex flex-col gap-4">
                     <div className="flex items-center gap-2.5">
                         <Checkbox

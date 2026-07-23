@@ -52,9 +52,10 @@ interface NLECreateDialogProps {
     onOpenChange: (open: boolean) => void;
     setIsPlaying: (v: boolean) => void;
     onCreateEvent: (partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>) => void;
+    displayCardDuration: number;
 }
 
-function NLECreateDialog({ open, onOpenChange, setIsPlaying, onCreateEvent }: NLECreateDialogProps) {
+function NLECreateDialog({ open, onOpenChange, setIsPlaying, onCreateEvent, displayCardDuration }: NLECreateDialogProps) {
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -120,7 +121,7 @@ function NLECreateDialog({ open, onOpenChange, setIsPlaying, onCreateEvent }: NL
                         <CommandItem onSelect={() => handleSelect({ type: EventType.UnannotateCard, meta: { annotationId: DEFAULT_ANNOTATION_SLOT_ID, cards: [] } })}>
                             Clear Annotation
                         </CommandItem>
-                        <CommandItem onSelect={() => handleSelect({ type: EventType.DisplayCard, duration: 5, resizable: true })}>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.DisplayCard, duration: displayCardDuration, resizable: true })}>
                             Display Card
                         </CommandItem>
                         <CommandItem onSelect={() => handleSelect({ type: EventType.Win })}>
@@ -189,6 +190,7 @@ interface NLETimelineProps {
     onDeleteClip?: (trackId: string, clipId: string) => void;
     initialZoom?: number;
     onZoomChange?: (zoom: number) => void;
+    displayCardDuration?: number;
 }
 
 export function NLETimeline({
@@ -222,6 +224,7 @@ export function NLETimeline({
     onDeleteSelection,
     initialZoom,
     onZoomChange,
+    displayCardDuration = 5,
 }: NLETimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
@@ -795,6 +798,7 @@ export function NLETimeline({
                 onOpenChange={handleCreateOpenChange}
                 setIsPlaying={setIsPlaying}
                 onCreateEvent={handleCreateEventForTrack}
+                displayCardDuration={displayCardDuration}
             />
         </div>
     );

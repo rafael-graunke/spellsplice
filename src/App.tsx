@@ -23,7 +23,9 @@ import { exportProject, importProject } from '@/lib/projectExport';
 import { migrateLegacyEvents } from '@/lib/migrateProject';
 import { RelinkDialog } from './components/Sources/RelinkDialog';
 import { getFileDuration, generateThumbnail } from '@/lib/generateThumbnail';
-import VideoPreview, { type VideoPreviewHandle } from './components/VideoPreview';
+import VideoPreview, {
+    type VideoPreviewHandle,
+} from './components/VideoPreview';
 import type { VideoState } from './components/types/video';
 import { Inspector } from './components/Inspector';
 import { usePlayerTracks } from './components/Timeline/hooks/usePlayerTracks';
@@ -162,8 +164,12 @@ function App() {
     const [isDirty, setIsDirty] = useState(false);
     const [exportDialogOpen, setExportDialogOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
-    const [settingsSection, setSettingsSection] = useState<SettingsSection>('metadata');
+    const [settingsSection, setSettingsSection] =
+        useState<SettingsSection>('metadata');
     const [cardStatus, setCardStatus] = useState<OracleCardsStatus>('idle');
+    const [cardProgress, setCardProgress] = useState<number | undefined>(
+        undefined
+    );
     const [cardsReady, setCardsReady] = useState(false);
     const [relinkDialogOpen, setRelinkDialogOpen] = useState(
         () => (savedStateInit?.sources?.length ?? 0) > 0
@@ -192,6 +198,14 @@ function App() {
         videoPreviewRef.current?.seek(t);
     }, []);
 
+    const handleCardStatus = useCallback(
+        (status: OracleCardsStatus, progress?: number) => {
+            setCardStatus(status);
+            setCardProgress(progress);
+        },
+        []
+    );
+
     useEffect(() => {
         localStorage.setItem(MODE_KEY, mode);
     }, [mode]);
@@ -201,25 +215,28 @@ function App() {
     // a stale copy resolves immediately and refreshes in the background.
     useEffect(() => {
         if (mode !== 'timeline') return;
-        ensureOracleCards(setCardStatus)
+        ensureOracleCards(handleCardStatus)
             .then(() => setCardsReady(true))
             .catch(() => {});
-    }, [mode]);
+    }, [mode, handleCardStatus]);
 
     const handleRetryCards = useCallback(() => {
         setCardsReady(false);
-        forceRefreshOracleCards(setCardStatus)
+        forceRefreshOracleCards(handleCardStatus)
             .then(() => setCardsReady(true))
             .catch(() => {});
-    }, []);
+    }, [handleCardStatus]);
 
     const handleForceRefreshCards = useCallback(() => {
-        forceRefreshOracleCards(setCardStatus).catch(() => {});
-    }, []);
+        forceRefreshOracleCards(handleCardStatus).catch(() => {});
+    }, [handleCardStatus]);
 
     // Stable identities so React.memo(AppBar) holds across the ~10Hz playback
     // re-renders (inline lambdas here would re-render the whole AppBar + menus).
-    const handleOpenRelinkMedia = useCallback(() => setRelinkDialogOpen(true), []);
+    const handleOpenRelinkMedia = useCallback(
+        () => setRelinkDialogOpen(true),
+        []
+    );
     const handleOpenLiveSettings = useCallback(() => {
         setLiveSettingsSection('connection');
         setLiveSettingsOpen(true);
@@ -256,7 +273,9 @@ function App() {
         initialPlayers,
         currentTimeRef,
         setSelectedEvents,
-        savedStateInit?.players ? migrateLegacyEvents(savedStateInit.players) : undefined,
+        savedStateInit?.players
+            ? migrateLegacyEvents(savedStateInit.players)
+            : undefined,
         savedStateInit?.clipsByTrack,
         savedStateInit?.trackOverrides
     );
@@ -356,7 +375,7 @@ function App() {
             annotationConfig: projectConfig.annotationConfig,
             layers: projectConfig.layers,
         }),
-        [projectConfig],
+        [projectConfig]
     );
 
     const clipsByTrackRef = useRef(clipsByTrack);
@@ -1177,7 +1196,11 @@ function App() {
                     onStartLiveMode={() => setMode('live')}
                 />
             ) : !cardsReady ? (
-                <TimelineCardsLoader status={cardStatus} onRetry={handleRetryCards} />
+                <TimelineCardsLoader
+                    status={cardStatus}
+                    progress={cardProgress}
+                    onRetry={handleRetryCards}
+                />
             ) : (
                 <ResizablePanelGroup orientation="vertical" className="flex-1">
                     <ResizablePanel minSize={100} defaultSize="60%">
@@ -1221,7 +1244,9 @@ function App() {
                                     editObject={selectedEvents}
                                     onUpdate={handleInspectorUpdate}
                                     player={inspectorPlayer}
-                                    annotationSlots={projectConfig.annotationSlots}
+                                    annotationSlots={
+                                        projectConfig.annotationSlots
+                                    }
                                     onManageSlots={handleManageSlots}
                                     autoFocus={
                                         selectedEvents[0]?.id === newEventId
@@ -1241,7 +1266,9 @@ function App() {
                             trackGroups={trackGroups}
                             initialZoom={zoom}
                             onZoomChange={setZoom}
-                            displayCardDuration={projectConfig.cardDisplayDuration / 1000}
+                            displayCardDuration={
+                                projectConfig.cardDisplayDuration / 1000
+                            }
                             onUndo={undo}
                             onRedo={redo}
                             canUndo={canUndo}

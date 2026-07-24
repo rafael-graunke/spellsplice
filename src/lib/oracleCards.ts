@@ -5,11 +5,16 @@ const DB_VERSION = 3;
 const STORE_CANONICAL = 'canonical';
 const STORE_PRINTINGS = 'printings';
 const STORE_META = 'meta';
-const BULK_DATA_INFO_URL = 'https://api.scryfall.com/bulk-data/default-cards';
+// Two bulks. oracle-cards = one Scryfall-curated preferred printing per card ->
+// the canonical view (Scryfall already excludes serialized/retro/promo junk, so
+// no local "which printing" heuristic is needed). default-cards = every printing
+// -> the printings store (edition picker, per-edition art, decklist verify).
+const ORACLE_BULK_INFO_URL = 'https://api.scryfall.com/bulk-data/oracle-cards';
+const DEFAULT_BULK_INFO_URL = 'https://api.scryfall.com/bulk-data/default-cards';
 
-// Bump when the shape of stored card records changes, to force a re-sync
-// even though the remote bulk data's updated_at hasn't changed.
-const SCHEMA_VERSION = 8;
+// Bump when the shape OR source of stored card records changes, to force a
+// re-sync even though the remote bulk data's updated_at hasn't changed.
+const SCHEMA_VERSION = 10;
 
 // Re-download the bulk when the local copy is older than this. Within the
 // window we never touch the network (not even the bulk-data info endpoint).
@@ -309,7 +314,6 @@ interface RawCard {
     colors?: string[];
     mana_cost?: string;
     frame?: string;
-    released_at?: string;
     games?: string[];
     image_uris?: RawUris;
     card_faces?: Array<{
@@ -319,76 +323,21 @@ interface RawCard {
     }>;
 }
 
-// Fetch the bulk, build the canonical + printings records, persist canonical
-// first (unblocking the UI) then printings in the background, and refresh the
-// in-memory caches. Shared by the blocking first load, the silent background
-// refresh, and force refresh.
-async function downloadAndStore(
-    db: IDBDatabase,
-    onStatus?: OracleCardsProgress
-): Promise<OracleCard[]> {
-    const infoRes = await fetch(BULK_DATA_INFO_URL, {
+// Stream a Scryfall bulk's gzipped JSONL, invoking onLine per parsed card.
+// onProgress reports a 0..1 download fraction (only when the file origin sends
+// Content-Length). Streaming avoids buffering the whole file: the default-cards
+// JSON is ~557MB, past V8's ~512MiB max string length, so Response.json() throws.
+async function streamBulk(
+    infoUrl: string,
+    onLine: (c: RawCard) => void,
+    onProgress?: (fraction: number) => void
+): Promise<void> {
+    const infoRes = await fetch(infoUrl, {
         headers: { Accept: 'application/json' },
     });
     const info = await infoRes.json();
-    // The full default-cards JSON is ~557MB, past V8's ~512MiB max string
-    // length, so Response.json() throws. Stream the gzipped JSONL variant and
-    // parse one card per line instead: no giant string, lower peak memory.
     const jsonlUri: string = info.jsonl_download_uri;
 
-    const setNames: Record<string, string> = {};
-    // One aggregate printings record per name (every printing nested).
-    const printingsByName = new Map<string, PrintingsRecord>();
-    // Newest paper printing per name -> the canonical record + its release date.
-    const canonicalByName = new Map<
-        string,
-        { rec: CanonicalRecord; released: string }
-    >();
-
-    const handleCard = (c: RawCard): void => {
-        if (c.layout === 'art_series') return;
-        if (c.set && c.set_name) setNames[c.set] = c.set_name;
-
-        // Transform/modal-DFC cards omit top-level colors/mana_cost/image_uris;
-        // fall back to the per-face front values.
-        const front = c.card_faces?.[0];
-        const frontUris = front?.image_uris ?? c.image_uris;
-        const img = idFromUri(frontUris?.normal ?? frontUris?.border_crop);
-
-        // printings store: append this printing to the name's aggregate.
-        let pr = printingsByName.get(c.name);
-        if (!pr) {
-            pr = { name: c.name, printings: [] };
-            if (c.layout) pr.layout = c.layout;
-            printingsByName.set(c.name, pr);
-        }
-        const entry: PrintingEntry = {};
-        if (c.set) entry.edition = c.set;
-        if (c.collector_number) entry.cn = c.collector_number;
-        if (c.frame) entry.frame = c.frame;
-        if (img) entry.img = img;
-        pr.printings.push(entry);
-
-        // canonical = newest paper printing. released_at is YYYY-MM-DD, so a
-        // lexicographic max is chronological. Digital-only names never win a
-        // canonical record and so stay out of the in-memory view.
-        if (c.games?.includes('paper') && c.released_at) {
-            const prev = canonicalByName.get(c.name);
-            if (!prev || c.released_at > prev.released) {
-                const rec: CanonicalRecord = { name: c.name };
-                const colors = c.colors ?? front?.colors;
-                if (colors) rec.colors = colors;
-                const mana = c.mana_cost ?? front?.mana_cost;
-                if (mana) rec.mana_cost = mana;
-                if (c.layout) rec.layout = c.layout;
-                if (c.frame) rec.frame = c.frame;
-                if (img) rec.img = img;
-                canonicalByName.set(c.name, { rec, released: c.released_at });
-            }
-        }
-    };
-
-    onStatus?.('downloading', 0);
     const res = await fetch(jsonlUri);
     if (!res.ok || !res.body)
         throw new Error(`bulk download failed: ${res.status}`);
@@ -407,7 +356,7 @@ async function downloadAndStore(
                 const pct = Math.floor((received / total) * 100);
                 if (pct !== lastPct) {
                     lastPct = pct;
-                    onStatus?.('downloading', received / total);
+                    onProgress?.(received / total);
                 }
             }
             controller.enqueue(chunk);
@@ -432,14 +381,58 @@ async function downloadAndStore(
         while ((nl = buf.indexOf('\n')) >= 0) {
             const line = buf.slice(0, nl);
             buf = buf.slice(nl + 1);
-            if (line) handleCard(JSON.parse(line));
+            if (line) onLine(JSON.parse(line));
         }
     }
-    if (buf.trim()) handleCard(JSON.parse(buf));
+    if (buf.trim()) onLine(JSON.parse(buf));
+}
+
+// One oracle-bulk card -> its canonical record. Scryfall already picked the
+// preferred printing per name, so there's no local heuristic here. Returns null
+// for non-paper (digital-only, e.g. Alchemy) cards, which stay out of the
+// in-memory view as before.
+function toCanonical(c: RawCard): CanonicalRecord | null {
+    if (!c.games?.includes('paper')) return null;
+    // Transform/modal-DFC cards omit top-level colors/mana_cost/image_uris; fall
+    // back to the per-face front values.
+    const front = c.card_faces?.[0];
+    const frontUris = front?.image_uris ?? c.image_uris;
+    const img = idFromUri(frontUris?.normal ?? frontUris?.border_crop);
+    const rec: CanonicalRecord = { name: c.name };
+    const colors = c.colors ?? front?.colors;
+    if (colors) rec.colors = colors;
+    const mana = c.mana_cost ?? front?.mana_cost;
+    if (mana) rec.mana_cost = mana;
+    if (c.layout) rec.layout = c.layout;
+    if (c.frame) rec.frame = c.frame;
+    if (img) rec.img = img;
+    return rec;
+}
+
+// Download both bulks and rebuild the stores. oracle-cards drives the canonical
+// view and is fetched first so the UI unblocks without waiting on the much larger
+// default-cards; the printings store (from default-cards) is written in the
+// background. Shared by the blocking first load, the silent TTL refresh, and
+// force refresh.
+async function downloadAndStore(
+    db: IDBDatabase,
+    onStatus?: OracleCardsProgress
+): Promise<OracleCard[]> {
+    // oracle-cards -> canonical (one Scryfall-preferred printing per name).
+    onStatus?.('downloading', 0);
+    const canonicalByName = new Map<string, CanonicalRecord>();
+    await streamBulk(
+        ORACLE_BULK_INFO_URL,
+        (c) => {
+            if (c.layout === 'art_series') return;
+            const rec = toCanonical(c);
+            if (rec) canonicalByName.set(c.name, rec);
+        },
+        (f) => onStatus?.('downloading', f)
+    );
 
     onStatus?.('storing', 0);
-    const canonicalRecs = Array.from(canonicalByName.values(), (v) => v.rec);
-    const printingsRecs = Array.from(printingsByName.values());
+    const canonicalRecs = Array.from(canonicalByName.values());
 
     // Drop meta up front so a crash mid-write leaves no "valid" flag pointing at
     // half-written stores; a reload then re-downloads instead of reading empty.
@@ -451,15 +444,43 @@ async function downloadAndStore(
     await writeRows(db, STORE_CANONICAL, canonicalRecs, (f) =>
         onStatus?.('storing', f)
     );
-    setNamesCache = setNames;
     setCardsCache(canonicalRecs.map(hydrateCanonical));
 
-    // Background: the ~2x-larger printings store isn't on the load path (only the
-    // edition picker / decklist verify read it), so write it after the UI is up.
-    // setMeta lands last, marking the whole DB valid only once both stores are in.
+    // Background: default-cards is much larger and only feeds the printings store
+    // (edition picker / decklist verify), off the load path. Stream + write it
+    // after the UI is up; setMeta lands last, marking the whole DB valid only once
+    // both stores are in.
     restWrite = (async () => {
         try {
-            await writeRows(db, STORE_PRINTINGS, printingsRecs);
+            const setNames: Record<string, string> = {};
+            const printingsByName = new Map<string, PrintingsRecord>();
+            await streamBulk(DEFAULT_BULK_INFO_URL, (c) => {
+                if (c.layout === 'art_series') return;
+                if (c.set && c.set_name) setNames[c.set] = c.set_name;
+                // Transform/modal-DFC cards omit top-level image_uris; fall back
+                // to the per-face front image.
+                const front = c.card_faces?.[0];
+                const frontUris = front?.image_uris ?? c.image_uris;
+                const img = idFromUri(frontUris?.normal ?? frontUris?.border_crop);
+                let pr = printingsByName.get(c.name);
+                if (!pr) {
+                    pr = { name: c.name, printings: [] };
+                    if (c.layout) pr.layout = c.layout;
+                    printingsByName.set(c.name, pr);
+                }
+                const entry: PrintingEntry = {};
+                if (c.set) entry.edition = c.set;
+                if (c.collector_number) entry.cn = c.collector_number;
+                if (c.frame) entry.frame = c.frame;
+                if (img) entry.img = img;
+                pr.printings.push(entry);
+            });
+            setNamesCache = setNames;
+            await writeRows(
+                db,
+                STORE_PRINTINGS,
+                Array.from(printingsByName.values())
+            );
             await setMeta(db, Date.now(), canonicalRecs.length, setNames);
         } catch (err) {
             console.warn('background printings write failed', err);

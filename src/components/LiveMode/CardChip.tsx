@@ -40,8 +40,7 @@ export const CardChip = forwardRef<HTMLDivElement, CardChipProps>(
                 style={gradient ? { ...gradient, ...style } : style}
                 {...props}
             >
-                <span className="flex items-center gap-2">
-                    <p className="flex-1 truncate">{frontName.trim()}</p>
+                <span className="flex items-center gap-2 min-w-0">
                     {backName && (
                         <TooltipProvider>
                             <Tooltip>
@@ -57,9 +56,10 @@ export const CardChip = forwardRef<HTMLDivElement, CardChipProps>(
                             </Tooltip>
                         </TooltipProvider>
                     )}
+                    <p className="truncate">{frontName.trim()}</p>
                 </span>
                 {card.mana_cost && (
-                    <span className="flex items-center gap-0.5">
+                    <span className="flex items-center gap-0.5 shrink-0 pl-2">
                         {manaCostToClasses(card.mana_cost).map((cls, i) => (
                             <i
                                 key={i}

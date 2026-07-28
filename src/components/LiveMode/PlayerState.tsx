@@ -44,21 +44,21 @@ export function PlayerState({
     return (
         <div
             className={cn(
-                'flex justify-between gap-2 rounded-lg border bg-muted p-2 px-3',
+                'flex justify-between gap-2 rounded-lg border bg-surface p-2 px-3',
                 reverse ? 'flex-row-reverse' : 'flex-row'
             )}
         >
             <div className="flex items-center gap-2">
                 <div className="flex flex-col items-start min-w-0">
-                    <p className="text-md font-medium truncate">
+                    <p className="text-sm font-medium truncate">
                         {name || 'Player name'}
                     </p>
-                    <p className="text-sm font-medium text-muted-foreground truncate">
+                    <p className="text-xs font-medium text-muted-foreground truncate">
                         {deckName || 'Deck name'}
                     </p>
                 </div>
                 <Button
-                    className="cursor-pointer"
+                    className="cursor-pointer text-muted-foreground"
                     variant="ghost"
                     size="icon-sm"
                     onClick={onEdit}
@@ -73,7 +73,7 @@ export function PlayerState({
                     reverse ? 'flex-row-reverse' : 'flex-row'
                 )}
             >
-                <div className="flex items-center justify-center gap-3 p-1 pl-2 rounded-md border bg-black/20">
+                <div className="flex items-center justify-center gap-3 p-1 pl-2 rounded-md border dark:bg-background">
                     <div className="flex items-center justify-start gap-2">
                         <Heart className="w-4 h-4" />
                         <p className="text-sm text-muted-foreground tabular-nums">
@@ -113,7 +113,7 @@ export function PlayerState({
                         </Button>
                     </div>
                 </div>
-                <div className="flex items-center justify-center gap-3 p-1 pl-2 rounded-md border bg-black/20">
+                <div className="flex items-center justify-center gap-3 p-1 pl-2 rounded-md border dark:bg-background">
                     <div className="flex items-center w-full justify-start gap-2">
                         <Trophy className="w-4 h-4" />
                         <p className="text-sm text-muted-foreground tabular-nums">

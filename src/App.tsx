@@ -1219,7 +1219,7 @@ function App() {
                             <ResizablePanel
                                 minSize={100}
                                 defaultSize="70%"
-                                className="bg-muted/20"
+                                className="bg-surface"
                             >
                                 <VideoPreview
                                     ref={videoPreviewRef}

@@ -15,7 +15,7 @@ export function CreateAnnotationControl({
         <>
             <button
                 type="button"
-                className="flex shrink-0 cursor-pointer items-center justify-center gap-1 rounded-lg border border-dashed p-2 text-sm text-muted-foreground hover:bg-muted"
+                className="flex shrink-0 cursor-pointer items-center justify-center gap-1 rounded-lg transition-colors border border-dashed p-2 text-sm text-muted-foreground hover:bg-surface"
                 onClick={() => setDialogOpen(true)}
             >
                 <PlusIcon className="size-4" />

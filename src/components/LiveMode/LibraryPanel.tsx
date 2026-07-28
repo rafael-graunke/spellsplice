@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { XIcon } from 'lucide-react';
+import { PencilIcon, SearchIcon, XIcon } from 'lucide-react';
 import type { OracleCard } from '@/lib/oracleCards';
 import type { Decklist } from '@/components/types/player';
 import { DraggableCard } from './DraggableCard';
@@ -13,6 +13,8 @@ import {
     InputGroupInput,
 } from '@/components/ui/input-group';
 import { cn } from '@/lib/utils';
+import { Empty } from '@/components/ui/empty';
+import { Draw } from '@/assets/icons';
 
 export interface LibraryCardInstance {
     id: string;
@@ -47,13 +49,27 @@ export function LibraryPanel({
         <div
             ref={setNodeRef}
             className={cn(
-                'flex flex-col h-full min-h-0 gap-2 p-2 border rounded-md bg-muted overflow-hidden transition-colors',
+                'flex flex-col h-full min-h-0 gap-2 p-2 border rounded-md dark:bg-surface overflow-hidden transition-colors',
                 isOver && 'border-ring bg-input/50'
             )}
         >
-            <p className="text-sm font-medium">Library</p>
-
-            <InputGroup>
+            <div className="flex items-center justify-between shrink-0">
+                <p className="text-xs font-medium uppercase text-muted-foreground select-none">
+                    Library
+                </p>
+                <Button
+                    className="cursor-pointer text-muted-foreground"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setDialogOpen(true)}
+                >
+                    <PencilIcon />
+                </Button>
+            </div>
+            <InputGroup className="dark:bg-background border-none">
+                <InputGroupAddon align="inline-start">
+                    <SearchIcon />
+                </InputGroupAddon>
                 <InputGroupInput
                     placeholder="Search deck…"
                     value={query}
@@ -71,30 +87,45 @@ export function LibraryPanel({
                     </InputGroupAddon>
                 )}
             </InputGroup>
-
-            {!decklist ? (
-                <Button className="w-full" onClick={() => setDialogOpen(true)}>
-                    Import decklist
-                </Button>
-            ) : (
-                <div className="flex flex-1 min-h-0 flex-col overflow-y-auto rounded-md gap-1">
-                    {visibleCards.length === 0 ? (
-                        <p className="text-xs text-muted-foreground text-center py-2">
-                            {library.length === 0
-                                ? 'Library empty'
-                                : 'No matches'}
-                        </p>
-                    ) : (
-                        visibleCards.map(({ id, card }) => (
-                            <DraggableCard
-                                key={id}
-                                id={`lib:${side}:${id}`}
-                                card={card}
-                            />
-                        ))
-                    )}
-                </div>
-            )}
+            <div className="relative flex flex-1 min-h-0 flex-col gap-2 overflow-hidden dark:bg-background rounded-md border border-transparent transition-colors">
+                {!decklist ? (
+                    <Empty className="flex-1 min-h-0 gap-3">
+                        <div className="flex flex-col gap-1">
+                            <Empty.Icon icon={Draw} className="fill-current" />
+                            <Empty.Title>Library empty</Empty.Title>
+                            <Empty.Subtitle>
+                                No decklist imported yet
+                            </Empty.Subtitle>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="pointer-events-auto cursor-pointer"
+                            onClick={() => setDialogOpen(true)}
+                        >
+                            Import decklist
+                        </Button>
+                    </Empty>
+                ) : (
+                    <div className="flex flex-1 min-h-0 flex-col overflow-y-auto rounded-md gap-1 px-1 py-2">
+                        {visibleCards.length === 0 ? (
+                            <p className="text-xs text-muted-foreground text-center py-2">
+                                {library.length === 0
+                                    ? 'Library empty'
+                                    : 'No matches'}
+                            </p>
+                        ) : (
+                            visibleCards.map(({ id, card }) => (
+                                <DraggableCard
+                                    key={id}
+                                    id={`lib:${side}:${id}`}
+                                    card={card}
+                                />
+                            ))
+                        )}
+                    </div>
+                )}
+            </div>
 
             <ImportDecklistDialog
                 open={dialogOpen}

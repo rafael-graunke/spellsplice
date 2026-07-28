@@ -9,6 +9,7 @@ import {
 } from '@/lib/cardCache';
 import { isMultiFaceLayout } from '@/lib/oracleCards';
 import { Button } from '@/components/ui/button';
+import { Empty } from '@/components/ui/empty';
 import { cn } from '@/lib/utils';
 import { Book, Reveal } from '@/assets/icons';
 
@@ -64,11 +65,11 @@ export function CardDisplay({
     const showCountdown = playUntil != null;
 
     return (
-        <div className="relative p-2 flex flex-col gap-1 border bg-muted rounded-lg">
+        <div className="relative p-2 flex flex-col gap-1 border bg-surface rounded-lg">
             <div className="flex items-center justify-between shrink-0">
-                <p className="text-sm font-medium">Card Display</p>
+                <p className="text-xs font-medium uppercase text-muted-foreground select-none">Card Display</p>
                 <Button
-                    className="cursor-pointer"
+                    className="cursor-pointer text-muted-foreground"
                     variant="ghost"
                     size="icon-sm"
                     onClick={onSettings}
@@ -76,12 +77,7 @@ export function CardDisplay({
                     <Settings />
                 </Button>
             </div>
-            <div
-                className={cn(
-                    'relative flex w-full aspect-[5/7] items-center justify-center rounded-lg text-xs text-muted-foreground transition-colors',
-                    card ? 'bg-muted' : 'bg-black/20'
-                )}
-            >
+            <div className="relative flex w-full aspect-[5/7] items-center justify-center rounded-lg text-xs text-muted-foreground transition-colors bg-background">
                 {rendered && (
                     <div
                         onTransitionEnd={() => {
@@ -126,13 +122,11 @@ export function CardDisplay({
                     </div>
                 )}
                 {!card && (
-                    <div className="pointer-events-none absolute flex flex-col items-center gap-1 text-center">
-                        <ImageIcon className="size-6 opacity-60" />
-                        <span className="font-medium">Nothing on screen</span>
-                        <span className="opacity-70">
-                            Drop a card to show it
-                        </span>
-                    </div>
+                    <Empty>
+                        <Empty.Icon icon={ImageIcon} size="size-6" />
+                        <Empty.Title>Nothing on screen</Empty.Title>
+                        <Empty.Subtitle>Drop a card to show it</Empty.Subtitle>
+                    </Empty>
                 )}
                 {card && (
                     <Button
@@ -165,7 +159,7 @@ export function CardDisplay({
                 )}
                 <div
                     className={cn(
-                        'absolute inset-0 flex flex-col gap-2 bg-muted transition-opacity',
+                        'absolute inset-0 flex flex-col gap-2 bg-surface transition-opacity',
                         dragging
                             ? 'opacity-100'
                             : 'pointer-events-none opacity-0'

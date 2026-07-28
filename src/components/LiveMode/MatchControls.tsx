@@ -25,7 +25,7 @@ export function MatchControls({ onResetMatch }: MatchControlsProps) {
     };
 
     return (
-        <div className="flex h-full flex-col items-center justify-center gap-2 self-stretch bg-muted rounded-lg border px-5">
+        <div className="flex h-full flex-col items-center justify-center gap-2 self-stretch bg-surface rounded-lg border px-5">
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogTrigger asChild>
                     <Button

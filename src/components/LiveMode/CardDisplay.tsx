@@ -1,4 +1,4 @@
-import { useDndContext, useDroppable } from '@dnd-kit/core';
+import { useDndMonitor, useDroppable, type Active } from '@dnd-kit/core';
 import { ImageIcon, RefreshCwIcon, Settings, XIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { LibraryCardInstance } from './LibraryPanel';
@@ -13,11 +13,17 @@ import { Empty } from '@/components/ui/empty';
 import { cn } from '@/lib/utils';
 import { Book, Reveal } from '@/assets/icons';
 
+function dragSideOf(id: string): 'left' | 'right' | null {
+    const [prefix, key] = id.split(':');
+    if (prefix === 'lib' || prefix === 'hand') return key as 'left' | 'right';
+    if (prefix === 'annotation') return key.endsWith('-left') ? 'left' : 'right';
+    return null;
+}
+
 interface CardDisplayProps {
     side: 'left' | 'right';
     card: LibraryCardInstance | null;
     flipped: boolean;
-    disabled: boolean;
     // Epoch ms when a played card auto-clears; null = no active timer.
     playUntil: number | null;
     playDuration: number;
@@ -30,13 +36,20 @@ export function CardDisplay({
     side,
     card,
     flipped,
-    disabled,
     playUntil,
     playDuration,
     onClear,
     onFlip,
     onSettings,
 }: CardDisplayProps) {
+    const [active, setActive] = useState<Active | null>(null);
+    useDndMonitor({
+        onDragStart: (e) => setActive(e.active),
+        onDragEnd: () => setActive(null),
+        onDragCancel: () => setActive(null),
+    });
+    const activeSide = active ? dragSideOf(String(active.id)) : null;
+    const disabled = activeSide !== null && activeSide !== side;
     const { setNodeRef: setPlayRef, isOver: playOver } = useDroppable({
         id: `card-display-${side}-play`,
         disabled,
@@ -45,23 +58,18 @@ export function CardDisplay({
         id: `card-display-${side}-display`,
         disabled,
     });
-    const { active } = useDndContext();
     const dragging = !disabled && active != null;
     const [, forceUpdate] = useState(0);
     useEffect(() => subscribeImageLoad(() => forceUpdate((n) => n + 1)), []);
 
-    // Keep the last card mounted after `card` clears so it can fade out.
     const [rendered, setRendered] = useState(card);
     if (card && card !== rendered) setRendered(card);
 
     const canFlip = isMultiFaceLayout(rendered?.card.layout);
-    // Both faces stay mounted so the container can rotateY between them.
     const frontImg = rendered ? ensureImage(rendered.card.name) : null;
     const backImg =
         rendered && canFlip ? ensureBackImage(rendered.card.name) : null;
 
-    // Play-timer countdown bar. Keyed on playUntil so each play restarts the
-    // animation; playUntil is cleared when the timer fires or the card clears.
     const showCountdown = playUntil != null;
 
     return (

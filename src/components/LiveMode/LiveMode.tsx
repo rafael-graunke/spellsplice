@@ -1,20 +1,18 @@
 import {
     forwardRef,
+    useCallback,
     useEffect,
     useImperativeHandle,
-    useMemo,
     useRef,
     useState,
 } from 'react';
 import {
     DndContext,
-    DragOverlay,
     PointerSensor,
     pointerWithin,
     useSensor,
     useSensors,
     type DragEndEvent,
-    type DragStartEvent,
 } from '@dnd-kit/core';
 import { useOracleCards } from '@/hooks/useOracleCards';
 import { findOracleCard } from '@/lib/oracleCards';
@@ -46,8 +44,8 @@ import { PlayerState } from './PlayerState';
 import { MatchControls } from './MatchControls';
 import { Annotation } from './Annotation';
 import { CreateAnnotationControl } from './CreateAnnotationControl';
-import { CardChip } from './CardChip';
 import { CardDisplay } from './CardDisplay';
+import { DragLayer } from './DragLayer';
 
 type Side = 'left' | 'right';
 
@@ -210,9 +208,10 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
     useEffect(() => {
         sidesRef.current = sides;
     }, [sides]);
-    const [activeId, setActiveId] = useState<string | null>(null);
-    const [activeWidth, setActiveWidth] = useState<number | null>(null);
-    const [skipDropAnimation, setSkipDropAnimation] = useState(false);
+    // Whether the last drop landed on a valid target. Written in handleDragEnd,
+    // read by DragLayer (via its useDndMonitor onDragEnd) to skip the return
+    // animation. Kept out of state so drops don't force an extra render here.
+    const dropSuccessRef = useRef(false);
 
     const [config] = useState(() => loadLiveModeConfig());
     const sendRef = useRef<(msg: LiveMessage) => void>(() => {});
@@ -324,11 +323,6 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
         sendRef.current = send;
     }, [send]);
 
-    // Push the current scoreboard as soon as control connects (session start),
-    // rather than waiting for the overlay to ask via 'request-state' - a
-    // persistent OBS Browser Source stays connected across sessions and never
-    // sends that request on its own, so it would otherwise need a manual
-    // browser-source refresh to pick up a new/default scoreboard.
     useEffect(() => {
         if (socketStatus === 'open') {
             sendRef.current({
@@ -616,42 +610,33 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
         });
     };
 
-    const activeCard = useMemo(() => {
-        if (!activeId) return null;
-        const [prefix, key, instanceId] = activeId.split(':');
-        if (prefix === 'lib')
-            return (
-                sides[key as Side].library.find((c) => c.id === instanceId)
-                    ?.card ?? null
-            );
-        if (prefix === 'hand')
-            return (
-                sides[key as Side].hand.find((c) => c.id === instanceId)
-                    ?.card ?? null
-            );
-        if (prefix === 'annotation') {
-            const { side, annotationId } = parseAnnotationSlug(key);
-            return (
-                sides[side].annotations
-                    .find((a) => a.id === annotationId)
-                    ?.cards.find((c) => c.id === instanceId)?.card ?? null
-            );
-        }
-        return null;
-    }, [activeId, sides]);
-
-    const activeSide = useMemo(() => {
-        if (!activeId) return null;
-        const [prefix, key] = activeId.split(':');
-        if (prefix === 'lib' || prefix === 'hand') return key as Side;
-        if (prefix === 'annotation') return parseAnnotationSlug(key).side;
-        return null;
-    }, [activeId]);
-
-    const handleDragStart = (e: DragStartEvent) => {
-        setActiveId(String(e.active.id));
-        setActiveWidth(e.active.rect.current.initial?.width ?? null);
-    };
+    // Resolve a drag id to its card for the DragLayer overlay. Only invoked
+    // during a drag, when `sides` is unchanged.
+    const resolveActiveCard = useCallback(
+        (id: string) => {
+            const [prefix, key, instanceId] = id.split(':');
+            if (prefix === 'lib')
+                return (
+                    sides[key as Side].library.find((c) => c.id === instanceId)
+                        ?.card ?? null
+                );
+            if (prefix === 'hand')
+                return (
+                    sides[key as Side].hand.find((c) => c.id === instanceId)
+                        ?.card ?? null
+                );
+            if (prefix === 'annotation') {
+                const { side, annotationId } = parseAnnotationSlug(key);
+                return (
+                    sides[side].annotations
+                        .find((a) => a.id === annotationId)
+                        ?.cards.find((c) => c.id === instanceId)?.card ?? null
+                );
+            }
+            return null;
+        },
+        [sides]
+    );
 
     const handleImport = (side: Side, decklist: Decklist) => {
         const seen = new Set<string>();
@@ -671,9 +656,6 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                 CARD_COLOR_ORDER[getCardColorKey(a.card.colors)] -
                 CARD_COLOR_ORDER[getCardColorKey(b.card.colors)];
             if (colorDiff !== 0) return colorDiff;
-            // Cards with a mana cost sort before cards without one (e.g. lands),
-            // so zero-cost artifacts don't intermix with lands and colorless
-            // high-CMC cards don't sink to the bottom.
             const aHasCost = !!a.card.mana_cost;
             const bHasCost = !!b.card.mana_cost;
             if (aHasCost !== bHasCost) return aHasCost ? -1 : 1;
@@ -869,9 +851,7 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
             }
         }
 
-        setSkipDropAnimation(success);
-        setActiveId(null);
-        setActiveWidth(null);
+        dropSuccessRef.current = success;
     };
 
     const handleClearHand = (side: Side) => {
@@ -964,7 +944,6 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
         }, cardDisplayDuration);
     };
 
-    // Cancel pending play timers on unmount.
     useEffect(
         () => () => {
             cancelPlayTimer('left');
@@ -982,8 +961,6 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
         broadcastDisplayCard(side, sides[side].displayCard, flipped);
     };
 
-    // Life/wins are the only fields the controller edits inline; identity
-    // (name/deck/standing/pronouns) is edited in the Players config dialog.
     const handleUpdateSide = (
         side: Side,
         patch: Partial<Pick<SideState, 'life' | 'wins'>>
@@ -999,10 +976,6 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
         });
     };
 
-    // Reset the match between games: clear both hands, all annotation cards, the
-    // played card, and reset life to 20. Wins, decklists, libraries, and player
-    // names/deck names are kept. Emits removal deltas (so /overlay animates the
-    // clear) then authoritative snapshots.
     const handleResetMatch = () => {
         cancelPlayTimer('left');
         cancelPlayTimer('right');
@@ -1060,13 +1033,7 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
         <DndContext
             sensors={sensors}
             collisionDetection={pointerWithin}
-            onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
-            onDragCancel={() => {
-                setSkipDropAnimation(false);
-                setActiveId(null);
-                setActiveWidth(null);
-            }}
         >
             <div className="flex-1 min-h-0 grid grid-cols-6 grid-rows-[auto_1fr] p-2 gap-2 overflow-hidden">
                 <div className="col-span-6 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
@@ -1120,7 +1087,6 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                         flipped={sides.left.displayCardFlipped}
                         playUntil={sides.left.displayCardPlayUntil}
                         playDuration={cardDisplayDuration}
-                        disabled={activeSide !== null && activeSide !== 'left'}
                         onClear={() => handleClearDisplayCard('left')}
                         onFlip={() => handleFlipDisplayCard('left')}
                         onSettings={onOpenSettings}
@@ -1210,7 +1176,6 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                         flipped={sides.right.displayCardFlipped}
                         playUntil={sides.right.displayCardPlayUntil}
                         playDuration={cardDisplayDuration}
-                        disabled={activeSide !== null && activeSide !== 'right'}
                         onClear={() => handleClearDisplayCard('right')}
                         onFlip={() => handleFlipDisplayCard('right')}
                         onSettings={onOpenSettings}
@@ -1227,15 +1192,10 @@ const LiveMode = forwardRef<LiveModeHandle, LiveModeProps>(function LiveMode(
                 </div>
             </div>
 
-            <DragOverlay dropAnimation={skipDropAnimation ? null : undefined}>
-                {activeCard ? (
-                    <CardChip
-                        card={activeCard}
-                        className="shadow-lg"
-                        style={activeWidth ? { width: activeWidth } : undefined}
-                    />
-                ) : null}
-            </DragOverlay>
+            <DragLayer
+                resolveCard={resolveActiveCard}
+                dropSuccessRef={dropSuccessRef}
+            />
         </DndContext>
     );
 });

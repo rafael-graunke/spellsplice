@@ -2,6 +2,7 @@ import { useDraggable } from '@dnd-kit/core';
 import type { OracleCard } from '@/lib/oracleCards';
 import { CardChip } from './CardChip';
 import { cn } from '@/lib/utils';
+import { memo } from 'react';
 
 interface DraggableCardProps {
     id: string;
@@ -9,7 +10,7 @@ interface DraggableCardProps {
     disabled?: boolean;
 }
 
-export function DraggableCard({ id, card, disabled }: DraggableCardProps) {
+export const DraggableCard = memo(function DraggableCard({ id, card, disabled }: DraggableCardProps) {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
         id,
         disabled,
@@ -29,4 +30,4 @@ export function DraggableCard({ id, card, disabled }: DraggableCardProps) {
             )}
         />
     );
-}
+})

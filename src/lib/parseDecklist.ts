@@ -1,5 +1,5 @@
-import type { Decklist } from '@/components/types/player';
-import type { Card } from '@/components/types/card';
+import type { Decklist } from '@/types/player';
+import type { Card } from '@/types/card';
 
 // Format per line: `<qty> <name> [(<set>)]`
 // A line matching /^sideboard$/i switches all subsequent cards to sideboard.

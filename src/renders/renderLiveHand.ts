@@ -1,4 +1,4 @@
-import type { Card } from '@/components/types/card';
+import type { Card } from '@/types/card';
 import type {
     LiveHandCard,
     LiveHandStackConfig,

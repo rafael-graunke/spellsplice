@@ -1,5 +1,5 @@
 import type { OracleCard } from './oracleCards';
-import type { EventType } from '@/components/types/event';
+import type { EventType } from '@/types/event';
 import defaultScoreboardSvg from '@/assets/scoreboards/default-scoreboard.svg?raw';
 
 export const LIVE_MODE_KEY = 'spellsplice-live-mode';

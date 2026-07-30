@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { searchOracleCards } from '@/lib/oracleCards';
-import type { Player } from '@/components/types/player';
+import type { Player } from '@/types/player';
 
 export function useCardSearch(query: string, player?: Player | null) {
     // Local-first: the player's own hand + decklist, so their cards rank ahead

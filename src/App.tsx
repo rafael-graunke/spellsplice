@@ -4,50 +4,50 @@ import {
     ResizablePanel,
     ResizablePanelGroup,
 } from './components/ui/resizable';
-import { NLETimeline } from './components/nle/NLETimeline';
+import { Timeline } from './features/timeline/Timeline';
 import type {
     DeleteItem,
     DuplicateItem,
     PasteItem,
-} from './components/nle/NLETimeline';
-import type { NLEMoveResult } from './components/nle/hooks/nleHookTypes';
-import type { Clip } from './components/types/clip';
-import { ClipType } from './components/types/clip';
-import type { NLETrackGroup, NLETrack } from './components/types/nle';
-import { TrackType } from './components/types/nle';
-import type { TrackOverrideRow } from './components/Timeline/hooks/usePlayerTracks';
-import type { Player } from './components/types/player';
-import type { TrackEvent, EventMeta } from './components/types/event';
+} from './features/timeline/Timeline';
+import type { MoveResult } from './features/timeline/hooks/hookTypes';
+import type { Clip } from './types/clip';
+import { ClipType } from './types/clip';
+import type { TimelineTrackGroup, TimelineTrack } from './features/timeline/types';
+import { TrackType } from './features/timeline/types';
+import type { TrackOverrideRow } from './features/timeline/hooks/usePlayerTracks';
+import type { Player } from './types/player';
+import type { TrackEvent, EventMeta } from './types/event';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { exportProject, importProject } from '@/lib/projectExport';
 import { migrateLegacyEvents } from '@/lib/migrateProject';
-import { RelinkDialog } from './components/Sources/RelinkDialog';
+import { RelinkDialog } from './features/sources/RelinkDialog';
 import { getFileDuration, generateThumbnail } from '@/lib/generateThumbnail';
 import VideoPreview, {
     type VideoPreviewHandle,
-} from './components/VideoPreview';
-import type { VideoState } from './components/types/video';
-import { Inspector } from './components/Inspector';
-import { usePlayerTracks } from './components/Timeline/hooks/usePlayerTracks';
-import AppBar from './components/AppBar';
-import { ExportDialog } from './components/ExportDialog';
-import SettingsDialog from './components/Settings/SettingsDialog';
-import type { Section as SettingsSection } from './components/Settings/SettingsDialog';
-import TimelineCardsLoader from './components/TimelineCardsLoader';
+} from './features/timeline/VideoPreview';
+import type { VideoState } from './types/video';
+import { Inspector } from './features/inspector/index';
+import { usePlayerTracks } from './features/timeline/hooks/usePlayerTracks';
+import AppBar from './features/app-bar/index';
+import { ExportDialog } from './features/export/ExportDialog';
+import SettingsDialog from './features/settings/SettingsDialog';
+import type { Section as SettingsSection } from './features/settings/SettingsDialog';
+import TimelineCardsLoader from './features/timeline/TimelineCardsLoader';
 import {
     ensureOracleCards,
     forceRefreshOracleCards,
     type OracleCardsStatus,
 } from '@/lib/oracleCards';
-import type { ProjectConfig } from './components/types/config';
-import { DEFAULT_PROJECT_CONFIG } from './components/types/config';
-import { Sources } from './components/Sources';
-import type { MediaSource } from './components/types/source';
-import WelcomeScreen from './components/Welcome';
-import LiveMode, { type LiveModeHandle } from './components/LiveMode/LiveMode';
+import type { ProjectConfig } from './types/config';
+import { DEFAULT_PROJECT_CONFIG } from './types/config';
+import { Sources } from './features/sources/index';
+import type { MediaSource } from './types/source';
+import WelcomeScreen from './features/welcome/index';
+import LiveMode, { type LiveModeHandle } from './features/live-mode/LiveMode';
 import LiveModeDialog, {
     type Section as LiveSettingsSection,
-} from './components/LiveMode/LiveModeDialog';
+} from './features/live-mode/LiveModeDialog';
 import {
     LIVE_PROJECT_KEY,
     LIVE_SCOREBOARD_KEY,
@@ -99,7 +99,7 @@ const makeFreshPlayers = (): Player[] =>
 
 type SavedState = {
     players: Player[];
-    clipsByTrack: Record<string, import('./components/types/clip').Clip[]>;
+    clipsByTrack: Record<string, import('./types/clip').Clip[]>;
     trackOverrides: Record<string, TrackOverrideRow[]>;
     sources?: Array<{
         id: string;
@@ -553,10 +553,10 @@ function App() {
     videoRef.current = video;
 
     const trackGroups = useMemo(
-        (): NLETrackGroup[] => [
+        (): TimelineTrackGroup[] => [
             ...players.map((p) => {
                 const override = trackOverrides[p.id];
-                const tracks: NLETrack[] = override
+                const tracks: TimelineTrack[] = override
                     ? override.map((t) => ({
                           ...t,
                           events: p.track.events.filter(
@@ -677,7 +677,7 @@ function App() {
         setSelectedEvents(events);
     }, []);
 
-    const handleNLECreate = useCallback(
+    const handleCreate = useCallback(
         (
             trackId: string,
             partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>,
@@ -694,7 +694,7 @@ function App() {
         [handleCreateEventAutoLayer, trackInfoByTrackId]
     );
 
-    const handleNLEDelete = useCallback(
+    const handleDelete = useCallback(
         (items: DeleteItem[]) => {
             const byPlayer = new Map<string, number[]>();
             for (const { trackId, eventId } of items) {
@@ -711,7 +711,7 @@ function App() {
         [handleDeleteEvents, trackInfoByTrackId]
     );
 
-    const handleNLEDeleteSelection = useCallback(
+    const handleDeleteSelection = useCallback(
         (
             eventItems: DeleteItem[],
             clipItems: { trackId: string; clipId: string }[]
@@ -735,7 +735,7 @@ function App() {
         [handleDeleteAll, trackInfoByTrackId]
     );
 
-    const handleNLEDuplicate = useCallback(
+    const handleDuplicate = useCallback(
         (items: DuplicateItem[], onCreated: (newIds: number[]) => void) => {
             const byPlayer = new Map<string, TrackEvent[]>();
             for (const { trackId, eventId } of items) {
@@ -758,7 +758,7 @@ function App() {
         [handleDuplicateEvents, trackInfoByTrackId]
     );
 
-    const handleNLEPaste = useCallback(
+    const handlePaste = useCallback(
         (
             items: PasteItem[],
             pasteTime: number,
@@ -786,7 +786,7 @@ function App() {
         [handlePasteEvents, trackInfoByTrackId]
     );
 
-    const handleNLEUpdateEvent = useCallback(
+    const handleTimelineUpdateEvent = useCallback(
         (
             trackId: string,
             eventId: number,
@@ -819,7 +819,7 @@ function App() {
                 );
 
             const resolveTrack = (
-                group: NLETrackGroup,
+                group: TimelineTrackGroup,
                 preferredTrackId: string
             ): { id: string; updatedRows?: TrackOverrideRow[] } => {
                 if (!clipsCollide(clipsByTrack[preferredTrackId] ?? [])) {
@@ -990,9 +990,9 @@ function App() {
     const durationRef = useRef(duration);
     durationRef.current = duration;
 
-    const handleNLEMove = useCallback(
+    const handleMove = useCallback(
         (
-            moves: NLEMoveResult[],
+            moves: MoveResult[],
             newTracksInfo?: Map<
                 string,
                 {
@@ -1257,7 +1257,7 @@ function App() {
                     </ResizablePanel>
                     <ResizableHandle />
                     <ResizablePanel minSize="280px" defaultSize="40%">
-                        <NLETimeline
+                        <Timeline
                             duration={duration}
                             isPlaying={isPlaying}
                             setIsPlaying={setIsPlaying}
@@ -1273,12 +1273,12 @@ function App() {
                             onRedo={redo}
                             canUndo={canUndo}
                             canRedo={canRedo}
-                            onCreateEvent={handleNLECreate}
-                            onDeleteEvents={handleNLEDelete}
-                            onDuplicateEvents={handleNLEDuplicate}
-                            onPasteEvents={handleNLEPaste}
-                            onUpdateEvent={handleNLEUpdateEvent}
-                            onMoveEvent={handleNLEMove}
+                            onCreateEvent={handleCreate}
+                            onDeleteEvents={handleDelete}
+                            onDuplicateEvents={handleDuplicate}
+                            onPasteEvents={handlePaste}
+                            onUpdateEvent={handleTimelineUpdateEvent}
+                            onMoveEvent={handleMove}
                             onResizeStart={handleBeginResize}
                             onResizeEnd={handleCommitResize}
                             onSelectionChange={handleSelectionChange}
@@ -1289,7 +1289,7 @@ function App() {
                             onMoveClips={handleMoveClips}
                             onDeleteClip={handleDeleteClip}
                             onDeleteClips={handleDeleteClips}
-                            onDeleteSelection={handleNLEDeleteSelection}
+                            onDeleteSelection={handleDeleteSelection}
                             onUpdateTrack={handleToggleTrack}
                         />
                     </ResizablePanel>

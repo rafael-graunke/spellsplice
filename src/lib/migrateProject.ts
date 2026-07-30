@@ -1,6 +1,6 @@
-import type { Player } from '@/components/types/player';
-import type { TrackEvent } from '@/components/types/event';
-import { DEFAULT_ANNOTATION_SLOT_ID } from '@/components/types/config';
+import type { Player } from '@/types/player';
+import type { TrackEvent } from '@/types/event';
+import { DEFAULT_ANNOTATION_SLOT_ID } from '@/types/config';
 
 // Legacy event type strings, removed from the EventType union but still present
 // in previously-saved projects.

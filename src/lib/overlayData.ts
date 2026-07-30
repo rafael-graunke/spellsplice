@@ -1,7 +1,7 @@
-import type { Card } from '@/components/types/card';
-import type { Player } from '@/components/types/player';
-import type { TrackEvent } from '@/components/types/event';
-import type { AnnotationSlot } from '@/components/types/config';
+import type { Card } from '@/types/card';
+import type { Player } from '@/types/player';
+import type { TrackEvent } from '@/types/event';
+import type { AnnotationSlot } from '@/types/config';
 import type {
     LivePlayerInfo,
     LiveHandCard,

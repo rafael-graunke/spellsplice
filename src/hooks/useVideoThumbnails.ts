@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import type { MediaSource } from '@/components/types/source';
+import type { MediaSource } from '@/types/source';
 
 export interface ClipThumbnails {
     start?: string;

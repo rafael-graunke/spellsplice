@@ -1,9 +1,9 @@
 import JSZip from 'jszip';
-import type { Player } from '@/components/types/player';
-import type { ProjectConfig } from '@/components/types/config';
-import type { Clip } from '@/components/types/clip';
-import type { MediaSource } from '@/components/types/source';
-import type { TrackOverrideRow } from '@/components/Timeline/hooks/usePlayerTracks';
+import type { Player } from '@/types/player';
+import type { ProjectConfig } from '@/types/config';
+import type { Clip } from '@/types/clip';
+import type { MediaSource } from '@/types/source';
+import type { TrackOverrideRow } from '@/features/timeline/hooks/usePlayerTracks';
 import { cardDataCache, restoreCardDataCache } from './cardCache';
 
 export type SourceMeta = Pick<MediaSource, 'id' | 'name' | 'duration' | 'type'>;

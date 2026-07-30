@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { deriveHandWithTimestamps, deriveAnnotationsWithExits } from './deriveState';
-import type { Player } from '@/components/types/player';
-import type { TrackEvent, EventType } from '@/components/types/event';
+import type { Player } from '@/types/player';
+import type { TrackEvent, EventType } from '@/types/event';
 
 // Minimal builders. The overlay renderers key animation + reflow on the stable
 // `id` these derivations emit, so these tests lock that contract (and the

@@ -1,5 +1,5 @@
-import type { Player } from '../components/types/player';
-import type { TrackEvent } from '../components/types/event';
+import type { Player } from '../types/player';
+import type { TrackEvent } from '../types/event';
 
 export function applyGainLife(state: Player, trackEvent: TrackEvent): Player {
     if (!trackEvent.meta?.amount) return state;

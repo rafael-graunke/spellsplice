@@ -16,6 +16,32 @@ npx prettier --write .  # Format all files
 
 Spellsplice is a Magic: The Gathering video overlay editor. Users import video/audio sources, arrange clips on a non-linear timeline, and build a synchronized track of in-game events (life changes, draws, discards, etc.) that are overlaid on the exported video.
 
+## Project Structure (bulletproof-react)
+
+The repo follows the [bulletproof-react](https://github.com/alan2207/bulletproof-react/blob/master/docs/project-structure.md) layout. **Follow it for all new code.**
+
+```
+src/
+  App.tsx  main.tsx        # app shell (composes features)
+  features/<feature>/      # domain features — most code lives here
+    components/ hooks/ sections/ types.ts ...   # only the subfolders a feature needs
+  components/ui/           # shadcn primitives — do NOT hand-edit (re-run the CLI to update)
+  components/              # cross-feature shared app components (ErrorBoundary, theme-provider)
+  hooks/                   # cross-feature reusable hooks only
+  lib/                     # shared logic + configured third-party wrappers (lib/utils.ts = cn())
+  renders/                 # shared canvas overlay renderers (timeline + live + export)
+  types/                   # shared domain model (card, clip, event, player, source, config, video)
+```
+
+Current features: `live-mode`, `timeline`, `inspector`, `sources`, `settings`, `export`, `overlay`, `welcome`, `app-bar`.
+
+Rules:
+- **Unidirectional deps: `shared → features → app`.** A feature must NOT import from another feature. If two features need the same thing, promote it to `src/{lib,hooks,renders,types,components}` and compose at the app level. (Known pre-existing violations to unwind: `settings → live-mode`, `timeline → export`, `welcome → live-mode`.)
+- **No `index.ts` barrels** in feature code — import files directly (protects Vite HMR/tree-shaking, avoids cycles). Existing `lib/export/index.ts` and `assets/icons/index.ts` are real modules, not feature barrels.
+- **kebab-case folders**, **PascalCase component files**, colocated `types.ts` per feature; only genuinely shared types live in `src/types/`.
+- **Start colocated, promote on second use**: a single-use hook/type/util stays next to its consumer; move to the feature's `hooks/`/`utils/`, then to `src/`, only when a second consumer appears. Prefer extracting logic into hooks over splitting components arbitrarily.
+- Path alias `@/*` → `src/*`; import shared code via the alias.
+
 ## Architecture
 
 **App.tsx** holds all canonical state and passes it down via props. No external state management — plain React state + props drilling. Key state:
@@ -34,9 +60,9 @@ Layout: top AppBar + left Sources panel + main area (react-resizable-panels), ve
 - **Sources panel** (left) — holds imported `MediaSource` files. Drag & drop or file-picker to add video/audio. Shows thumbnail + clip-use count per source. Red dot badge when any source is offline. Link icon opens `RelinkDialog` to reattach offline sources.
 - **VideoPreview** (top-left, 75%) — renders video frames to a `<canvas>` via `drawImage` on a rAF loop. A hidden `<video>` element handles decoding/audio. Renders player state overlays and active windowed event banners directly on the canvas. Uses `derivedCacheRef` with a `validUntil` timestamp to skip redundant state derivation between frames.
 - **Inspector** (top-right, 25%) — edits the selected event's `meta` fields. Per-type form components.
-- **NLE Timeline** (bottom, 30%) — non-linear editor. Track groups per player (event rows) + shared video/audio tracks for clips. Waveform and frame thumbnails rendered on clips. Full undo/redo via `useHistory`.
+- **Timeline** (bottom, 30%) — non-linear editor. Track groups per player (event rows) + shared video/audio tracks for clips. Waveform and frame thumbnails rendered on clips. Full undo/redo via `useHistory`.
 
-## Key Types (`src/components/types/`)
+## Key Types (`src/types/`, timeline types in `src/features/timeline/types.ts`)
 
 - `VideoState` — `{ file, url, duration, videoEl }`
 - `Card` — `{ name: string, edition?: string, revealed?: boolean }`
@@ -46,10 +72,10 @@ Layout: top AppBar + left Sources panel + main area (react-resizable-panels), ve
 - `TrackEvent` — `{ id, time, layer: number, type: EventType, resizable, duration?, meta? }` — no `color` field; color derived from `EventColorMap`
 - `EventType` — 12 values: `ADD_TO_HAND`, `REMOVE_FROM_HAND`, `LOSE_LIFE`, `GAIN_LIFE`, `REVEAL_FROM_HAND`, `STACK_DECK`, `UNSTACK_DECK`, `DISPLAY_CARD`, `WIN`, `HIDE_UI`, `SHOW_UI`, `RESET`
 - `MediaSource` — `{ id, name, type: 'video'|'audio', duration, file?, thumbnailUrl?, loading? }` — source file in Sources panel
-- `Clip` — `{ id, type: ClipType, time, duration, sourceId, sourceOffset, trackId? }` — placed on NLE video/audio tracks. `time` = output-timeline position; `sourceOffset` = start within source file.
+- `Clip` — `{ id, type: ClipType, time, duration, sourceId, sourceOffset, trackId? }` — placed on timeline video/audio tracks. `time` = output-timeline position; `sourceOffset` = start within source file.
 - `ClipType` — `VIDEO | AUDIO`
-- `NLETrackGroup` — `{ id, label, type: TrackType, tracks: NLETrack[] }` — one group per player (Event type) + shared video/audio groups
-- `NLETrack` — `{ id, type, events, clips?, player?, isBlocked, isHidden?, isMuted?, eventLayer? }` — single row. `eventLayer` stable index for filtering player events.
+- `TimelineTrackGroup` — `{ id, label, type: TrackType, tracks: TimelineTrack[] }` — one group per player (Event type) + shared video/audio groups
+- `TimelineTrack` — `{ id, type, events, clips?, player?, isBlocked, isHidden?, isMuted?, eventLayer? }` — single row. `eventLayer` stable index for filtering player events.
 - `TrackType` — `EVENT | VIDEO | AUDIO`
 - `ProjectConfig` — `{ title, author, defaultLifeTotal, defaultLayerCount, overlayStartHidden }` — project-level settings stored in state
 
@@ -74,36 +100,36 @@ Each `Player` owns exactly one `Track`. A track has `layers: number` rows (defau
 
 **Drag up/down** changes `event.layer` — it does not move events between players. Cross-player drag is not supported.
 
-`usePlayerTracks` (`src/components/Timeline/hooks/usePlayerTracks.ts`) manages all player+track state. All event mutation handlers take `playerId` as their first argument. `handleUpdatePlayer(playerId, { name?, deckName?, decklist? })` updates player metadata.
+`usePlayerTracks` (`src/features/timeline/hooks/usePlayerTracks.ts`) manages all player+track state. All event mutation handlers take `playerId` as their first argument. `handleUpdatePlayer(playerId, { name?, deckName?, decklist? })` updates player metadata.
 
-## NLE System (`src/components/nle/`)
+## Timeline System (`src/features/timeline/`)
 
-Replaced the old single-player Timeline. All timeline editing now goes through the NLE.
+Replaced the old single-player timeline. All timeline editing now goes through this system.
 
-**NLETimeline.tsx** — main orchestrator. Renders `NLETrackGroup[]` — one group per player (event rows) plus shared Video/Audio groups. Uses `react-resizable-panels` to give the target (focused) player group full width. Key hooks:
+**Timeline.tsx** — main orchestrator. Renders `TimelineTrackGroup[]` — one group per player (event rows) plus shared Video/Audio groups. Uses `react-resizable-panels` to give the target (focused) player group full width. Key hooks:
 - `useTimelineZoom` — zoom in px/sec (range 5–50), converted to/from 0–100%.
 - `useTimelineScroll` — horizontal scroll state.
 - `useTimelineViewport` — computes visible time window.
 - `usePlayhead` — playhead position + seek on click.
 - `useTimelineSelection` — selected event/clip IDs.
 - `useTimelineKeyboard` — keyboard shortcuts (delete, undo/redo).
-- `useNLEElementDrag` — unified drag for events and clips; vertical drag changes layer/track, horizontal changes time/clip.time.
-- `useNLEMarqueeDrag` — rubber-band multi-select.
+- `useElementDrag` — unified drag for events and clips; vertical drag changes layer/track, horizontal changes time/clip.time.
+- `useMarqueeDrag` — rubber-band multi-select.
 - `useTimelineAutoScroll` — auto-scrolls during drag near edges.
 
-**NLEControls.tsx** — playback controls (spacebar play/pause, skip), zoom slider. Cmd+K opens event creation dialog.
+**Controls.tsx** — playback controls (spacebar play/pause, skip), zoom slider. Cmd+K opens event creation dialog.
 
-**NLETrack.tsx** — `Track` (single row) and `TrackGroup` (player group with expand/collapse). Track header shows mute/hide/block controls.
+**Track.tsx** — `Track` (single row) and `TrackGroup` (player group with expand/collapse). Track header shows mute/hide/block controls.
 
-**NLEClip.tsx** — clip bar with waveform canvas (audio) and frame thumbnail strip (video).
+**TimelineClip.tsx** — clip bar with waveform canvas (audio) and frame thumbnail strip (video).
 
-**NLEEvent.tsx** / **NLEEventResizable.tsx** / **NLEEventIcon.tsx** — event rendering; resizable events have drag handles; non-resizable show icon.
+**TimelineEvent.tsx** / **EventResizable.tsx** / **EventIcon.tsx** — event rendering; resizable events have drag handles; non-resizable show icon.
 
-**NLERuler.tsx** — time ruler with tick marks.
+**Ruler.tsx** — time ruler with tick marks.
 
-**NLECursor.tsx** — playhead cursor overlay (imperative handle for perf).
+**Cursor.tsx** — playhead cursor overlay (imperative handle for perf).
 
-**constants.ts** (`src/components/Timeline/constants.ts`) — `RULER_HEIGHT` (40px), `TRACK_HEIGHT` (48px), `TRACK_GROUP_LABEL_WIDTH`, `TRACK_INFO_WIDTH`, `MIN_ZOOM` (5 px/sec), `MAX_ZOOM` (50 px/sec).
+**constants.ts** (`src/features/timeline/constants.ts`) — `RULER_HEIGHT` (40px), `TRACK_HEIGHT` (48px), `TRACK_GROUP_LABEL_WIDTH`, `TRACK_INFO_WIDTH`, `MIN_ZOOM` (5 px/sec), `MAX_ZOOM` (50 px/sec).
 
 ## State Derivation (`src/lib/`)
 
@@ -114,17 +140,17 @@ Replaced the old single-player Timeline. All timeline editing now goes through t
 
 **stateHandlers.ts** — per-type mutations: `applyGainLife`, `applyLoseLife`, `applyAddToHand`, `applyRemoveFromHand`, `applyStackDeck`, `applyUnstackDeck`, `applyWin`, `applyReset`. `REVEAL_FROM_HAND` is handled inline in `deriveState.ts` (marks cards as `revealed: true`).
 
-## Sources Panel (`src/components/Sources/`)
+## Sources Panel (`src/features/sources/`)
 
 **index.tsx** (`Sources`) — drag-and-drop + file-picker for video/audio files. Generates thumbnail via `generateThumbnail` and duration via `getFileDuration`. Shows clip-use counts (counts references across all `clipsByTrack`). Red dot when any source has no `file` (offline). Link button opens `RelinkDialog`.
 
 **RelinkDialog.tsx** — lists all sources; offline sources have a "Choose file" button to reattach. Called on project open when saved sources have no matching file in the ZIP.
 
-## Settings Dialog (`src/components/Settings/`)
+## Settings Dialog (`src/features/settings/`)
 
 **SettingsDialog.tsx** — multi-section settings dialog. Sections: Project Metadata (`title`, `author`), Players (name/deck editing per player), Player Defaults (`defaultLifeTotal`, `defaultLayerCount`), Overlay Appearance (`overlayStartHidden`). Driven by `ProjectConfig` state in `App.tsx`.
 
-## Inspector (`src/components/Inspector/`)
+## Inspector (`src/features/inspector/`)
 
 Per-type field components dispatched by `EventFields.tsx`:
 - `LifeFields` — plain number input for GAIN_LIFE / LOSE_LIFE.
@@ -155,7 +181,7 @@ undefined-defaulted param (as `edition`/`revealed`/`eyeIcon` were added) so both
 `toDisplayCards`, `toPlayerInfo`, `collectCardImageRequests`). Animations use `now = time * 1000` /
 `start = eventTime * 1000` so scrub and export are deterministic.
 
-`Compositor.updateOverlay` (`src/lib/export/compose.ts`) runs the layer-order dispatch loop; the
+`Compositor.updateOverlay` (`src/features/export/compose.ts`) runs the layer-order dispatch loop; the
 whole-overlay HIDE_UI/SHOW_UI fade is the `uOverlayAlpha` shader uniform, not per-renderer.
 
 ### Overlay render performance — invariants (do NOT regress)
@@ -216,7 +242,7 @@ Media source files are **not bundled** — sources are stored as metadata only (
 `exportProject(players, config, clipsByTrack, trackOverrides, sources)` — builds ZIP, triggers browser download.
 `importProject(file)` — extracts manifest, restores card cache, returns `offlineSources`.
 
-## Video Export Pipeline (`src/lib/export/`)
+## Video Export Pipeline (`src/features/export/`)
 
 In-browser baked video export using WebCodecs + WebGL. Requires Chrome/Edge (uses `VideoEncoder`, `VideoDecoder`, `showSaveFilePicker`).
 
@@ -230,7 +256,7 @@ In-browser baked video export using WebCodecs + WebGL. Requires Chrome/Edge (use
 
 Output is always 1920×1080, letterboxed. Frame rate: 30 or 60 fps (user selects in `ExportDialog`).
 
-`ExportDialog.tsx` (`src/components/ExportDialog.tsx`) — dialog UI: fps picker, progress bar with ETA, cancel, error retry. Not available on Firefox (shows tooltip).
+`ExportDialog.tsx` (`src/features/export/ExportDialog.tsx`) — dialog UI: fps picker, progress bar with ETA, cancel, error retry. Not available on Firefox (shows tooltip).
 
 ## Hooks (`src/hooks/`)
 
@@ -262,7 +288,7 @@ Hosted on Cloudflare Workers static assets (`wrangler.jsonc`, assets-only Worker
 - `__APP_CHANNEL__` (`'stable' | 'beta' | 'dev'`) — from `process.env.APP_CHANNEL`, defaulting to `stable` on build and `dev` on serve. `release.yml` sets `APP_CHANNEL=beta`.
 - `__APP_VERSION__` — `stable` uses the bare `package.json` version (e.g. `1.3.0`); every other channel uses `git describe --tags` (e.g. `1.3.0-6-g3fc32cb`): unique per commit, ordered, traceable. The tag's leading `v` is stripped so the string is bare semver. `git describe` needs tags in the checkout (CI uses `fetch-depth: 0`).
 
-**ChannelMenu** (`src/components/AppBar/ChannelMenu.tsx`) — right-side AppBar badge showing current channel + version; click opens a popover listing all three channels with switch links (beta/stable are links, dev is local-only, current is marked). Badge colours are semantic (green = stable, amber = beta, blue = dev). `index.tsx` tints the whole bar to match on beta/dev; stable gets no tint (the default, unremarkable state).
+**ChannelMenu** (`src/features/app-bar/ChannelMenu.tsx`) — right-side AppBar badge showing current channel + version; click opens a popover listing all three channels with switch links (beta/stable are links, dev is local-only, current is marked). Badge colours are semantic (green = stable, amber = beta, blue = dev). `index.tsx` tints the whole bar to match on beta/dev; stable gets no tint (the default, unremarkable state).
 
 **Release model** — releases are cut only at promotion, not per commit:
 - **`release.yml` (Deploy Beta)** — on push to main. Build + `wrangler deploy --env=beta`. No version bump, no changelog, no tag, no GitHub release. Beta = latest main, all commit types.

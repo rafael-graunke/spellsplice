@@ -1,7 +1,7 @@
 import { ensureBorderCrop, getCardLayout } from '@/lib/cardCache';
 import { CARD_COLOR_HEX, getCardColorKey } from '@/lib/cardColors';
 import { drawManaCostRow, ensureManaFontLoaded } from '@/lib/manaGlyphs';
-import type { Card } from '@/components/types/card';
+import type { Card } from '@/types/card';
 
 const PLACEHOLDER_TEXT = '#262626';
 

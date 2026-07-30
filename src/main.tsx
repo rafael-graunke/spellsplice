@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
 import App from './App.tsx';
-import OverlayPage from './pages/OverlayPage.tsx';
+import OverlayPage from './features/overlay/OverlayPage';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { ThemeProvider } from './components/theme-provider.tsx';
 

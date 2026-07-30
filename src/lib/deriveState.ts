@@ -1,6 +1,6 @@
-import type { Card } from '../components/types/card';
-import type { TrackEvent } from '../components/types/event';
-import type { Player } from '../components/types/player';
+import type { Card } from '../types/card';
+import type { TrackEvent } from '../types/event';
+import type { Player } from '../types/player';
 import {
     applyGainLife,
     applyLoseLife,

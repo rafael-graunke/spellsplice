@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import type { MediaSource } from '../components/types/source';
+import type { MediaSource } from '../types/source';
 
 const PEAKS_PER_SECOND = 100;
 

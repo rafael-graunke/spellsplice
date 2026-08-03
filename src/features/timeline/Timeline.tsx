@@ -1008,9 +1008,9 @@ function TimelineInner({
             />
             <div
                 ref={contentRef}
-                className="flex flex-col flex-1 overflow-hidden bg-background pl-4 pb-4"
+                className="flex flex-col flex-1 overflow-hidden bg-background"
             >
-                <div className="flex flex-col flex-1 relative">
+                <div className="flex flex-col flex-1 min-h-0 relative">
                 {/* Ruler row */}
                 <div className="flex shrink-0" style={{ height: RULER_HEIGHT }}>
                     <div
@@ -1043,7 +1043,7 @@ function TimelineInner({
                 </div>
                 <div
                     ref={scrollBoundaryRef}
-                    className="flex-1 overflow-hidden relative"
+                    className="flex-1 min-h-0 overflow-hidden relative"
                     onMouseDown={handleMarqueeMouseDown}
                 >
                     {/* One scroll region for the whole stack, the way every NLE

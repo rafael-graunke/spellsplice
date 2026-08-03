@@ -137,6 +137,8 @@ export function useElementDrag(
     setScroll: (x: number) => void,
     trackElsRef: RefObject<Map<string, HTMLDivElement>>,
     scrollBoundaryRef: RefObject<HTMLDivElement | null>,
+    /** The single vertical scroller around the track stack. */
+    trackScrollRef: RefObject<HTMLDivElement | null>,
     eventTracks: TimelineTrack[],
     videoTracks: TimelineTrack[],
     audioTracks: TimelineTrack[],
@@ -168,6 +170,7 @@ export function useElementDrag(
     const targetTrackIndexRef = useRef(0);
     const scrollRafRef = useRef<number | null>(null);
     const scrollSpeedXRef = useRef(0);
+    const scrollSpeedYRef = useRef(0);
 
     const selectedEventIdsRef = useRef(selectedEventIds);
     selectedEventIdsRef.current = selectedEventIds;
@@ -200,6 +203,7 @@ export function useElementDrag(
 
     const stopAutoScroll = () => {
         scrollSpeedXRef.current = 0;
+        scrollSpeedYRef.current = 0;
         if (scrollRafRef.current) {
             cancelAnimationFrame(scrollRafRef.current);
             scrollRafRef.current = null;
@@ -530,12 +534,36 @@ export function useElementDrag(
                 } else {
                     scrollSpeedXRef.current = 0;
                 }
-                if (scrollSpeedXRef.current !== 0 && !scrollRafRef.current) {
+                // Vertical edge-scroll, only possible now that the track stack
+                // is one scroller instead of one viewport per group.
+                const trackScroller = trackScrollRef.current;
+                if (trackScroller) {
+                    const r = trackScroller.getBoundingClientRect();
+                    const distBottom = r.bottom - e.clientY;
+                    const distTop = e.clientY - r.top;
+                    if (distBottom < 0) {
+                        scrollSpeedYRef.current = MAX_SCROLL_SPEED;
+                    } else if (distBottom < SCROLL_ZONE) {
+                        scrollSpeedYRef.current = ((SCROLL_ZONE - distBottom) / SCROLL_ZONE) * MAX_SCROLL_SPEED;
+                    } else if (distTop < 0) {
+                        scrollSpeedYRef.current = -MAX_SCROLL_SPEED;
+                    } else if (distTop < SCROLL_ZONE) {
+                        scrollSpeedYRef.current = -((SCROLL_ZONE - distTop) / SCROLL_ZONE) * MAX_SCROLL_SPEED;
+                    } else {
+                        scrollSpeedYRef.current = 0;
+                    }
+                }
+
+                const scrolling = () => scrollSpeedXRef.current !== 0 || scrollSpeedYRef.current !== 0;
+                if (scrolling() && !scrollRafRef.current) {
                     const tick = () => {
-                        setScroll(scrollLeftRef.current + scrollSpeedXRef.current);
-                        scrollRafRef.current = scrollSpeedXRef.current !== 0
-                            ? requestAnimationFrame(tick)
-                            : null;
+                        if (scrollSpeedXRef.current !== 0) {
+                            setScroll(scrollLeftRef.current + scrollSpeedXRef.current);
+                        }
+                        if (scrollSpeedYRef.current !== 0 && trackScrollRef.current) {
+                            trackScrollRef.current.scrollTop += scrollSpeedYRef.current;
+                        }
+                        scrollRafRef.current = scrolling() ? requestAnimationFrame(tick) : null;
                     };
                     scrollRafRef.current = requestAnimationFrame(tick);
                 }

@@ -54,6 +54,8 @@ export interface TimelineTrack {
     isMuted?: boolean;
     /** Whether ripple edits shift this track. Undefined = locked. */
     syncLock?: boolean;
+    /** Row height in px. Undefined = TRACK_HEIGHT. */
+    height?: number;
     // Stable layer index for Event-type tracks — does not change when tracks are inserted/removed.
     // Used to filter player events (event.layer === eventLayer) and set newLayer on moves.
     eventLayer?: number;

@@ -15,7 +15,6 @@ import {
 import { TRACK_HEIGHT } from './constants';
 
 const CLICK_THRESHOLD = 4;
-const CLIP_CANVAS_HEIGHT = TRACK_HEIGHT - 6;
 const TRIM_HANDLE_W = 8;
 // Below this the two handles would cover the whole clip, leaving nothing to grab
 // for a move.
@@ -23,8 +22,6 @@ const MIN_TRIMMABLE_PX = 3 * TRIM_HANDLE_W;
 const DB_RANGE = GAIN_MAX_DB - GAIN_MIN_DB;
 // Chrome silently yields a blank canvas past ~32767px, which at MAX_ZOOM is an 11-minute clip.
 const MAX_WAVEFORM_CANVAS_W = 8192;
-const THUMB_H = CLIP_CANVAS_HEIGHT - 10;
-const THUMB_W = Math.round(THUMB_H * (16 / 9));
 
 interface TimelineClipProps {
     clip: Clip;
@@ -43,12 +40,17 @@ interface TimelineClipProps {
     onSplit?: () => void;
     onUnlink?: () => void;
     onGainChange?: (gain: number) => void;
+    trackHeight?: number;
     waveformData?: WaveformData;
     thumbnails?: ClipThumbnails;
 }
 
-export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, zoom, isSelected, isBeingDragged, onMouseDown, onSelect, onDelete, onTrimStart, onRazorCut, onSplit, onUnlink, onGainChange, waveformData, thumbnails }: TimelineClipProps) {
+export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, zoom, isSelected, isBeingDragged, onMouseDown, onSelect, onDelete, onTrimStart, onRazorCut, onSplit, onUnlink, onGainChange, trackHeight = TRACK_HEIGHT, waveformData, thumbnails }: TimelineClipProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    // Derived per render, not at module scope: track height is per-track data now.
+    const canvasHeight = trackHeight - 6;
+    const thumbH = canvasHeight - 10;
+    const thumbW = Math.round(thumbH * (16 / 9));
     const [dragDb, setDragDb] = useState<number | null>(null);
 
     useEffect(() => {
@@ -62,7 +64,7 @@ export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, z
                 Math.max(1, Math.floor(clip.duration * zoom)),
                 MAX_WAVEFORM_CANVAS_W,
             );
-            const h = CLIP_CANVAS_HEIGHT;
+            const h = canvasHeight;
             canvas.width = w;
             canvas.height = h;
 
@@ -94,7 +96,7 @@ export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, z
         }, 80);
 
         return () => clearTimeout(timer);
-    }, [waveformData, clip.sourceOffset, clip.duration, clip.type, zoom]);
+    }, [waveformData, clip.sourceOffset, clip.duration, clip.type, zoom, canvasHeight]);
 
     const clipPx = clip.duration * zoom;
     // Layout vs interaction, deliberately separate: the label indents to clear
@@ -115,7 +117,7 @@ export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, z
         const onMove = (ev: MouseEvent) => {
             latest = Math.max(
                 GAIN_MIN_DB,
-                Math.min(GAIN_MAX_DB, startDb - ((ev.clientY - startY) / CLIP_CANVAS_HEIGHT) * DB_RANGE),
+                Math.min(GAIN_MAX_DB, startDb - ((ev.clientY - startY) / canvasHeight) * DB_RANGE),
             );
             setDragDb(latest);
         };
@@ -165,10 +167,10 @@ export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, z
                     }}
                 >
                     {clip.type === ClipType.Video && (() => {
-                        const showStart = clipPx >= THUMB_W;
-                        const showEnd = clipPx >= 2 * THUMB_W;
+                        const showStart = clipPx >= thumbW;
+                        const showEnd = clipPx >= 2 * thumbW;
                         if (!showStart) return null;
-                        const thumbStyle = { width: THUMB_W - 1, height: THUMB_H };
+                        const thumbStyle = { width: thumbW - 1, height: thumbH };
                         return (
                             <>
                                 <div className="absolute left-1 top-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none overflow-hidden" style={thumbStyle}>

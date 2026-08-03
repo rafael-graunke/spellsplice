@@ -75,7 +75,7 @@ Layout: top AppBar + left Sources panel + main area (react-resizable-panels), ve
 - `Clip` — `{ id, type: ClipType, time, duration, sourceId, sourceOffset, trackId?, transform?, crop?, linkId?, gain? }` — placed on timeline video/audio tracks. `time` = output-timeline position; `sourceOffset` = start within source file. `linkId` is shared by the video/audio halves of one dropped source, so trim, blade, move and delete apply to both. `gain` is linear audio gain (1 = unity), edited via the in-clip rubber band.
 - `ClipType` — `VIDEO | AUDIO`
 - `TimelineTrackGroup` — `{ id, label, type: TrackType, tracks: TimelineTrack[] }` — one group per player (Event type) + shared video/audio groups
-- `TimelineTrack` — `{ id, type, events, clips?, player?, isBlocked, isHidden?, isMuted?, syncLock?, eventLayer? }` — single row. `eventLayer` stable index for filtering player events. `syncLock` (undefined = locked) decides whether ripple edits shift this row.
+- `TimelineTrack` — `{ id, type, events, clips?, player?, isBlocked, isHidden?, isMuted?, syncLock?, height?, eventLayer? }` — single row. `height` undefined = `TRACK_HEIGHT`. `eventLayer` stable index for filtering player events. `syncLock` (undefined = locked) decides whether ripple edits shift this row.
 - `TrackType` — `EVENT | VIDEO | AUDIO`
 - `ProjectConfig` — `{ title, author, defaultLifeTotal, defaultLayerCount, overlayStartHidden }` — project-level settings stored in state
 
@@ -106,7 +106,13 @@ Each `Player` owns exactly one `Track`. A track has `layers: number` rows (defau
 
 Replaced the old single-player timeline. All timeline editing now goes through this system.
 
-**Timeline.tsx** — main orchestrator. Renders `TimelineTrackGroup[]` — one group per player (event rows) plus shared Video/Audio groups. Uses `react-resizable-panels` to give the target (focused) player group full width. Key hooks:
+**Timeline.tsx** — main orchestrator. Renders `TimelineTrackGroup[]` — one group per player (event rows) plus shared Video/Audio groups.
+
+**Vertical space follows the NLE model, not split panes.** The whole track stack lives in **one** `overflow-y-auto` scroller (`trackScrollRef`); groups are content-sized. Height is owned per track (`TrackOverrideRow.height`, dragged from the bottom edge of the track header, presets in the track context menu), and groups collapse to a summary bar. `react-resizable-panels` is still used at the app level in `App.tsx` for the preview/inspector/timeline splits — that is correct — but nesting it per track group gave every group its own viewport, which broke drag and marquee hit-testing (both locate tracks by `getBoundingClientRect`, and a track scrolled out of its own panel still reports a rect).
+
+Two derived group lists, and the distinction matters: **`groupsInView`** is view-mode filtered and drives rendering (collapsed groups still render their bar); **`visibleGroups`** additionally excludes collapsed groups and is what `eventTracks` / `videoTracks` / `audioTracks` derive from. Drag and marquee index into those arrays, so anything not mounted must not appear in them.
+
+Key hooks:
 - `useTimelineZoom` — zoom in px/sec (range 5–50), converted to/from 0–100%.
 - `useTimelineScroll` — horizontal scroll state.
 - `useTimelineViewport` — computes visible time window.
@@ -120,7 +126,7 @@ Replaced the old single-player timeline. All timeline editing now goes through t
 
 **Controls.tsx** — playback controls (spacebar play/pause, skip), zoom slider. Cmd+K opens event creation dialog.
 
-**Track.tsx** — `Track` (single row) and `TrackGroup` (player group with expand/collapse). Track header shows mute/hide/block controls.
+**Track.tsx** — `Track` (single row) and `TrackGroup` (player group, collapsible via the chevron on its label strip). Track header shows sync-lock/mute/hide/block controls plus a `cursor-ns-resize` strip along its bottom edge that resizes that track. A height drag brackets `mutateTrackOverride` with `onResizeStart`/`onResizeEnd`, so the gesture collapses to one undo entry.
 
 **TimelineClip.tsx** — clip bar with waveform canvas (audio) and frame thumbnail strip (video).
 
@@ -130,7 +136,7 @@ Replaced the old single-player timeline. All timeline editing now goes through t
 
 **Cursor.tsx** — playhead cursor overlay (imperative handle for perf).
 
-**constants.ts** (`src/features/timeline/constants.ts`) — `RULER_HEIGHT` (40px), `TRACK_HEIGHT` (48px), `TRACK_GROUP_LABEL_WIDTH`, `TRACK_INFO_WIDTH`, `MIN_ZOOM` (5 px/sec), `MAX_ZOOM` (50 px/sec), `PREVIEW_FPS`, `SHUTTLE_RATES`.
+**constants.ts** (`src/features/timeline/constants.ts`) — `RULER_HEIGHT` (32px), `TRACK_HEIGHT` (40px, the default when a track has no `height`), `MIN_TRACK_HEIGHT` (28px, below which the fixed-size `EventIcon` starts clipping), `MAX_TRACK_HEIGHT`, `TRACK_HEIGHT_PRESETS`, `COLLAPSED_GROUP_HEIGHT`, `TRACK_GROUP_LABEL_WIDTH`, `TRACK_INFO_WIDTH`, `MIN_ZOOM` (5 px/sec), `MAX_ZOOM` (50 px/sec), `PREVIEW_FPS`, `SHUTTLE_RATES`.
 
 **snapping.ts** — `makeSnapper(targets, zoom, threshold)` returns a binary-search snapper; `collectSnapTargets` gathers clip edges, event times, markers, in/out and the playhead. Thresholds are in **pixels** (`SNAP_THRESHOLD_PX = 8`, `PLAYHEAD_SNAP_THRESHOLD_PX = 6`), never seconds, so they behave at every zoom. Hold Alt to bypass. Also holds `quantizeToFrame` and `resolvePlayheadTime`.
 
@@ -141,7 +147,7 @@ Replaced the old single-player timeline. All timeline editing now goes through t
 Three species of control, grouped and separated because they behave differently:
 
 - **Modes** (`TimelineTool`, radio group, leading-left) — exactly one active, changes what dragging means. `V` select, `C` razor, `Escape` back to select. Session state in `Timeline.tsx`, deliberately **not** persisted: reopening in razor mode would turn the first click on a clip into a cut.
-- **Toggles** — independent on/off: snapping (`S`), follow playhead. Persisted to `spellsplice-editor`.
+- **Toggles** — independent on/off: snapping (`S`), follow playhead. Persisted to `spellsplice-editor`, as is `collapsedGroups` (collapse is a view preference, so it stays out of undo history — unlike per-track `height`, which is keyed to a track's lifetime and therefore lives in `trackOverrides` with the project).
 - **Actions** — fire once, no state: split at playhead (`B`), add marker (`M`). Rendered with momentary press feedback instead of a persistent fill, because an action has no "on" state. Membership rule is strictly *frequent and otherwise undiscoverable*; anything rarer stays in the context menus or this group becomes a junk drawer.
 
 Razor-as-a-mode and split-at-playhead-as-an-action are both correct and not redundant: click-cutting and cut-where-the-playhead-is are different gestures, and Premiere (`C` + `Ctrl+K`) and Resolve (`B` + `Ctrl+\\`) both ship both.

@@ -2,7 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import type { WaveformData } from '@/hooks/useWaveformPeaks';
 import type { ClipThumbnails } from '@/hooks/useVideoThumbnails';
-import { Eye, EyeOff, Link, Link2Off, Lock, Volume2, VolumeOff } from 'lucide-react';
+import { ChevronDown, ChevronRight, Eye, EyeOff, Link, Link2Off, Lock, Volume2, VolumeOff } from 'lucide-react';
 import type { TimelineTrack } from './types';
 import { TrackType, TrackTypeColorMap } from './types';
 import type { TrackEvent } from '../../types/event';
@@ -13,7 +13,11 @@ import TimelineEvent from './TimelineEvent';
 import { TimelineClip } from './TimelineClip';
 import EventIcon, { type SvgIcon } from './EventIcon';
 import {
+    COLLAPSED_GROUP_HEIGHT,
+    MAX_TRACK_HEIGHT,
+    MIN_TRACK_HEIGHT,
     TRACK_HEIGHT,
+    TRACK_HEIGHT_PRESETS,
     TRACK_INFO_WIDTH,
     TRACK_GROUP_LABEL_WIDTH,
 } from './constants';
@@ -30,6 +34,9 @@ import {
     ContextMenuItem,
     ContextMenuSeparator,
     ContextMenuShortcut,
+    ContextMenuSub,
+    ContextMenuSubContent,
+    ContextMenuSubTrigger,
     ContextMenuTrigger,
 } from '../../components/ui/context-menu';
 import { modKey } from '@/lib/platform';
@@ -39,10 +46,12 @@ interface TrackGroupProps {
     label: string;
     icon?: SvgIcon;
     isTarget?: boolean;
+    collapsed?: boolean;
     onSelect?: () => void;
+    onToggleCollapse?: () => void;
 }
 
-export function TrackGroup({ children, label, icon, isTarget, onSelect }: TrackGroupProps) {
+export function TrackGroup({ children, label, icon, isTarget, collapsed, onSelect, onToggleCollapse }: TrackGroupProps) {
     const innerRef = useRef<HTMLDivElement>(null);
     const measureRef = useRef<HTMLParagraphElement>(null);
     const [overflows, setOverflows] = useState(false);
@@ -60,18 +69,46 @@ export function TrackGroup({ children, label, icon, isTarget, onSelect }: TrackG
         return () => obs.disconnect();
     }, []);
 
+    if (collapsed) {
+        return (
+            <div
+                className="flex flex-row items-center gap-1.5 bg-zinc-800 border-y border-zinc-600 px-1 text-zinc-400"
+                style={{ height: COLLAPSED_GROUP_HEIGHT }}
+            >
+                <button
+                    className="hover:text-zinc-200 transition-colors"
+                    aria-label={`Expand ${label}`}
+                    onClick={onToggleCollapse}
+                >
+                    <ChevronRight className="size-3.5" />
+                </button>
+                {Icon && <Icon className="size-3.5 shrink-0" />}
+                <span className="truncate text-xs">{label}</span>
+            </div>
+        );
+    }
+
     return (
-            <div className="flex flex-row h-full overflow-hidden">
+            <div className="flex flex-row overflow-hidden">
                 <div
                     style={{ width: TRACK_GROUP_LABEL_WIDTH }}
                     className={cn(
-                        "bg-zinc-800 text-zinc-300 relative flex items-center justify-center text-sm py-2",
+                        "bg-zinc-800 text-zinc-300 relative flex flex-col items-center justify-center gap-1 text-sm py-1",
                         "rounded-l-md border",
                         isTarget && "bg-zinc-700 border-zinc-500",
                         onSelect && "cursor-pointer",
                     )}
                     onClick={onSelect}
                 >
+                    {onToggleCollapse && (
+                        <button
+                            className="shrink-0 text-zinc-500 hover:text-zinc-200 transition-colors"
+                            aria-label={`Collapse ${label}`}
+                            onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}
+                        >
+                            <ChevronDown className="size-3.5" />
+                        </button>
+                    )}
                     {/* measurement element — outside overflow:hidden so clientHeight is unclamped */}
                     <p ref={measureRef} aria-hidden className={
                         cn(
@@ -79,7 +116,9 @@ export function TrackGroup({ children, label, icon, isTarget, onSelect }: TrackG
                         )}
                     >{label}</p>
                     {/* inner wrapper lives inside the padding area; clientHeight = usable space */}
-                    <div ref={innerRef} className="h-full w-full overflow-hidden flex items-center justify-center">
+                    {/* flex-1, not h-full: the collapse chevron above it now
+                        takes part of the strip, so 100% would overflow. */}
+                    <div ref={innerRef} className="flex-1 min-h-0 w-full overflow-hidden flex items-center justify-center">
                         {overflows ? (
                             Icon ? (
                                 <TooltipProvider>
@@ -104,7 +143,7 @@ export function TrackGroup({ children, label, icon, isTarget, onSelect }: TrackG
                         )}
                     </div>
                 </div>
-                <div className="flex flex-col-reverse flex-1 bg-zinc-800 overflow-y-auto scrollbar-thin border-y border-zinc-600">
+                <div className="flex flex-col-reverse flex-1 bg-zinc-800 border-y border-zinc-600">
                     {children}
                 </div>
             </div>
@@ -120,6 +159,10 @@ const TRACK_TYPE_PREFIX: Record<string, string> = {
 interface TrackInfoProps {
     type: TimelineTrack['type'];
     index: number;
+    height: number;
+    onResizeHeight?: (height: number) => void;
+    onResizeStart?: () => void;
+    onResizeEnd?: () => void;
     isBlocked: boolean;
     isHidden?: boolean;
     isMuted?: boolean;
@@ -133,6 +176,10 @@ interface TrackInfoProps {
 export function TrackInfo({
     type,
     index,
+    height,
+    onResizeHeight,
+    onResizeStart,
+    onResizeEnd,
     isBlocked,
     isHidden,
     isMuted,
@@ -144,14 +191,37 @@ export function TrackInfo({
 }: TrackInfoProps) {
     const showVisibility = type === TrackType.Video;
     const showMute = type === TrackType.Audio;
+
+    // Dragging the bottom edge of the header resizes the track, which is where
+    // Premiere and Resolve put it.
+    const startHeightDrag = (e: React.MouseEvent) => {
+        if (!onResizeHeight) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const startY = e.clientY;
+        const startHeight = height;
+        onResizeStart?.();
+        const onMove = (ev: MouseEvent) => {
+            onResizeHeight(
+                Math.round(Math.max(MIN_TRACK_HEIGHT, Math.min(MAX_TRACK_HEIGHT, startHeight + (ev.clientY - startY)))),
+            );
+        };
+        const onUp = () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+            onResizeEnd?.();
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    };
     // Undefined means "never configured", which is locked — ripple edits move
     // every track unless one is explicitly opted out.
     const locked = syncLock !== false;
 
     return (
         <div
-            className="shrink-0 flex items-center justify-between bg-zinc-900"
-            style={{ width: TRACK_INFO_WIDTH, height: TRACK_HEIGHT }}
+            className="relative shrink-0 flex items-center justify-between bg-zinc-900"
+            style={{ width: TRACK_INFO_WIDTH, height }}
         >
             <span
                 className={cn(
@@ -215,12 +285,19 @@ export function TrackInfo({
                     </button>
                 </div>
             </div>
+            {onResizeHeight && (
+                <div
+                    className="absolute inset-x-0 bottom-0 h-1 cursor-ns-resize hover:bg-white/30"
+                    onMouseDown={startHeightDrag}
+                />
+            )}
         </div>
     );
 }
 
 interface TrackContentProps {
     children?: ReactNode;
+    height: number;
     duration: number;
     zoom: number;
     paddingX?: number;
@@ -245,10 +322,12 @@ interface TrackContentProps {
     acceptSourceType?: 'video' | 'audio';
     onCloseGapAtTime?: (time: number) => void;
     onCloseAllGaps?: () => void;
+    onSetGroupHeight?: (height: number) => void;
 }
 
 export function TrackContent({
     children,
+    height,
     duration,
     zoom,
     paddingX = 0,
@@ -273,6 +352,7 @@ export function TrackContent({
     acceptSourceType,
     onCloseGapAtTime,
     onCloseAllGaps,
+    onSetGroupHeight,
 }: TrackContentProps) {
     const innerRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -305,7 +385,7 @@ export function TrackContent({
                         'flex-1 overflow-hidden border-t border-zinc-600 relative',
                         isDragOver && acceptSourceType && 'ring-2 ring-inset ring-white/40',
                     )}
-                    style={{ height: TRACK_HEIGHT }}
+                    style={{ height }}
                     onMouseDown={onDeselect ? (e) => { bgDownRef.current = { x: e.clientX, y: e.clientY }; } : undefined}
                     onClick={onDeselect ? (e) => {
                         const down = bgDownRef.current;
@@ -417,6 +497,21 @@ export function TrackContent({
                     Redo
                     <ContextMenuShortcut>{modKey}+Shift+Z</ContextMenuShortcut>
                 </ContextMenuItem>
+                {onSetGroupHeight && (
+                    <>
+                        <ContextMenuSeparator />
+                        <ContextMenuSub>
+                            <ContextMenuSubTrigger>Track height</ContextMenuSubTrigger>
+                            <ContextMenuSubContent>
+                                {Object.entries(TRACK_HEIGHT_PRESETS).map(([label, value]) => (
+                                    <ContextMenuItem key={label} onClick={() => onSetGroupHeight(value)}>
+                                        {label}
+                                    </ContextMenuItem>
+                                ))}
+                            </ContextMenuSubContent>
+                        </ContextMenuSub>
+                    </>
+                )}
                 <ContextMenuSeparator />
                 <ContextMenuItem onClick={onAddTrackAbove}>Add track above</ContextMenuItem>
                 <ContextMenuItem onClick={onAddTrackBelow}>Add track below</ContextMenuItem>
@@ -438,6 +533,9 @@ interface TrackProps {
     trackId: string;
     index: number;
     duration: number;
+    onResizeHeight?: (height: number) => void;
+    onHeightResizeStart?: () => void;
+    onHeightResizeEnd?: () => void;
     zoom: number;
     paddingX?: number;
     scrollLeftRef: RefObject<number>;
@@ -493,6 +591,7 @@ interface TrackProps {
     onClipGainChange?: (trackId: string, clipId: string, gain: number) => void;
     onCloseGapAtTime?: (time: number) => void;
     onCloseAllGaps?: () => void;
+    onSetGroupHeight?: (height: number) => void;
 }
 
 export function Track({
@@ -553,7 +652,12 @@ export function Track({
     onClipGainChange,
     onCloseGapAtTime,
     onCloseAllGaps,
+    onResizeHeight,
+    onHeightResizeStart,
+    onHeightResizeEnd,
+    onSetGroupHeight,
 }: TrackProps) {
+    const height = track.height ?? TRACK_HEIGHT;
     const isEventTrack = track.type === TrackType.Event;
     const showEvents = isEventTrack && !track.isHidden && events && events.length > 0;
     const showClips = !isEventTrack && clips && clips.length > 0;
@@ -563,6 +667,10 @@ export function Track({
             <TrackInfo
                 type={track.type}
                 index={index}
+                height={height}
+                onResizeHeight={onResizeHeight}
+                onResizeStart={onHeightResizeStart}
+                onResizeEnd={onHeightResizeEnd}
                 isBlocked={track.isBlocked}
                 isHidden={track.isHidden}
                 isMuted={track.isMuted}
@@ -573,6 +681,7 @@ export function Track({
                 onToggleSyncLock={onToggleSyncLock}
             />
             <TrackContent
+                height={height}
                 duration={duration}
                 zoom={zoom}
                 paddingX={paddingX}
@@ -597,6 +706,7 @@ export function Track({
                 acceptSourceType={acceptSourceType}
                 onCloseGapAtTime={onCloseGapAtTime}
                 onCloseAllGaps={onCloseAllGaps}
+                onSetGroupHeight={onSetGroupHeight}
             >
                 {showEvents && events.map((event) => (
                     <TimelineEvent
@@ -636,6 +746,7 @@ export function Track({
                         onSplit={onSplitClip && !track.isBlocked ? () => onSplitClip(clip.id) : undefined}
                         onUnlink={onUnlinkClip && !track.isBlocked ? () => onUnlinkClip(clip.id) : undefined}
                         onGainChange={onClipGainChange && !track.isBlocked ? (gain) => onClipGainChange(trackId, clip.id, gain) : undefined}
+                        trackHeight={height}
                         waveformData={waveformMap?.get(clip.sourceId)}
                         thumbnails={thumbnailMap?.get(clip.id)}
                     />

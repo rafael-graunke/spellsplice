@@ -107,6 +107,24 @@ const makeFreshPlayers = (): Player[] =>
         track: { id: p.id, layers: 4, events: [] },
     }));
 
+/**
+ * Rebuild an override row from a live track. Every call site that persists rows
+ * must go through this: each new TrackOverrideRow field (syncLock, height…) was
+ * otherwise dropped by whichever site forgot to copy it.
+ */
+function toOverrideRow(t: TimelineTrack): TrackOverrideRow {
+    return {
+        id: t.id,
+        type: t.type,
+        isBlocked: t.isBlocked,
+        eventLayer: t.eventLayer,
+        isHidden: t.isHidden,
+        isMuted: t.isMuted,
+        syncLock: t.syncLock,
+        height: t.height,
+    };
+}
+
 type SavedState = {
     players: Player[];
     clipsByTrack: Record<string, import('./types/clip').Clip[]>;
@@ -129,6 +147,8 @@ type EditorConfig = {
     snapEnabled: boolean;
     followPlayhead: boolean;
     loop: boolean;
+    /** Group ids collapsed in the timeline. View preference, not project data. */
+    collapsedGroups: string[];
 };
 
 const DEFAULT_EDITOR_CONFIG: EditorConfig = {
@@ -138,6 +158,7 @@ const DEFAULT_EDITOR_CONFIG: EditorConfig = {
     snapEnabled: true,
     followPlayhead: true,
     loop: false,
+    collapsedGroups: [],
 };
 
 function loadEditorConfig(): EditorConfig {
@@ -195,6 +216,9 @@ function App() {
     const [snapEnabled, setSnapEnabled] = useState(() => loadEditorConfig().snapEnabled);
     const [followPlayhead, setFollowPlayhead] = useState(() => loadEditorConfig().followPlayhead);
     const [loop, setLoop] = useState(() => loadEditorConfig().loop);
+    const [collapsedGroups, setCollapsedGroups] = useState<string[]>(
+        () => loadEditorConfig().collapsedGroups
+    );
     // In/out are a session range, not project data: they scope playback and the
     // export, and are cheap to re-mark.
     const [inPoint, setInPoint] = useState<number | null>(null);
@@ -310,6 +334,7 @@ function App() {
         handleUpdateMeta,
         handleUpdatePlayer,
         recordTrackOverride,
+        mutateTrackOverride,
         handleDeleteTrack,
         handleAddClipsWithOverride,
         handleMoveClips,
@@ -391,9 +416,17 @@ function App() {
         }
         localStorage.setItem(
             EDITOR_KEY,
-            JSON.stringify({ volume, zoom, viewMode, snapEnabled, followPlayhead, loop })
+            JSON.stringify({
+                volume,
+                zoom,
+                viewMode,
+                snapEnabled,
+                followPlayhead,
+                loop,
+                collapsedGroups,
+            })
         );
-    }, [volume, zoom, viewMode, snapEnabled, followPlayhead, loop]);
+    }, [volume, zoom, viewMode, snapEnabled, followPlayhead, loop, collapsedGroups]);
 
     const isFirstConfigRender = useRef(true);
     useEffect(() => {
@@ -722,15 +755,7 @@ function App() {
             };
             const idx = group.tracks.findIndex((t) => t.id === trackId);
             if (idx === -1) return;
-            const currentRows: TrackOverrideRow[] = group.tracks.map((t) => ({
-                id: t.id,
-                type: t.type,
-                isBlocked: t.isBlocked,
-                eventLayer: t.eventLayer,
-                isHidden: t.isHidden,
-                isMuted: t.isMuted,
-                syncLock: t.syncLock,
-            }));
+            const currentRows: TrackOverrideRow[] = group.tracks.map(toOverrideRow);
             currentRows.splice(position === 'above' ? idx + 1 : idx, 0, newRow);
             recordTrackOverride(groupId, currentRows);
         },
@@ -860,6 +885,43 @@ function App() {
 
     const handleToggleLoop = useCallback(() => setLoop((v) => !v), []);
 
+    const handleToggleGroupCollapse = useCallback((groupId: string) => {
+        setCollapsedGroups((prev) =>
+            prev.includes(groupId)
+                ? prev.filter((id) => id !== groupId)
+                : [...prev, groupId]
+        );
+    }, []);
+
+    // Live write during the drag; handleBeginResize/handleCommitResize bracket
+    // it so the whole gesture is one undo entry.
+    const handleSetTrackHeight = useCallback(
+        (groupId: string, trackId: string, height: number) => {
+            const group = trackGroups.find((g) => g.id === groupId);
+            if (!group) return;
+            mutateTrackOverride(
+                groupId,
+                group.tracks.map((t) => ({
+                    ...toOverrideRow(t),
+                    height: t.id === trackId ? height : t.height,
+                }))
+            );
+        },
+        [trackGroups, mutateTrackOverride]
+    );
+
+    const handleSetGroupHeight = useCallback(
+        (groupId: string, height: number) => {
+            const group = trackGroups.find((g) => g.id === groupId);
+            if (!group) return;
+            recordTrackOverride(
+                groupId,
+                group.tracks.map((t) => ({ ...toOverrideRow(t), height }))
+            );
+        },
+        [trackGroups, recordTrackOverride]
+    );
+
     const handleToggleSyncLock = useCallback(
         (groupId: string, trackId: string) => {
             const group = trackGroups.find((g) => g.id === groupId);
@@ -867,12 +929,7 @@ function App() {
             recordTrackOverride(
                 groupId,
                 group.tracks.map((t) => ({
-                    id: t.id,
-                    type: t.type,
-                    isBlocked: t.isBlocked,
-                    eventLayer: t.eventLayer,
-                    isHidden: t.isHidden,
-                    isMuted: t.isMuted,
+                    ...toOverrideRow(t),
                     // Undefined reads as locked, so the flip of "locked" is
                     // exactly "was it explicitly unlocked".
                     syncLock: t.id === trackId ? t.syncLock === false : t.syncLock,
@@ -990,15 +1047,7 @@ function App() {
                     eventLayer: maxLayer + 1,
                 };
                 const updatedRows: TrackOverrideRow[] = [
-                    ...group.tracks.map((t) => ({
-                        id: t.id,
-                        type: t.type,
-                        isBlocked: t.isBlocked,
-                        eventLayer: t.eventLayer,
-                        isHidden: t.isHidden,
-                        isMuted: t.isMuted,
-                        syncLock: t.syncLock,
-                    })),
+                    ...group.tracks.map(toOverrideRow),
                     newRow,
                 ];
                 return { id: newRow.id, updatedRows };
@@ -1165,15 +1214,7 @@ function App() {
             for (const group of trackGroups) {
                 const idx = group.tracks.findIndex((t) => t.id === trackId);
                 if (idx === -1) continue;
-                const rows: TrackOverrideRow[] = group.tracks.map((t) => ({
-                    id: t.id,
-                    type: t.type,
-                    isBlocked: t.isBlocked,
-                    eventLayer: t.eventLayer,
-                    isHidden: t.isHidden,
-                    isMuted: t.isMuted,
-                    syncLock: t.syncLock,
-                }));
+                const rows: TrackOverrideRow[] = group.tracks.map(toOverrideRow);
                 rows[idx] = { ...rows[idx], [field]: !rows[idx][field] };
                 recordTrackOverride(group.id, rows);
                 break;
@@ -1549,6 +1590,10 @@ function App() {
                             onSetInPoint={setInPoint}
                             onSetOutPoint={setOutPoint}
                             onToggleLoop={handleToggleLoop}
+                            collapsedGroups={collapsedGroups}
+                            onToggleGroupCollapse={handleToggleGroupCollapse}
+                            onSetTrackHeight={handleSetTrackHeight}
+                            onSetGroupHeight={handleSetGroupHeight}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>

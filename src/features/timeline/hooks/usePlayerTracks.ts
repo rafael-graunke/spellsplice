@@ -21,6 +21,8 @@ export type TrackOverrideRow = {
     isMuted?: boolean;
     /** Whether ripple edits shift this row. Undefined = locked (the default). */
     syncLock?: boolean;
+    /** Row height in px. Undefined = TRACK_HEIGHT. */
+    height?: number;
 };
 
 type TracksState = {
@@ -604,6 +606,17 @@ export function usePlayerTracks(
         });
     }, [record]);
 
+    /**
+     * Same write without a history entry, for continuous gestures. A track
+     * height drag brackets this with handleBeginResize/handleCommitResize so
+     * the whole drag collapses to one undo step.
+     */
+    const mutateTrackOverride = useCallback((groupId: string, rows: TrackOverrideRow[]) => {
+        mutate((draft) => {
+            draft.trackOverrides[groupId] = rows;
+        });
+    }, [mutate]);
+
     const handleDeleteTrack = useCallback((groupId: string, trackId: string) => {
         record((draft) => {
             const rows = draft.trackOverrides[groupId];
@@ -688,6 +701,7 @@ export function usePlayerTracks(
         handleUpdateMeta,
         handleUpdatePlayer,
         recordTrackOverride,
+        mutateTrackOverride,
         handleDeleteTrack,
         handleAddClips,
         handleAddClipsWithOverride,

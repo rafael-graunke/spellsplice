@@ -41,9 +41,7 @@ import {
     TRACK_INFO_WIDTH,
     MIN_ZOOM,
     MAX_ZOOM,
-    TRACK_HEIGHT,
 } from './constants';
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../../components/ui/resizable';
 import {
     Command,
     CommandDialog,
@@ -271,6 +269,10 @@ interface TimelineProps {
     onToggleSnap: () => void;
     followPlayhead: boolean;
     onToggleFollow: () => void;
+    collapsedGroups: string[];
+    onToggleGroupCollapse: (groupId: string) => void;
+    onSetTrackHeight: (groupId: string, trackId: string, height: number) => void;
+    onSetGroupHeight: (groupId: string, height: number) => void;
     inPoint: number | null;
     outPoint: number | null;
     onSetInPoint: (t: number | null) => void;
@@ -329,6 +331,10 @@ function TimelineInner({
     onToggleSnap,
     followPlayhead,
     onToggleFollow,
+    collapsedGroups,
+    onToggleGroupCollapse,
+    onSetTrackHeight,
+    onSetGroupHeight,
     inPoint,
     outPoint,
     onSetInPoint,
@@ -340,6 +346,7 @@ function TimelineInner({
     const scrollAreaRef = useRef<HTMLDivElement>(null);
     const cursorRef = useRef<CursorHandle>(null);
     const scrollBoundaryRef = useRef<HTMLDivElement>(null);
+    const trackScrollRef = useRef<HTMLDivElement>(null);
     const trackElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
     const containerWidthRef = useRef(0);
 
@@ -393,24 +400,47 @@ function TimelineInner({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [clipSelectionRequest?.nonce]);
 
+    const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode ?? 'full');
+    useEffect(() => {
+        onViewModeChange?.(viewMode);
+    }, [viewMode, onViewModeChange]);
+
+    /** Groups the view mode admits. Collapsed ones still render, as a bar. */
+    const groupsInView = useMemo(() => {
+        if (viewMode === 'event') return trackGroups.filter((g) => g.type === TrackType.Event);
+        if (viewMode === 'video') return trackGroups.filter((g) => g.type === TrackType.Video || g.type === TrackType.Audio);
+        return trackGroups;
+    }, [trackGroups, viewMode]);
+
+    /**
+     * Groups whose tracks are actually mounted. Everything below derives from
+     * this, not from `trackGroups`: drag and marquee locate tracks by index into
+     * these arrays, so including a group that isn't rendered makes those indices
+     * point at tracks with no element.
+     */
+    const visibleGroups = useMemo(
+        () => groupsInView.filter((g) => !collapsedGroups.includes(g.id)),
+        [groupsInView, collapsedGroups],
+    );
+
     // Collect tracks by type in DOM order
     const eventTracks = useMemo(
-        () => trackGroups.flatMap((g) => g.tracks).filter((t) => t.type === TrackType.Event),
-        [trackGroups],
+        () => visibleGroups.flatMap((g) => g.tracks).filter((t) => t.type === TrackType.Event),
+        [visibleGroups],
     );
     const eventTrackGroups = useMemo(
-        () => trackGroups
+        () => visibleGroups
             .filter((g) => g.tracks.some((t) => t.type === TrackType.Event))
             .map((g) => ({ id: g.id, tracks: g.tracks.filter((t) => t.type === TrackType.Event) })),
-        [trackGroups],
+        [visibleGroups],
     );
     const videoTracks = useMemo(
-        () => trackGroups.flatMap((g) => g.tracks).filter((t) => t.type === TrackType.Video),
-        [trackGroups],
+        () => visibleGroups.flatMap((g) => g.tracks).filter((t) => t.type === TrackType.Video),
+        [visibleGroups],
     );
     const audioTracks = useMemo(
-        () => trackGroups.flatMap((g) => g.tracks).filter((t) => t.type === TrackType.Audio),
-        [trackGroups],
+        () => visibleGroups.flatMap((g) => g.tracks).filter((t) => t.type === TrackType.Audio),
+        [visibleGroups],
     );
 
     // Map eventId → trackId for fast lookup
@@ -528,6 +558,7 @@ function TimelineInner({
         setScroll,
         trackElsRef,
         scrollBoundaryRef,
+        trackScrollRef,
         eventTracks,
         videoTracks,
         audioTracks,
@@ -681,16 +712,6 @@ function TimelineInner({
     // Deliberately not persisted: reopening the app in razor mode would turn the
     // first click on a clip into a cut.
     const [tool, setTool] = useState<TimelineTool>(TimelineTool.Select);
-
-    const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode ?? 'full');
-    useEffect(() => {
-        onViewModeChange?.(viewMode);
-    }, [viewMode, onViewModeChange]);
-    const visibleGroups = useMemo(() => {
-        if (viewMode === 'event') return trackGroups.filter((g) => g.type === TrackType.Event);
-        if (viewMode === 'video') return trackGroups.filter((g) => g.type === TrackType.Video || g.type === TrackType.Audio);
-        return trackGroups;
-    }, [trackGroups, viewMode]);
 
     // Target player state — which Event group receives Ctrl+K events
     const [targetGroupId, setTargetGroupId] = useState<string | undefined>(undefined);
@@ -1019,20 +1040,19 @@ function TimelineInner({
                     className="flex-1 overflow-hidden relative"
                     onMouseDown={handleMarqueeMouseDown}
                 >
-                    <ResizablePanelGroup orientation="vertical" className="h-full overflow-x-hidden">
-                        {visibleGroups.flatMap((group, i) => [
-                            <ResizablePanel
-                                key={group.id}
-                                defaultSize={100 / visibleGroups.length}
-                                className="overflow-y-auto"
-                                minSize={TRACK_HEIGHT + 2}
-                                groupResizeBehavior={group.type === TrackType.Event ? 'preserve-relative-size' : 'preserve-pixel-size'}
-                            >
+                    {/* One scroll region for the whole stack, the way every NLE
+                        does it. Groups are content-sized; height is owned per
+                        track, not by a split pane. */}
+                    <div ref={trackScrollRef} className="h-full overflow-y-auto overflow-x-hidden scrollbar-thin">
+                        {groupsInView.map((group) => (
                                 <TrackGroup
+                                    key={group.id}
                                     icon={TrackTypeIconMap[group.type]}
                                     label={group.label}
                                     isTarget={group.id === targetGroupId}
+                                    collapsed={collapsedGroups.includes(group.id)}
                                     onSelect={group.type === TrackType.Event ? () => setTargetGroupId(group.id) : undefined}
+                                    onToggleCollapse={() => onToggleGroupCollapse(group.id)}
                                 >
                                     {group.tracks.map((track, i) => {
                                         const index = group.tracks.slice(0, i + 1).length;
@@ -1103,16 +1123,16 @@ function TimelineInner({
                                             onClipGainChange={track.type === TrackType.Audio ? onClipGainChange : undefined}
                                             onCloseGapAtTime={group.type === TrackType.Event ? undefined : (time) => handleCloseGapAtTime(track.id, time)}
                                             onCloseAllGaps={group.type === TrackType.Event ? undefined : () => handleCloseAllGaps(track.id)}
+                                            onResizeHeight={(h) => onSetTrackHeight(group.id, track.id, h)}
+                                            onHeightResizeStart={onResizeStart}
+                                            onHeightResizeEnd={onResizeEnd}
+                                            onSetGroupHeight={(h) => onSetGroupHeight(group.id, h)}
                                         />
                                         );
                                     })}
                                 </TrackGroup>
-                            </ResizablePanel>,
-                            ...(i < trackGroups.length - 1
-                                ? [<ResizableHandle key={`handle-${group.id}`} className="" />]
-                                : []),
-                        ])}
-                    </ResizablePanelGroup>
+                        ))}
+                    </div>
                     {marqueeRect && (
                         <div
                             className="absolute pointer-events-none border rounded-sm border-violet-500 bg-violet-500/20 z-40"

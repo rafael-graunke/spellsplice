@@ -55,7 +55,7 @@ export function SourceCard({ source, clipCount, onRelink, onDelete }: SourceCard
             }}
         >
             <div className="relative w-full aspect-video bg-muted flex items-center justify-center">
-                {source.type === 'video' ? (
+                {source.type === 'video' || source.type === 'image' ? (
                     source.thumbnailUrl && !offline ? (
                         <img
                             src={source.thumbnailUrl}
@@ -73,9 +73,11 @@ export function SourceCard({ source, clipCount, onRelink, onDelete }: SourceCard
                         <Link2Off className="w-5 h-5 text-destructive" />
                     </div>
                 )}
-                <span className="absolute bottom-1 right-1 bg-black/70 text-white rounded px-1 leading-none py-0.5">
-                    {formatDuration(source.duration)}
-                </span>
+                {source.type !== 'image' && (
+                    <span className="absolute bottom-1 right-1 bg-black/70 text-white rounded px-1 leading-none py-0.5">
+                        {formatDuration(source.duration)}
+                    </span>
+                )}
                 {clipCount !== undefined && clipCount > 0 && (
                     <span className="absolute top-1 left-1 bg-black/70 text-white rounded px-1 leading-none py-0.5">
                         {clipCount}
@@ -116,7 +118,7 @@ export function SourceCard({ source, clipCount, onRelink, onDelete }: SourceCard
                 <input
                     ref={fileInputRef}
                     type="file"
-                    accept="video/*,audio/*"
+                    accept="video/*,audio/*,image/*"
                     className="hidden"
                     onChange={(e) => {
                         const file = e.target.files?.[0];

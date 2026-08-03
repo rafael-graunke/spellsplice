@@ -3,6 +3,10 @@ import type { MediaSource } from '../types/source';
 
 const PEAKS_PER_SECOND = 100;
 
+// decodeAudioData resamples to the context's rate. 8000 is the spec minimum and still gives
+// 80 samples per peak; decoding at hardware rate costs 6x the memory and scan for nothing.
+const DECODE_SAMPLE_RATE = 8000;
+
 export interface WaveformData {
     peaks: Float32Array;
     duration: number;
@@ -11,13 +15,8 @@ export interface WaveformData {
 async function extractPeaks(source: MediaSource): Promise<WaveformData> {
     if (!source.file) throw new Error('Source has no file');
     const buf = await source.file.arrayBuffer();
-    const audioCtx = new AudioContext();
-    let audioBuffer: AudioBuffer;
-    try {
-        audioBuffer = await audioCtx.decodeAudioData(buf);
-    } finally {
-        audioCtx.close();
-    }
+    const audioCtx = new OfflineAudioContext(1, 1, DECODE_SAMPLE_RATE);
+    const audioBuffer = await audioCtx.decodeAudioData(buf);
 
     const sampleRate = audioBuffer.sampleRate;
     const samplesPerPeak = Math.max(1, Math.floor(sampleRate / PEAKS_PER_SECOND));

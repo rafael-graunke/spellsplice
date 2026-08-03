@@ -91,7 +91,7 @@ export function RelinkDialog({
                 <input
                     ref={fileInputRef}
                     type="file"
-                    accept="video/*,audio/*"
+                    accept="video/*,audio/*,image/*"
                     className="hidden"
                     onChange={handleFileChange}
                 />

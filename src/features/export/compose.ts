@@ -15,6 +15,8 @@ import { renderLiveAnnotations } from '@/renders/renderLiveAnnotation';
 import { renderLiveCardDisplay } from '@/renders/renderLiveCardDisplay';
 import { renderLiveScoreboard, getLiveScoreboardImage } from '@/renders/renderLiveScoreboard';
 import { toPlayerInfo, toHand, toAnnotations, toDisplayCards, toNow } from '@/lib/overlayData';
+import { drawClipLayers } from '@/renders/composeClips';
+import type { BaseLayer } from '@/renders/composeClips';
 
 // Gap between the annotation column and the hand stack it follows, matching the
 // live overlay page.
@@ -90,6 +92,9 @@ export class Compositor {
     private glCanvas: HTMLCanvasElement | OffscreenCanvas;
     private overlayCanvas: OffscreenCanvas;
     private overlayCtx: OffscreenCanvasRenderingContext2D;
+    // Base (video/image clip stack) composited in 2D, then uploaded to TEXTURE0.
+    private baseCanvas: OffscreenCanvas;
+    private baseCtx: OffscreenCanvasRenderingContext2D;
     private program: WebGLProgram;
     private videoTex: WebGLTexture;
     private overlayTex: WebGLTexture;
@@ -118,6 +123,9 @@ export class Compositor {
 
         this.overlayCanvas = new OffscreenCanvas(outWidth, outHeight);
         this.overlayCtx = this.overlayCanvas.getContext('2d')!;
+
+        this.baseCanvas = new OffscreenCanvas(outWidth, outHeight);
+        this.baseCtx = this.baseCanvas.getContext('2d')!;
 
         const vs = this.compileShader(gl.VERTEX_SHADER, VERT_SRC);
         const fs = this.compileShader(gl.FRAGMENT_SHADER, FRAG_SRC);
@@ -185,6 +193,14 @@ export class Compositor {
         gl.bindTexture(gl.TEXTURE_2D, this.videoTex);
         // VideoFrame is accepted as TexImageSource in Chrome — uploads GPU→GPU without CPU readback
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame as unknown as TexImageSource);
+    }
+
+    uploadBaseLayers(layers: BaseLayer[]): void {
+        const { gl } = this;
+        drawClipLayers(this.baseCtx, layers, this.outW, this.outH);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.videoTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.baseCanvas);
     }
 
     updateOverlay(

@@ -9,10 +9,19 @@ import type {
     DeleteItem,
     DuplicateItem,
     PasteItem,
+    ViewMode,
 } from './features/timeline/Timeline';
 import type { MoveResult } from './features/timeline/hooks/hookTypes';
 import type { Clip } from './types/clip';
 import { ClipType } from './types/clip';
+import {
+    defaultTransform,
+    DEFAULT_IMAGE_CLIP_DURATION,
+    resolveTransform,
+    clipRectInProject,
+    pointInRect,
+    NO_CROP,
+} from '@/lib/clipTransform';
 import type { TimelineTrackGroup, TimelineTrack } from './features/timeline/types';
 import { TrackType } from './features/timeline/types';
 import type { TrackOverrideRow } from './features/timeline/hooks/usePlayerTracks';
@@ -22,10 +31,11 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { exportProject, importProject } from '@/lib/projectExport';
 import { migrateLegacyEvents } from '@/lib/migrateProject';
 import { RelinkDialog } from './features/sources/RelinkDialog';
-import { getFileDuration, generateThumbnail } from '@/lib/generateThumbnail';
+import { getMediaMetadata, generateThumbnail } from '@/lib/generateThumbnail';
 import VideoPreview, {
     type VideoPreviewHandle,
 } from './features/timeline/VideoPreview';
+import { PreviewGizmo } from './features/timeline/PreviewGizmo';
 import type { VideoState } from './types/video';
 import { Inspector } from './features/inspector/index';
 import { usePlayerTracks } from './features/timeline/hooks/usePlayerTracks';
@@ -62,7 +72,6 @@ type PlayerInit = Omit<Player, 'track'>;
 const PROJECT_KEY = 'spellsplice-project';
 const EDITOR_KEY = 'spellsplice-editor';
 const MODE_KEY = 'spellsplice-mode';
-const DEFAULT_DURATION = 120;
 
 type Mode = 'welcome' | 'timeline' | 'live';
 
@@ -111,15 +120,21 @@ type SavedState = {
     config?: ProjectConfig;
 };
 
-type EditorConfig = { volume: number; zoom: number };
+type EditorConfig = { volume: number; zoom: number; viewMode: ViewMode };
+
+const DEFAULT_EDITOR_CONFIG: EditorConfig = {
+    volume: 100,
+    zoom: 20,
+    viewMode: 'full',
+};
 
 function loadEditorConfig(): EditorConfig {
     try {
         const raw = localStorage.getItem(EDITOR_KEY);
-        if (!raw) return { volume: 100, zoom: 20 };
-        return { volume: 100, zoom: 20, ...JSON.parse(raw) };
+        if (!raw) return DEFAULT_EDITOR_CONFIG;
+        return { ...DEFAULT_EDITOR_CONFIG, ...JSON.parse(raw) };
     } catch {
-        return { volume: 100, zoom: 20 };
+        return DEFAULT_EDITOR_CONFIG;
     }
 }
 
@@ -148,6 +163,10 @@ function App() {
             DEFAULT_CARD_DISPLAY_DURATION_MS
     );
     const [isPlaying, setIsPlaying] = useState(false);
+    // JKL shuttle speed, forward only. Reset to 1 whenever playback stops so a
+    // stop that didn't come from the transport (end of timeline) can't leave the
+    // next play running at 8x.
+    const [playbackRate, setPlaybackRate] = useState(1);
     const [video, setVideo] = useState<VideoState | null>(null);
     const [sources, setSources] = useState<MediaSource[]>(
         () =>
@@ -160,6 +179,7 @@ function App() {
 
     const [volume, setVolume] = useState(() => loadEditorConfig().volume);
     const [zoom, setZoom] = useState(() => loadEditorConfig().zoom);
+    const [viewMode, setViewMode] = useState(() => loadEditorConfig().viewMode);
 
     const [isDirty, setIsDirty] = useState(false);
     const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -197,6 +217,10 @@ function App() {
         currentTimeRef.current = t;
         videoPreviewRef.current?.seek(t);
     }, []);
+
+    useEffect(() => {
+        if (!isPlaying) setPlaybackRate(1);
+    }, [isPlaying]);
 
     const handleCardStatus = useCallback(
         (status: OracleCardsStatus, progress?: number) => {
@@ -260,6 +284,7 @@ function App() {
         handleDeleteTrack,
         handleAddClipsWithOverride,
         handleMoveClips,
+        handleUpdateClipTransform,
         handleDeleteClip,
         handleDeleteClips,
         handleDeleteAll,
@@ -333,8 +358,11 @@ function App() {
             isFirstEditorRender.current = false;
             return;
         }
-        localStorage.setItem(EDITOR_KEY, JSON.stringify({ volume, zoom }));
-    }, [volume, zoom]);
+        localStorage.setItem(
+            EDITOR_KEY,
+            JSON.stringify({ volume, zoom, viewMode })
+        );
+    }, [volume, zoom, viewMode]);
 
     const isFirstConfigRender = useRef(true);
     useEffect(() => {
@@ -466,14 +494,22 @@ function App() {
                         : s
                 )
             );
-            const duration = await getFileDuration(file).catch(() => 0);
-            const thumbnailUrl = file.type.startsWith('video')
-                ? await generateThumbnail(file).catch(() => undefined)
-                : undefined;
+            const meta = await getMediaMetadata(file).catch(() => ({ duration: 0, width: 0, height: 0 }));
+            const thumbnailUrl = file.type.startsWith('audio')
+                ? undefined
+                : await generateThumbnail(file).catch(() => undefined);
             setSources((prev) =>
                 prev.map((s) =>
                     s.id === sourceId
-                        ? { ...s, file, duration, thumbnailUrl, loading: false }
+                        ? {
+                              ...s,
+                              file,
+                              duration: meta.duration,
+                              width: meta.width || undefined,
+                              height: meta.height || undefined,
+                              thumbnailUrl,
+                              loading: false,
+                          }
                         : s
                 )
             );
@@ -677,6 +713,18 @@ function App() {
         setSelectedEvents(events);
     }, []);
 
+    const [selectedClipIds, setSelectedClipIds] = useState<Set<string>>(new Set());
+    // A single selected VISUAL clip (video/image) drives the preview gizmo.
+    const selectedVisualClip = useMemo(() => {
+        if (selectedClipIds.size !== 1) return null;
+        const [clipId] = selectedClipIds;
+        for (const [trackId, clips] of Object.entries(clipsByTrack)) {
+            const clip = clips.find((c) => c.id === clipId);
+            if (clip && clip.type !== ClipType.Audio) return { trackId, clip };
+        }
+        return null;
+    }, [selectedClipIds, clipsByTrack]);
+
     const handleCreate = useCallback(
         (
             trackId: string,
@@ -812,7 +860,9 @@ function App() {
             const source = sourcesRef.current.find((s) => s.id === sourceId);
             if (!source) return;
 
-            const clipEnd = time + (source.duration ?? 0);
+            const clipDuration =
+                source.type === 'image' ? source.duration || DEFAULT_IMAGE_CLIP_DURATION : source.duration;
+            const clipEnd = time + (clipDuration ?? 0);
             const clipsCollide = (clips: Clip[]) =>
                 clips.some(
                     (c) => time < c.time + (c.duration ?? 0) && clipEnd > c.time
@@ -859,13 +909,23 @@ function App() {
             );
             if (!group) return;
 
+            const clipType =
+                source.type === 'video'
+                    ? ClipType.Video
+                    : source.type === 'image'
+                      ? ClipType.Image
+                      : ClipType.Audio;
+            const isVisual = clipType === ClipType.Video || clipType === ClipType.Image;
             const clip: Clip = {
                 id: crypto.randomUUID(),
-                type: source.type === 'video' ? ClipType.Video : ClipType.Audio,
+                type: clipType,
                 time,
-                duration: source.duration,
+                duration: clipDuration,
                 sourceId,
                 sourceOffset: 0,
+                ...(isVisual
+                    ? { transform: defaultTransform(source, projectConfigRef.current.resolution) }
+                    : {}),
             };
 
             const videoResolution = resolveTrack(group, trackId);
@@ -946,6 +1006,44 @@ function App() {
         [trackGroups]
     );
 
+    // Refs so the preview click handler stays stable (no re-subscribe per render).
+    const videoClipsRef = useRef(videoClips);
+    videoClipsRef.current = videoClips;
+    const hiddenVideoTrackIdsRef = useRef(hiddenVideoTrackIds);
+    hiddenVideoTrackIdsRef.current = hiddenVideoTrackIds;
+
+    // App -> Timeline selection request (preview-click selects a clip). The nonce
+    // lets the same clipId re-fire; clipId null clears the selection.
+    const clipSelectNonce = useRef(0);
+    const [clipSelectionRequest, setClipSelectionRequest] = useState<{
+        clipId: string | null;
+        nonce: number;
+    } | null>(null);
+
+    // Click on the preview: pick the top-most visual clip whose rendered rect
+    // contains the point (at the current time), else clear the selection.
+    const handlePreviewCanvasClick = useCallback((x: number, y: number) => {
+        const t = currentTimeRef.current;
+        const res = projectConfigRef.current.resolution;
+        const clips = videoClipsRef.current.filter((c) => c.time <= t && t < c.time + c.duration);
+        for (let i = clips.length - 1; i >= 0; i--) {
+            const clip = clips[i];
+            if (clip.trackId && hiddenVideoTrackIdsRef.current.has(clip.trackId)) continue;
+            const source = sourcesRef.current.find((s) => s.id === clip.sourceId);
+            const rect = clipRectInProject(
+                resolveTransform(clip, source, res),
+                source,
+                res,
+                clip.crop ?? NO_CROP,
+            );
+            if (pointInRect(x, y, rect)) {
+                setClipSelectionRequest({ clipId: clip.id, nonce: ++clipSelectNonce.current });
+                return;
+            }
+        }
+        setClipSelectionRequest({ clipId: null, nonce: ++clipSelectNonce.current });
+    }, []);
+
     const mutedAudioTrackIds = useMemo(
         () =>
             new Set(
@@ -978,14 +1076,18 @@ function App() {
         [trackGroups, recordTrackOverride]
     );
 
+    // Content duration, not the timeline's scrollable extent (Timeline derives
+    // that). Accumulated rather than Math.max(...spread) because a long project
+    // can hold more events than the argument limit allows.
     const duration = useMemo(() => {
-        const clipEnd = Math.max(
-            0,
-            ...videoClips.map((c) => c.time + c.duration),
-            ...audioClips.map((c) => c.time + c.duration)
-        );
-        return clipEnd > 0 ? clipEnd : (video?.duration ?? DEFAULT_DURATION);
-    }, [videoClips, audioClips, video]);
+        let end = 0;
+        for (const c of videoClips) end = Math.max(end, c.time + c.duration);
+        for (const c of audioClips) end = Math.max(end, c.time + c.duration);
+        for (const p of players) {
+            for (const e of p.track.events) end = Math.max(end, e.time + (e.duration ?? 0));
+        }
+        return end;
+    }, [videoClips, audioClips, players]);
 
     const durationRef = useRef(duration);
     durationRef.current = duration;
@@ -1164,6 +1266,7 @@ function App() {
                 sources={sources}
                 players={players}
                 config={projectConfig}
+                hiddenVideoTrackIds={hiddenVideoTrackIds}
             />
             <RelinkDialog
                 open={relinkDialogOpen}
@@ -1221,22 +1324,41 @@ function App() {
                                 defaultSize="70%"
                                 className="bg-surface"
                             >
-                                <VideoPreview
-                                    ref={videoPreviewRef}
-                                    isPlaying={isPlaying}
-                                    currentTimeRef={currentTimeRef}
-                                    setIsPlaying={setIsPlaying}
-                                    players={players}
-                                    overlayConfig={overlayConfig}
-                                    duration={duration}
-                                    videoClips={videoClips}
-                                    audioClips={audioClips}
-                                    sources={sources}
-                                    hiddenVideoTrackIds={hiddenVideoTrackIds}
-                                    mutedAudioTrackIds={mutedAudioTrackIds}
-                                    volume={volume}
-                                    onVolumeChange={setVolume}
-                                />
+                                <div className="relative w-full h-full">
+                                    <VideoPreview
+                                        ref={videoPreviewRef}
+                                        isPlaying={isPlaying}
+                                        currentTimeRef={currentTimeRef}
+                                        setIsPlaying={setIsPlaying}
+                                        playbackRate={playbackRate}
+                                        setPlaybackRate={setPlaybackRate}
+                                        players={players}
+                                        overlayConfig={overlayConfig}
+                                        duration={duration}
+                                        videoClips={videoClips}
+                                        audioClips={audioClips}
+                                        sources={sources}
+                                        resolution={projectConfig.resolution}
+                                        hiddenVideoTrackIds={hiddenVideoTrackIds}
+                                        mutedAudioTrackIds={mutedAudioTrackIds}
+                                        volume={volume}
+                                        onVolumeChange={setVolume}
+                                        onCanvasClick={handlePreviewCanvasClick}
+                                    />
+                                    {!isPlaying && selectedVisualClip && (
+                                        <PreviewGizmo
+                                            key={selectedVisualClip.clip.id}
+                                            clip={selectedVisualClip.clip}
+                                            trackId={selectedVisualClip.trackId}
+                                            source={sources.find(
+                                                (s) => s.id === selectedVisualClip.clip.sourceId
+                                            )}
+                                            resolution={projectConfig.resolution}
+                                            previewRef={videoPreviewRef}
+                                            onCommit={handleUpdateClipTransform}
+                                        />
+                                    )}
+                                </div>
                             </ResizablePanel>
                             <ResizableHandle />
                             <ResizablePanel minSize="250px" defaultSize="15%">
@@ -1266,6 +1388,8 @@ function App() {
                             trackGroups={trackGroups}
                             initialZoom={zoom}
                             onZoomChange={setZoom}
+                            initialViewMode={viewMode}
+                            onViewModeChange={setViewMode}
                             displayCardDuration={
                                 projectConfig.cardDisplayDuration / 1000
                             }
@@ -1282,6 +1406,8 @@ function App() {
                             onResizeStart={handleBeginResize}
                             onResizeEnd={handleCommitResize}
                             onSelectionChange={handleSelectionChange}
+                            onClipSelectionChange={setSelectedClipIds}
+                            clipSelectionRequest={clipSelectionRequest}
                             onAddTrack={handleAddTrack}
                             onDeleteTrack={handleDeleteTrack}
                             sources={sources}

@@ -3,6 +3,7 @@ const debug = (msg: string) => {
 };
 
 import type { Clip } from '@/types/clip';
+import { ClipType } from '@/types/clip';
 import type { MediaSource } from '@/types/source';
 import type { Player } from '@/types/player';
 import { derivePlayerState, getNextChangeTime } from '@/lib/deriveState';
@@ -14,13 +15,17 @@ import { HAND_ANIM_DURATION } from '@/renders/renderLiveHand';
 import { ANNOTATION_ANIM_DURATION } from '@/renders/renderLiveAnnotation';
 import { UI_FADE_MS } from '@/lib/deriveState';
 import type { OverlayConfig } from './compose';
-import { getVideoTrackMeta, streamVideoChunks, streamAudioChunks, getAudioTrackMeta, extractAudioFromFile } from './demux';
+import { getVideoTrackMeta, streamAudioChunks, getAudioTrackMeta, mixClipAudio } from './demux';
 import type { AudioTrackMeta } from './demux';
 import { transcodeToOpus } from './transcode';
 import { pickCodec, openSaveDialog } from './codec';
 import { Encoder } from './encode';
 import { createMuxer } from './mux';
 import { Compositor } from './compose';
+import type { BaseLayer } from '@/renders/composeClips';
+import { VideoClipProvider } from './videoClipProvider';
+import { resolveTransform, NO_CROP } from '@/lib/clipTransform';
+import type { Resolution } from '@/types/config';
 
 export interface ExportOptions {
     fps?: number;
@@ -38,6 +43,7 @@ export interface ExportProgress {
 
 const OUT_W = 1920;
 const OUT_H = 1080;
+const EXPORT_RESOLUTION: Resolution = { width: OUT_W, height: OUT_H };
 // Longest shared-renderer animation, so the overlay keeps repainting through it.
 const ANIM_DURATION = Math.max(
     HAND_ANIM_DURATION / 1000,
@@ -54,68 +60,47 @@ function loadImg(src: string): Promise<HTMLImageElement> {
     });
 }
 
-// Collects audio chunks for all clips, routing by source type:
-//   video sources → mp4box streaming (handles large files without loading into RAM), one pass per clip
-//   audio sources → WebAudio decode (handles any format: MP3, WAV, OGG, FLAC, etc.), one decode per source
+// A lone video clip keeps the mp4box passthrough: nothing can overlap it, so it avoids a
+// re-encode and never holds the whole timeline as PCM. Everything else must be mixed.
 async function collectClipAudio(
     clips: Clip[],
     sourceMap: Map<string, MediaSource>,
     signal: AbortSignal,
     targetCodec: 'mp4a.40.2' | 'opus' = 'mp4a.40.2',
 ): Promise<{ chunks: EncodedAudioChunk[]; meta: AudioTrackMeta } | null> {
-    const result: EncodedAudioChunk[] = [];
-    let firstMeta: AudioTrackMeta | null = null;
+    const usable = clips.filter((c) => sourceMap.get(c.sourceId)?.file);
+    if (usable.length === 0) return null;
 
-    const bySource = new Map<string, Clip[]>();
-    for (const clip of clips) {
-        const arr = bySource.get(clip.sourceId) ?? [];
-        arr.push(clip);
-        bySource.set(clip.sourceId, arr);
-    }
-
-    for (const [sourceId, sourceClips] of bySource) {
-        const source = sourceMap.get(sourceId);
-        if (!source?.file) continue;
-
-        const sorted = [...sourceClips].sort((a, b) => a.sourceOffset - b.sourceOffset);
-
-        if (source.type === 'video' && targetCodec !== 'opus') {
-            // mp4box streaming path: memory-efficient for large video files. Yields native codec
-            // chunks (AAC for MP4). Not used when targeting Opus because WebCodecs AudioDecoder
-            // for mp4a.40.2 is unavailable on Linux Chromium (patent licensing); those builds
-            // only decode AAC via the browser media stack (audioCtx.decodeAudioData below).
-            const meta = await getAudioTrackMeta(source.file);
-            if (!meta) continue;
-            if (!firstMeta) firstMeta = meta;
-
-            for (const clip of sorted) {
-                const clipStart = clip.sourceOffset;
-                const clipEnd = clip.sourceOffset + clip.duration;
-                const shift = clip.time - clip.sourceOffset;
-                for await (const chunk of streamAudioChunks(source.file, signal)) {
-                    if (signal.aborted) break;
-                    const srcSec = chunk.timestamp / 1e6;
-                    if (srcSec < clipStart) continue;
-                    if (srcSec >= clipEnd) break;
-                    const outputTs = Math.round((srcSec + shift) * 1e6);
-                    const data = new Uint8Array(chunk.byteLength);
-                    chunk.copyTo(data);
-                    result.push(new EncodedAudioChunk({ type: chunk.type, timestamp: outputTs, duration: chunk.duration ?? undefined, data }));
-                }
+    const soleSource = usable.length === 1 ? sourceMap.get(usable[0].sourceId) : undefined;
+    // Opus is excluded: WebCodecs AudioDecoder for mp4a.40.2 is unavailable on Linux Chromium
+    // (patent licensing), so those builds can only decode AAC via decodeAudioData in the mix path.
+    if (soleSource?.file && soleSource.type === 'video' && targetCodec !== 'opus') {
+        const clip = usable[0];
+        const meta = await getAudioTrackMeta(soleSource.file);
+        if (meta) {
+            const result: EncodedAudioChunk[] = [];
+            const clipEnd = clip.sourceOffset + clip.duration;
+            const shift = clip.time - clip.sourceOffset;
+            for await (const chunk of streamAudioChunks(soleSource.file, signal)) {
+                if (signal.aborted) break;
+                const srcSec = chunk.timestamp / 1e6;
+                if (srcSec < clip.sourceOffset) continue;
+                if (srcSec >= clipEnd) break;
+                const outputTs = Math.round((srcSec + shift) * 1e6);
+                const data = new Uint8Array(chunk.byteLength);
+                chunk.copyTo(data);
+                result.push(new EncodedAudioChunk({ type: chunk.type, timestamp: outputTs, duration: chunk.duration ?? undefined, data }));
             }
-        } else {
-            // WebAudio path: decode via audioCtx.decodeAudioData (handles any format the browser
-            // media stack supports, including AAC on Linux). Used for all audio sources and for
-            // video sources when targeting Opus.
-            const extracted = await extractAudioFromFile(source.file, sorted, signal, targetCodec);
-            if (!extracted) continue;
-            if (!firstMeta) firstMeta = extracted.meta;
-            result.push(...extracted.chunks);
+            return { chunks: result, meta };
         }
     }
 
-    if (!firstMeta) return null;
-    return { chunks: result.sort((a, b) => a.timestamp - b.timestamp), meta: firstMeta };
+    const files = new Map<string, File>();
+    for (const clip of usable) {
+        const file = sourceMap.get(clip.sourceId)?.file;
+        if (file) files.set(clip.sourceId, file);
+    }
+    return mixClipAudio(usable, files, signal, targetCodec);
 }
 
 export async function exportVideo(
@@ -126,18 +111,24 @@ export async function exportVideo(
     onProgress: (p: ExportProgress) => void,
     signal: AbortSignal,
     options: ExportOptions,
+    hiddenVideoTrackIds?: Set<string>,
 ): Promise<void> {
     const { fps = 60, overlay } = options;
     const videoLayerHidden = overlay.layers.some((l) => l.id === 'video' && !l.visible);
     // DISPLAY_CARD uses its own configured enter/exit animation length.
     const cardAnim = cardDisplayAnimSeconds(overlay.cardDisplay);
     const sourceMap = new Map(sources.map(s => [s.id, s]));
-    const sortedVideoClips = [...videoClips].sort((a, b) => a.time - b.time);
+    // Visual clips = video + image (both live on the Video track group), sorted
+    // by output start. Composited together, back-to-front, per output frame.
+    const sortedVisualClips = [...videoClips].sort((a, b) => a.time - b.time);
     const sortedAudioClips = [...audioClips].sort((a, b) => a.time - b.time);
+    // Audio can only be extracted from actual video sources (images have none).
+    const videoOnlyClips = sortedVisualClips.filter((c) => c.type === ClipType.Video);
 
-    if (sortedVideoClips.length === 0) throw new Error('No video clips to export.');
+    if (sortedVisualClips.length === 0 && sortedAudioClips.length === 0)
+        throw new Error('Nothing to export — add video, image, or audio clips.');
 
-    for (const clip of [...sortedVideoClips, ...sortedAudioClips]) {
+    for (const clip of [...sortedVisualClips, ...sortedAudioClips]) {
         const src = sourceMap.get(clip.sourceId);
         if (!src?.file) {
             throw new Error(`Source "${src?.name ?? clip.sourceId}" is not linked. Use Relink Media to restore it.`);
@@ -145,8 +136,9 @@ export async function exportVideo(
     }
 
     const totalDuration = Math.max(
-        ...sortedVideoClips.map(c => c.time + c.duration),
-        ...(sortedAudioClips.length > 0 ? sortedAudioClips.map(c => c.time + c.duration) : [0]),
+        0,
+        ...sortedVisualClips.map(c => c.time + c.duration),
+        ...sortedAudioClips.map(c => c.time + c.duration),
     );
     const totalFrames = Math.ceil(totalDuration * fps);
 
@@ -166,14 +158,33 @@ export async function exportVideo(
 
     const writableStream = await openSaveDialog(format);
 
-    emit('loading', 'Parsing video…');
-    const firstVideoSource = sourceMap.get(sortedVideoClips[0].sourceId)!;
-    const { config: decoderConfig, fps: sourceFps } = await getVideoTrackMeta(firstVideoSource.file!);
-    if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    // Per-source decoder config, fetched + support-checked lazily on first use so
+    // clips from different-codec sources each decode with their own config.
+    const videoConfigs = new Map<string, VideoDecoderConfig>();
+    const ensureVideoConfig = async (source: MediaSource): Promise<VideoDecoderConfig> => {
+        const cached = videoConfigs.get(source.id);
+        if (cached) return cached;
+        const { config } = await getVideoTrackMeta(source.file!);
+        const support = await VideoDecoder.isConfigSupported(config);
+        if (!support.supported)
+            throw new Error(`VideoDecoder does not support codec "${config.codec}" for source "${source.name}".`);
+        videoConfigs.set(source.id, config);
+        return config;
+    };
 
-    const decoderSupport = await VideoDecoder.isConfigSupported(decoderConfig);
-    if (!decoderSupport.supported)
-        throw new Error(`VideoDecoder does not support codec "${decoderConfig.codec}" on this browser.`);
+    // Decode every image source once to an ImageBitmap (a valid CanvasImageSource).
+    emit('loading', 'Loading images…');
+    const imageBitmaps = new Map<string, ImageBitmap>();
+    for (const source of sources) {
+        if (source.type === 'image' && source.file) {
+            try {
+                imageBitmaps.set(source.id, await createImageBitmap(source.file));
+            } catch {
+                // Undecodable image — its clips will simply be skipped.
+            }
+        }
+    }
+    if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
     const eyeImg = await loadImg('/assets/eye.svg').catch(() => null);
 
@@ -202,7 +213,7 @@ export async function exportVideo(
     // For MP4, encode to AAC. Video sources always go through mp4box streaming regardless.
     const audioTargetCodec = format === 'webm' ? 'opus' : 'mp4a.40.2';
     // Prefer explicit audio clips; fall back to extracting audio from video clip sources.
-    const audioSourceClips = sortedAudioClips.length > 0 ? sortedAudioClips : sortedVideoClips;
+    const audioSourceClips = sortedAudioClips.length > 0 ? sortedAudioClips : videoOnlyClips;
     const audioResult = await collectClipAudio(audioSourceClips, sourceMap, signal, audioTargetCodec);
     if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
@@ -227,14 +238,8 @@ export async function exportVideo(
     let overlayValidUntil = -Infinity;
     let frameIdx = 0;
     const targetTimes = Array.from({ length: totalFrames }, (_, i) => i / fps);
-    const tolerance = 0.5 / (sourceFps || fps);
-    const pendingFrames: VideoFrame[] = [];
-    let decoderError: unknown = null;
-
-    const decoder = new VideoDecoder({
-        output: (f) => pendingFrames.push(f),
-        error: (e) => { decoderError = e; },
-    });
+    // One decode cursor per active video clip, created lazily / disposed on exit.
+    const providers = new Map<string, VideoClipProvider>();
 
     const preloadScoreboards = async (targetSec: number) => {
         const states = players.map((p) => derivePlayerState(p, p.track.events, targetSec));
@@ -290,81 +295,79 @@ export async function exportVideo(
         }
     };
 
-    // Encode the output frame at frameIdx. Pass a VideoFrame to upload new video content,
-    // or null to hold the previous frame's texture (used for gaps between clips).
-    const encodeAt = async (frame: VideoFrame | null) => {
+    // Composite the given layer stack (back-to-front) into one output frame and
+    // encode it. Empty layers -> black (letterbox / gap).
+    const encodeFrame = async (layers: BaseLayer[]) => {
         const targetSec = targetTimes[frameIdx];
         const timestampUs = Math.round(targetSec * 1e6);
         await updateOverlay(targetSec);
-        if (frame && !videoLayerHidden) compositor.uploadVideoFrame(frame);
+        if (layers.length > 0) compositor.uploadBaseLayers(layers);
         else compositor.uploadBlackFrame();
         const composed = compositor.compose(timestampUs, Math.round(1e6 / fps));
         encoder.encode(composed, frameIdx % (Math.round(fps) * 10) === 0);
         composed.close();
         muxer.feedAudioUpTo(audioChunks, timestampUs);
         framesEncoded++;
-        frameIdx++;
         emit('frames', `Frame ${framesEncoded} / ${totalFrames}`);
-        await encoder.drainIfNeeded(frameIdx, 150);
+        await encoder.drainIfNeeded(frameIdx + 1, 150);
         if (encoder.error) throw encoder.error;
-        if (decoderError) throw decoderError;
     };
 
     exportStartTime = performance.now();
 
     try {
-        for (const clip of sortedVideoClips) {
-            // Fill any gap before this clip with the previous frame's texture.
-            while (frameIdx < totalFrames && targetTimes[frameIdx] < clip.time - tolerance) {
-                await encodeAt(null);
+        // Output-frame-driven: for each frame, composite EVERY clip active at that
+        // time (video via a per-clip decode cursor, images via a decoded bitmap),
+        // back-to-front, mirroring the live preview's renderFrame.
+        for (frameIdx = 0; frameIdx < totalFrames; frameIdx++) {
+            if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+            const t = targetTimes[frameIdx];
+            const active = sortedVisualClips.filter((c) => c.time <= t && t < c.time + c.duration);
+            const activeIds = new Set(active.map((c) => c.id));
+            // Retire decoders for clips that just went inactive.
+            for (const [id, p] of providers) {
+                if (!activeIds.has(id)) { p.dispose(); providers.delete(id); }
             }
-            if (frameIdx >= totalFrames) break;
 
-            const source = sourceMap.get(clip.sourceId)!;
-            const clipEndOutputFrame = Math.min(totalFrames, Math.ceil((clip.time + clip.duration) * fps));
-
-            decoder.reset();
-            decoder.configure(decoderConfig);
-
-            const drainFrames = async () => {
-                while (pendingFrames.length > 0 && frameIdx < clipEndOutputFrame) {
-                    const frame = pendingFrames[0];
-                    const srcSec = frame.timestamp / 1e6;
-
-                    if (srcSec < clip.sourceOffset - tolerance) {
-                        pendingFrames.shift()!.close();
-                        continue;
+            const layers: BaseLayer[] = [];
+            if (!videoLayerHidden) {
+                for (const clip of active) {
+                    if (clip.trackId && hiddenVideoTrackIds?.has(clip.trackId)) continue;
+                    const source = sourceMap.get(clip.sourceId);
+                    if (!source) continue;
+                    let frame: CanvasImageSource | null = null;
+                    let srcW = source.width ?? 0;
+                    let srcH = source.height ?? 0;
+                    if (clip.type === ClipType.Image) {
+                        const bmp = imageBitmaps.get(clip.sourceId);
+                        if (!bmp) continue;
+                        frame = bmp;
+                        srcW = srcW || bmp.width;
+                        srcH = srcH || bmp.height;
+                    } else {
+                        let provider = providers.get(clip.id);
+                        if (!provider) {
+                            const config = await ensureVideoConfig(source);
+                            provider = new VideoClipProvider(source.file!, config, signal);
+                            providers.set(clip.id, provider);
+                        }
+                        const vf = await provider.frameAt(clip.sourceOffset + (t - clip.time));
+                        if (!vf) continue;
+                        frame = vf;
+                        srcW = srcW || vf.displayWidth;
+                        srcH = srcH || vf.displayHeight;
                     }
-                    if (srcSec >= clip.sourceOffset + clip.duration + tolerance) break;
-
-                    const outputSec = clip.time + (srcSec - clip.sourceOffset);
-                    while (frameIdx < clipEndOutputFrame && targetTimes[frameIdx] <= outputSec + tolerance) {
-                        await encodeAt(frame);
-                    }
-
-                    pendingFrames.shift()!.close();
+                    if (!frame || !srcW || !srcH) continue;
+                    layers.push({
+                        frame,
+                        srcWidth: srcW,
+                        srcHeight: srcH,
+                        transform: resolveTransform(clip, source, EXPORT_RESOLUTION),
+                        crop: clip.crop ?? NO_CROP,
+                    });
                 }
-            };
-
-            for await (const chunk of streamVideoChunks(source.file!, signal)) {
-                if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
-                if (decoderError) throw decoderError;
-                if (frameIdx >= clipEndOutputFrame) break;
-
-                decoder.decode(chunk);
-                while (decoder.decodeQueueSize > 10)
-                    await new Promise<void>(r => setTimeout(r, 0));
-                await drainFrames();
             }
-
-            decoder.reset();
-            if (decoderError) throw decoderError;
-            await drainFrames();
-        }
-
-        // Fill frames beyond last video clip (e.g. trailing audio).
-        while (frameIdx < totalFrames) {
-            await encodeAt(null);
+            await encodeFrame(layers);
         }
 
         debug(`loop done — frameIdx=${frameIdx} totalFrames=${totalFrames}`);
@@ -374,14 +377,15 @@ export async function exportVideo(
         debug('encoder.flush done');
         if (encoder.error) throw encoder.error;
         encoder.close();
-        decoder.close();
         muxer.finalize();
         debug('muxer finalized — closing stream');
         await writableStream.close();
         debug('done');
     } finally {
-        for (const f of pendingFrames) f.close();
-        pendingFrames.length = 0;
+        for (const p of providers.values()) p.dispose();
+        providers.clear();
+        for (const b of imageBitmaps.values()) b.close();
+        imageBitmaps.clear();
         compositor.dispose();
         try { await writableStream.abort(); } catch { /* ignore — already closed on success */ }
     }

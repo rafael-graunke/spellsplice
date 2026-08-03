@@ -1,6 +1,9 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import type { RefObject } from 'react';
 import { MIN_ZOOM, MAX_ZOOM } from './constants';
+
+const SCROLL_BUCKET_PX = 256;
+const OVERSCAN_PX = 512;
 
 function formatTime(seconds: number): string {
     const mins = Math.floor(seconds / 60);
@@ -41,10 +44,24 @@ function Ruler({ duration, zoom, scrollLeftRef, subscribe, onSeek, setScroll, se
     const dragRef = useRef<{ startX: number; moved: boolean } | null>(null);
     const [grabbing, setGrabbing] = useState(false);
 
+    const [width, setWidth] = useState(0);
+    // Quantised so scrolling re-renders once per bucket, not per pixel — the
+    // transform-only scroll below must stay render-free.
+    const [scrollBucket, setScrollBucket] = useState(0);
+
+    useEffect(() => {
+        const el = outerRef.current;
+        if (!el) return;
+        setWidth(el.clientWidth);
+        const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+
     // Keep max scroll in sync with duration/zoom/container size
     useEffect(() => {
-        setMaxScroll(2 * paddingX + duration * zoom - (outerRef.current?.clientWidth ?? 0));
-    }, [duration, zoom, setMaxScroll]);
+        setMaxScroll(2 * paddingX + duration * zoom - width);
+    }, [duration, zoom, width, setMaxScroll, paddingX]);
 
     // Direct DOM scroll updates — no re-renders during scroll
     useEffect(() => {
@@ -52,6 +69,8 @@ function Ruler({ duration, zoom, scrollLeftRef, subscribe, onSeek, setScroll, se
             if (innerRef.current) {
                 innerRef.current.style.transform = `translateX(${-x}px)`;
             }
+            const bucket = Math.floor(x / SCROLL_BUCKET_PX);
+            setScrollBucket((prev) => (prev === bucket ? prev : bucket));
         });
     }, [subscribe]);
 
@@ -88,10 +107,17 @@ function Ruler({ duration, zoom, scrollLeftRef, subscribe, onSeek, setScroll, se
     const zp = zoomToPercent(zoom);
     const tickInterval = zp < 15 ? 5 : 1;
     const labelInterval = zp < 15 ? 10 : zp < 80 ? 5 : 1;
-    const ticks = Array.from(
-        { length: Math.floor(duration / tickInterval) + 1 },
-        (_, i) => i * tickInterval
-    );
+
+    const ticks = useMemo(() => {
+        const scrollLeft = scrollBucket * SCROLL_BUCKET_PX;
+        const startPx = scrollLeft - paddingX - OVERSCAN_PX;
+        const endPx = scrollLeft + width - paddingX + OVERSCAN_PX;
+        const first = Math.max(0, Math.floor(startPx / zoom / tickInterval) * tickInterval);
+        const last = Math.min(duration, endPx / zoom);
+        const out: number[] = [];
+        for (let t = first; t <= last; t += tickInterval) out.push(t);
+        return out;
+    }, [scrollBucket, width, zoom, duration, tickInterval, paddingX]);
 
     return (
         <div
@@ -109,11 +135,11 @@ function Ruler({ duration, zoom, scrollLeftRef, subscribe, onSeek, setScroll, se
                     return (
                         <div
                             key={t}
-                            className={`absolute bottom-0 border-l text-xs ${tickColor} ${labelColor} ${hasLabel ? 'h-5' : 'h-3'}`}
+                            className={`absolute bottom-0 border-l text-xs ${tickColor} ${labelColor} ${hasLabel ? 'h-4' : 'h-2'}`}
                             style={{ left: t * zoom }}
                         >
                             {hasLabel && (
-                                <span className="absolute top-[-16px] left-1/2 -translate-x-1/2 whitespace-nowrap">
+                                <span className="absolute text-xs top-[-14px] left-1/2 -translate-x-1/2 whitespace-nowrap">
                                     {formatTime(t)}
                                 </span>
                             )}

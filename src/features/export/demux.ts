@@ -177,15 +177,11 @@ export async function* streamVideoChunks(
     }
 }
 
-// Decode any browser-supported audio file (MP3, WAV, OGG, FLAC, M4A, etc.) via the Web Audio API
-// and encode the requested clip regions to AAC. This is used for audio-only MediaSources where
-// mp4box cannot parse the container.
-export async function extractAudioFromFile(
-    file: File,
-    clips: ReadonlyArray<{ sourceOffset: number; duration: number; time: number }>,
-    signal: AbortSignal,
-    targetCodec: 'mp4a.40.2' | 'opus' = 'mp4a.40.2',
-): Promise<{ chunks: EncodedAudioChunk[]; meta: AudioTrackMeta } | null> {
+const MIX_SAMPLE_RATE = 48000;
+const MIX_CHANNELS = 2;
+
+// decodeAudioData resamples to the context's rate, so every source lands at MIX_SAMPLE_RATE.
+async function decodeSourceAudio(file: File, signal: AbortSignal): Promise<AudioBuffer | null> {
     let arrayBuffer: ArrayBuffer;
     try {
         arrayBuffer = await file.arrayBuffer();
@@ -194,18 +190,51 @@ export async function extractAudioFromFile(
     }
     if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
-    const audioCtx = new AudioContext();
-    let audioBuffer: AudioBuffer;
+    const audioCtx = new OfflineAudioContext(MIX_CHANNELS, 1, MIX_SAMPLE_RATE);
     try {
-        audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        return await audioCtx.decodeAudioData(arrayBuffer);
     } catch {
-        return null; // Unsupported format
-    } finally {
-        audioCtx.close();
+        return null;
+    }
+}
+
+// An AAC/Opus track is strictly sequential, so overlapping clips cannot be encoded separately and
+// merged by timestamp: two frames claim the same instant and decoders play them back-to-back.
+// Everything must be summed to one PCM timeline first.
+export async function mixClipAudio(
+    clips: ReadonlyArray<{ sourceId: string; sourceOffset: number; duration: number; time: number }>,
+    files: ReadonlyMap<string, File>,
+    signal: AbortSignal,
+    targetCodec: 'mp4a.40.2' | 'opus' = 'mp4a.40.2',
+): Promise<{ chunks: EncodedAudioChunk[]; meta: AudioTrackMeta } | null> {
+    const buffers = new Map<string, AudioBuffer>();
+    for (const sourceId of new Set(clips.map((c) => c.sourceId))) {
+        const file = files.get(sourceId);
+        if (!file) continue;
+        const decoded = await decodeSourceAudio(file, signal);
+        if (decoded) buffers.set(sourceId, decoded);
     }
     if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
-    const { sampleRate, numberOfChannels } = audioBuffer;
+    const usable = clips.filter((c) => buffers.has(c.sourceId));
+    if (usable.length === 0) return null;
+
+    const outDuration = Math.max(...usable.map((c) => c.time + c.duration));
+    const outFrames = Math.ceil(outDuration * MIX_SAMPLE_RATE);
+    if (outFrames <= 0) return null;
+
+    const mixCtx = new OfflineAudioContext(MIX_CHANNELS, outFrames, MIX_SAMPLE_RATE);
+    for (const clip of usable) {
+        const node = mixCtx.createBufferSource();
+        node.buffer = buffers.get(clip.sourceId)!;
+        node.connect(mixCtx.destination);
+        node.start(clip.time, clip.sourceOffset, clip.duration);
+    }
+    const audioBuffer = await mixCtx.startRendering();
+    if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+
+    const sampleRate = MIX_SAMPLE_RATE;
+    const numberOfChannels = MIX_CHANNELS;
 
     const encoderConfig = targetCodec === 'opus'
         ? { codec: 'opus' as const, sampleRate, numberOfChannels, bitrate: 128000 }
@@ -242,23 +271,21 @@ export async function extractAudioFromFile(
     });
     encoder.configure(encoderConfig);
 
-    const FRAME_SIZE = 1024; // AAC frame size
-    for (const clip of clips) {
+    const FRAME_SIZE = 1024;
+    const channels: Float32Array[] = [];
+    for (let c = 0; c < numberOfChannels; c++) channels.push(audioBuffer.getChannelData(c));
+
+    for (let offset = 0; offset < audioBuffer.length; offset += FRAME_SIZE) {
         if (signal.aborted) break;
-        const startFrame = Math.floor(clip.sourceOffset * sampleRate);
-        const endFrame = Math.min(Math.ceil((clip.sourceOffset + clip.duration) * sampleRate), audioBuffer.length);
-        for (let offset = startFrame; offset < endFrame; offset += FRAME_SIZE) {
-            if (signal.aborted) break;
-            const frames = Math.min(FRAME_SIZE, endFrame - offset);
-            const timestamp = Math.round((clip.time + (offset - startFrame) / sampleRate) * 1e6);
-            const data = new Float32Array(numberOfChannels * frames);
-            for (let c = 0; c < numberOfChannels; c++) {
-                data.set(audioBuffer.getChannelData(c).subarray(offset, offset + frames), c * frames);
-            }
-            const audioData = new AudioData({ format: 'f32-planar', sampleRate, numberOfChannels, numberOfFrames: frames, timestamp, data });
-            encoder.encode(audioData);
-            audioData.close();
+        const frames = Math.min(FRAME_SIZE, audioBuffer.length - offset);
+        const timestamp = Math.round((offset / sampleRate) * 1e6);
+        const data = new Float32Array(numberOfChannels * frames);
+        for (let c = 0; c < numberOfChannels; c++) {
+            data.set(channels[c].subarray(offset, offset + frames), c * frames);
         }
+        const audioData = new AudioData({ format: 'f32-planar', sampleRate, numberOfChannels, numberOfFrames: frames, timestamp, data });
+        encoder.encode(audioData);
+        audioData.close();
     }
 
     try {

@@ -66,7 +66,7 @@ export function TrackGroup({ children, label, icon, isTarget, onSelect }: TrackG
                     className={cn(
                         "bg-zinc-800 text-zinc-300 relative flex items-center justify-center text-sm py-2",
                         "rounded-l-md border",
-                        isTarget ? "border-zinc-200 border-2" : "border-zinc-600",
+                        isTarget && "bg-zinc-700 border-zinc-500",
                         onSelect && "cursor-pointer",
                     )}
                     onClick={onSelect}
@@ -75,7 +75,6 @@ export function TrackGroup({ children, label, icon, isTarget, onSelect }: TrackG
                     <p ref={measureRef} aria-hidden className={
                         cn(
                             "absolute invisible whitespace-nowrap [writing-mode:sideways-lr]",
-                            isTarget ? "font-bold" : "font-thin"
                         )}
                     >{label}</p>
                     {/* inner wrapper lives inside the padding area; clientHeight = usable space */}
@@ -99,7 +98,6 @@ export function TrackGroup({ children, label, icon, isTarget, onSelect }: TrackG
                             <p className={
                                 cn(
                             "whitespace-nowrap [writing-mode:sideways-lr]",
-                            isTarget ? "font-bold" : ""
                         )
                             }>{label}</p>
                         )}
@@ -306,7 +304,11 @@ export function TrackContent({
                         setIsDragOver(false);
                         try {
                             const data = JSON.parse(e.dataTransfer.getData('application/x-spellsplice-source'));
-                            if (data.sourceType !== acceptSourceType) return;
+                            // Video tracks accept visual sources (video + image); audio accepts audio.
+                            const compatible =
+                                data.sourceType === acceptSourceType ||
+                                (acceptSourceType === 'video' && data.sourceType === 'image');
+                            if (!compatible) return;
                             onDropSource(data.sourceId, getTimeFromClientX(e.clientX));
                         } catch {
                             // ignore malformed drag data
@@ -342,7 +344,7 @@ export function TrackContent({
                         {clipGhosts?.map((ghost, i) => (
                             <div
                                 key={`cg-${i}`}
-                                className={`absolute h-[calc(100%-6px)] top-1/2 -translate-y-1/2 rounded-sm opacity-50 pointer-events-none ${ghost.color}`}
+                                className={`absolute h-full opacity-50 pointer-events-none ${ghost.color}`}
                                 style={{ left: ghost.left, width: ghost.width }}
                             />
                         ))}

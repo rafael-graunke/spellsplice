@@ -22,6 +22,7 @@ interface ExportDialogProps {
     sources: MediaSource[];
     players: Player[];
     config: ProjectConfig;
+    hiddenVideoTrackIds?: Set<string>;
 }
 
 type Status = 'idle' | 'running' | 'done' | 'error';
@@ -43,7 +44,7 @@ function phaseLabel(p: ExportProgress): string {
 
 const canExport = 'showSaveFilePicker' in window;
 
-export function ExportDialog({ open, onClose, videoClips, audioClips, sources, players, config }: ExportDialogProps) {
+export function ExportDialog({ open, onClose, videoClips, audioClips, sources, players, config, hiddenVideoTrackIds }: ExportDialogProps) {
     const [status, setStatus] = useState<Status>('idle');
     const [progress, setProgress] = useState<ExportProgress | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -63,7 +64,7 @@ export function ExportDialog({ open, onClose, videoClips, audioClips, sources, p
     };
 
     const startExport = async () => {
-        if (videoClips.length === 0) return;
+        if (videoClips.length === 0 && audioClips.length === 0) return;
         const abort = new AbortController();
         abortRef.current = abort;
         setStatus('running');
@@ -81,7 +82,7 @@ export function ExportDialog({ open, onClose, videoClips, audioClips, sources, p
                     annotationConfig: config.annotationConfig,
                     layers: config.layers,
                 },
-            });
+            }, hiddenVideoTrackIds);
             setStatus('done');
         } catch (err) {
             if (err instanceof DOMException && err.name === 'AbortError') {
@@ -98,7 +99,7 @@ export function ExportDialog({ open, onClose, videoClips, audioClips, sources, p
         abortRef.current?.abort();
     };
 
-    const noClips = videoClips.length === 0;
+    const noClips = videoClips.length === 0 && audioClips.length === 0;
 
     return (
         <Dialog

@@ -36,10 +36,19 @@ export const DEFAULT_LAYERS: TimelineLayer[] = [
     { id: 'cardDisplay', visible: true },
 ];
 
+export interface Resolution {
+    width: number;
+    height: number;
+}
+
+export const DEFAULT_RESOLUTION: Resolution = { width: 1920, height: 1080 };
+
 export interface ProjectConfig {
     title: string;
     author: string;
     overlayStartHidden: boolean;
+    /** Output/preview canvas size. Fixed 1920×1080 today; custom sizes later. */
+    resolution: Resolution;
     annotationSlots: AnnotationSlot[];
     // Overlay appearance (shape-compatible with Live Mode for shared presets).
     scoreboard: LiveScoreboardState;
@@ -66,6 +75,7 @@ export const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
     title: '',
     author: '',
     overlayStartHidden: false,
+    resolution: DEFAULT_RESOLUTION,
     annotationSlots: DEFAULT_ANNOTATION_SLOTS,
     // Seeded with the bundled sample scoreboard SVG so a new project shows a
     // scoreboard out of the box (the old renderPlayerState boxes are gone).

@@ -3,7 +3,7 @@ import { FolderOpen, Link2 } from 'lucide-react';
 import type { MediaSource } from '../../types/source';
 import type { Clip } from '../../types/clip';
 import { SourceCard } from './SourceCard';
-import { getFileDuration, generateThumbnail } from '../../lib/generateThumbnail';
+import { getMediaMetadata, generateThumbnail } from '../../lib/generateThumbnail';
 
 interface SourcesProps {
     sources: MediaSource[];
@@ -21,8 +21,14 @@ function SourcesInner({ sources, setSources, clipsByTrack, onOpenRelinkDialog, o
     const addFiles = useCallback(
         async (files: FileList | File[]) => {
             for (const file of Array.from(files)) {
-                if (!file.type.startsWith('video') && !file.type.startsWith('audio')) continue;
-                const type = file.type.startsWith('video') ? 'video' : 'audio';
+                const type = file.type.startsWith('video')
+                    ? 'video'
+                    : file.type.startsWith('image')
+                      ? 'image'
+                      : file.type.startsWith('audio')
+                        ? 'audio'
+                        : null;
+                if (!type) continue;
                 const source: MediaSource = {
                     id: crypto.randomUUID(),
                     name: file.name,
@@ -33,12 +39,23 @@ function SourcesInner({ sources, setSources, clipsByTrack, onOpenRelinkDialog, o
                 };
                 setSources((prev) => [...prev, source]);
 
-                const duration = await getFileDuration(file).catch(() => 0);
+                const meta = await getMediaMetadata(file).catch(() => ({ duration: 0, width: 0, height: 0 }));
                 const thumbnailUrl =
-                    type === 'video' ? await generateThumbnail(file).catch(() => undefined) : undefined;
+                    type === 'audio' ? undefined : await generateThumbnail(file).catch(() => undefined);
 
                 setSources((prev) =>
-                    prev.map((s) => (s.id === source.id ? { ...s, duration, thumbnailUrl, loading: false } : s)),
+                    prev.map((s) =>
+                        s.id === source.id
+                            ? {
+                                  ...s,
+                                  duration: meta.duration,
+                                  width: meta.width || undefined,
+                                  height: meta.height || undefined,
+                                  thumbnailUrl,
+                                  loading: false,
+                              }
+                            : s,
+                    ),
                 );
             }
         },
@@ -106,7 +123,7 @@ function SourcesInner({ sources, setSources, clipsByTrack, onOpenRelinkDialog, o
                 <input
                     ref={inputRef}
                     type="file"
-                    accept="video/*,audio/*"
+                    accept="video/*,audio/*,image/*"
                     multiple
                     className="hidden"
                     onChange={(e) => {
@@ -118,7 +135,7 @@ function SourcesInner({ sources, setSources, clipsByTrack, onOpenRelinkDialog, o
 
             {sources.length === 0 ? (
                 <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground text-center px-4">
-                    Drop video or audio files
+                    Drop video, audio, or image files
                 </div>
             ) : (
                 <div className="flex-1 overflow-y-auto p-2 grid grid-cols-2 gap-2 content-start">

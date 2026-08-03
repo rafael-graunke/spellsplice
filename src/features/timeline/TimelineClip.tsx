@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import { Image as ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ClipColorMap, ClipType } from '../../types/clip';
 import type { Clip } from '../../types/clip';
@@ -14,6 +15,8 @@ import { TRACK_HEIGHT } from './constants';
 
 const CLICK_THRESHOLD = 4;
 const CLIP_CANVAS_HEIGHT = TRACK_HEIGHT - 6;
+// Chrome silently yields a blank canvas past ~32767px, which at MAX_ZOOM is an 11-minute clip.
+const MAX_WAVEFORM_CANVAS_W = 8192;
 const THUMB_H = CLIP_CANVAS_HEIGHT - 10;
 const THUMB_W = Math.round(THUMB_H * (16 / 9));
 
@@ -42,7 +45,10 @@ export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, z
         if (srcDuration <= 0 || peaks.length === 0) return;
 
         const timer = setTimeout(() => {
-            const w = Math.max(1, Math.floor(clip.duration * zoom));
+            const w = Math.min(
+                Math.max(1, Math.floor(clip.duration * zoom)),
+                MAX_WAVEFORM_CANVAS_W,
+            );
             const h = CLIP_CANVAS_HEIGHT;
             canvas.width = w;
             canvas.height = h;
@@ -55,15 +61,19 @@ export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, z
             const startIdx = clip.sourceOffset * peaksPerSec;
             const totalPeaks = clip.duration * peaksPerSec;
 
-            ctx.fillStyle = 'rgba(255,255,255,0.55)';
+            ctx.fillStyle = 'rgba(255,255,255,0.8)';
             ctx.beginPath();
             const centerY = h / 2;
             for (let x = 0; x < w; x++) {
-                const peakIdx = Math.min(
-                    Math.floor(startIdx + (x / w) * totalPeaks),
+                // Max across the column's full range; sampling one index of 20+ made the
+                // shape flicker as zoom shifted which peak got picked.
+                let i = Math.max(0, Math.floor(startIdx + (x / w) * totalPeaks));
+                const end = Math.min(
                     peaks.length - 1,
+                    Math.max(i, Math.ceil(startIdx + ((x + 1) / w) * totalPeaks) - 1),
                 );
-                const peak = peaks[peakIdx] ?? 0;
+                let peak = 0;
+                for (; i <= end; i++) if (peaks[i] > peak) peak = peaks[i];
                 const barH = Math.max(2, peak * h - 4);
                 ctx.rect(x, centerY - barH / 2, 1, barH);
             }
@@ -71,14 +81,14 @@ export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, z
         }, 80);
 
         return () => clearTimeout(timer);
-    }, [waveformData, clip.sourceOffset, clip.duration, zoom]);
+    }, [waveformData, clip.sourceOffset, clip.duration, clip.type, zoom]);
 
     return (
         <ContextMenu>
             <ContextMenuTrigger asChild>
                 <div
                     className={cn(
-                        'absolute cursor-grab border ring-2 ring-inset active:cursor-grabbing overflow-hidden h-[calc(100%-6px)] top-1/2 -translate-y-1/2 rounded-sm select-none',
+                        'absolute cursor-grab active:cursor-grabbing overflow-hidden h-full select-none border-1',
                         sourceMissing
                             ? 'bg-red-950/80 border-red-500'
                             : sourceOffline
@@ -124,6 +134,9 @@ export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, z
                             </>
                         );
                     })()}
+                    {clip.type === ClipType.Image && (
+                        <ImageIcon className="absolute left-1.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/80 pointer-events-none" />
+                    )}
                     {waveformData && clip.type === ClipType.Audio && (
                         <canvas
                             ref={canvasRef}
@@ -133,6 +146,7 @@ export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, z
                     )}
                     <span className={cn(
                         'absolute inset-0 flex items-center px-2 text-xs truncate pointer-events-none',
+                        clip.type === ClipType.Image && 'pl-7',
                         sourceMissing ? 'text-red-300' : sourceOffline ? 'text-amber-300' : 'text-white/90',
                     )}>
                         {sourceMissing

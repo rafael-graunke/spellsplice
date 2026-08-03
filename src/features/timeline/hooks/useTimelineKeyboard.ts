@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { PREVIEW_FPS } from '../constants';
 import type { RefObject } from 'react';
 
 interface TimelineKeyboardOptions {
@@ -38,7 +39,8 @@ export function useTimelineKeyboard({
             else if (e.key === 'Tab' && !mod && onTabNext) { e.preventDefault(); onTabNext(); }
             else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
                 e.preventDefault();
-                const step = mod ? 1 / 30 : 1;
+                // NLE convention: bare arrow nudges a frame, Shift jumps a second.
+                const step = e.shiftKey ? 1 : 1 / PREVIEW_FPS;
                 const dir = e.key === 'ArrowLeft' ? -1 : 1;
                 onSeek(Math.max(0, Math.min(duration, currentTimeRef.current + dir * step)));
             }

@@ -1,9 +1,6 @@
-import React, { useEffect } from 'react';
-import { Minus, Pause, Play, Plus, SkipBack, SkipForward } from 'lucide-react';
+import React, { useState } from 'react';
 import { Slider } from '../../components/ui/slider';
-import { Input } from '../../components/ui/input';
-import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import type { RefObject } from 'react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import type { ViewMode } from './Timeline';
 
 interface ZoomControlsProps {
@@ -12,104 +9,73 @@ interface ZoomControlsProps {
 }
 
 function ZoomControls({ zoom, onZoomChange }: ZoomControlsProps) {
+    // Draft lets the field sit empty mid-retype without committing NaN, which
+    // would poison zoomRef and freeze the timeline.
+    const [draft, setDraft] = useState<string | null>(null);
+
+    const commit = (text: string) => {
+        setDraft(text);
+        const n = Number(text);
+        if (text.trim() !== '' && Number.isFinite(n)) onZoomChange(n);
+    };
+
     return (
         <div className="flex flex-row gap-2 items-center">
-            <Minus className="cursor-pointer" onClick={() => onZoomChange(zoom - 10)} />
             <Slider
                 max={100}
                 step={1}
                 className="w-24"
                 value={[zoom]}
-                onValueChange={(value) => onZoomChange(value[0])}
+                onValueChange={(value) => {
+                    setDraft(null);
+                    onZoomChange(value[0]);
+                }}
             />
-            <Plus className="cursor-pointer" onClick={() => onZoomChange(zoom + 10)} />
-            <Input
-                type="number"
-                className="w-12"
-                max={100}
-                value={zoom}
-                onChange={(e) => onZoomChange(Number(e.target.value))}
-            />
+            <div className="flex flex-row items-center gap-0.5 text-xs text-muted-foreground">
+                <input
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="Timeline zoom"
+                    className="w-6 bg-transparent text-right tabular-nums outline-none"
+                    value={draft ?? String(Math.round(zoom))}
+                    onChange={(e) => commit(e.target.value)}
+                    onBlur={() => setDraft(null)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                />
+                <span>%</span>
+            </div>
         </div>
     );
 }
 
 
-interface PlaybackControlsProps {
-    isPlaying: boolean;
-    setIsPlaying: (playing: boolean) => void;
-    onSeek: (time: number) => void;
-    currentTimeRef: RefObject<number>;
-    duration: number;
-}
-
-function PlaybackControls({ isPlaying, setIsPlaying, onSeek, currentTimeRef, duration }: PlaybackControlsProps) {
-    useEffect(() => {
-        const onKeyDown = (e: KeyboardEvent) => {
-            const target = e.target as HTMLElement;
-            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
-            if (e.code === 'Space') {
-                if (e.repeat) return;
-                e.preventDefault();
-                setIsPlaying(!isPlaying);
-            }
-        };
-        window.addEventListener('keydown', onKeyDown);
-        return () => window.removeEventListener('keydown', onKeyDown);
-    }, [isPlaying, duration, setIsPlaying, onSeek, currentTimeRef]);
-
-    return (
-        <div className="flex flex-row gap-6 items-center">
-            <SkipBack className="cursor-pointer" onClick={() => onSeek(0)} />
-            {isPlaying
-                ? <Pause size={28} className="cursor-pointer" onClick={() => setIsPlaying(false)} />
-                : <Play size={28} className="cursor-pointer" onClick={() => setIsPlaying(true)} />
-            }
-            <SkipForward className="cursor-pointer" onClick={() => onSeek(duration)} />
-        </div>
-    );
-}
-
-interface ControlsProps extends ZoomControlsProps, PlaybackControlsProps {
+interface ControlsProps extends ZoomControlsProps {
     viewMode: ViewMode;
     setViewMode: (mode: ViewMode) => void;
 }
 
 function Controls({
-    isPlaying,
-    setIsPlaying,
-    onSeek,
-    currentTimeRef,
-    duration,
     zoom,
     onZoomChange,
     viewMode,
     setViewMode,
 }: ControlsProps) {
     return (
-        <div className="border-b w-full flex flex-row justify-between gap-4 p-2 px-4">
+        <div className="border-b w-full flex flex-row justify-end items-center gap-4 py-1 px-4">
             <div id="timeline-view">
-                <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
-                    <TabsList>
-                        <TabsTrigger value="full">Full View</TabsTrigger>
-                        <TabsTrigger value="event">Event Editing</TabsTrigger>
-                        <TabsTrigger value="video">Video Editing</TabsTrigger>
-                    </TabsList>
-                </Tabs>
+                <Select value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+                    <SelectTrigger size="sm" className="w-40" aria-label="Timeline view">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="full">Full View</SelectItem>
+                        <SelectItem value="event">Event Editing</SelectItem>
+                        <SelectItem value="video">Video Editing</SelectItem>
+                    </SelectContent>
+                </Select>
             </div>
 
-            <div className="flex flex-row justify-center">
-                <PlaybackControls
-                    isPlaying={isPlaying}
-                    setIsPlaying={setIsPlaying}
-                    onSeek={onSeek}
-                    currentTimeRef={currentTimeRef}
-                    duration={duration}
-                />
-            </div>
-            <div className="w-64 flex flex-row justify-end">
-                <ZoomControls zoom={zoom} onZoomChange={onZoomChange} />
-            </div>
+            <ZoomControls zoom={zoom} onZoomChange={onZoomChange} />
         </div>
     );
 }

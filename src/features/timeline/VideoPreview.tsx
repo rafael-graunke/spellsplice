@@ -1,61 +1,88 @@
-import { forwardRef, memo, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react';
 import type { RefObject } from 'react';
 import type { Player } from '../../types/player';
 import type { Clip } from '../../types/clip';
+import { ClipType } from '../../types/clip';
 import type { MediaSource } from '../../types/source';
+import type { Resolution } from '../../types/config';
+import { DEFAULT_RESOLUTION } from '../../types/config';
 import { getNextChangeTime, UI_FADE_MS } from '@/lib/deriveState';
 import { Compositor } from '@/features/export/compose';
 import type { OverlayConfig } from '@/features/export/compose';
+import type { BaseLayer } from '@/renders/composeClips';
+import { resolveTransform, NO_CROP } from '@/lib/clipTransform';
+import { AudioEngine } from './audioEngine';
 import { cardDisplayAnimSeconds } from '@/lib/overlayData';
 import { HAND_ANIM_DURATION } from '@/renders/renderLiveHand';
 import { ANNOTATION_ANIM_DURATION } from '@/renders/renderLiveAnnotation';
 import { subscribeImageLoad } from '@/lib/cardCache';
-import { Slider } from '@/components/ui/slider';
-import { Volume2, VolumeX } from 'lucide-react';
+import PlaybackControls from './PlaybackControls';
 
 // Per-frame overlay-raster budget (dev warning only). ~half a 60fps frame,
 // leaving headroom for video upload + GL draw.
 const OVERLAY_FRAME_BUDGET_MS = 8;
 
+export interface ClipTransformOverride {
+    clipId: string;
+    transform: import('../../types/clip').ClipTransform;
+    crop?: import('../../types/clip').ClipCrop;
+}
+
 export interface VideoPreviewHandle {
     // Seek from outside (timeline/skip buttons) without routing time through
     // App state. Paused -> paints one frame; playing -> re-detects clips.
     seek(t: number): void;
+    // Live gizmo drag: override one clip's transform/crop imperatively (no App
+    // re-render) and repaint. Pass null to clear.
+    setTransformOverride(o: ClipTransformOverride | null): void;
+    // Bounding rect of the on-screen canvas, for screen<->project mapping.
+    getCanvasRect(): DOMRect | null;
+    repaint(): void;
 }
 
 interface VideoPreviewProps {
     isPlaying: boolean;
     currentTimeRef: RefObject<number>;
     setIsPlaying: (playing: boolean) => void;
+    /** JKL shuttle speed. Forward only (>= 1); 1 is normal playback. */
+    playbackRate?: number;
+    setPlaybackRate?: (rate: number) => void;
     players: Player[];
     overlayConfig: OverlayConfig;
     duration?: number;
     videoClips?: Clip[];
     audioClips?: Clip[];
     sources?: MediaSource[];
+    resolution?: Resolution;
     hiddenVideoTrackIds?: Set<string>;
     mutedAudioTrackIds?: Set<string>;
     volume?: number;
     onVolumeChange?: (v: number) => void;
+    // A click on the preview surface, reported in project (canvas) coordinates,
+    // for hit-testing which clip was clicked.
+    onCanvasClick?: (x: number, y: number) => void;
 }
 
 const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function VideoPreview({
     isPlaying,
     currentTimeRef,
     setIsPlaying,
+    playbackRate = 1,
+    setPlaybackRate = NOOP_RATE,
     players,
     overlayConfig,
     duration = Infinity,
     videoClips = [],
     audioClips = [],
     sources = [],
+    resolution = DEFAULT_RESOLUTION,
     hiddenVideoTrackIds,
     mutedAudioTrackIds,
     volume = 100,
     onVolumeChange,
+    onCanvasClick,
 }: VideoPreviewProps, ref) {
     const setVolume = onVolumeChange ?? NOOP;
-    const [isHovered, setIsHovered] = useState(false);
     const volumeRef = useRef(volume / 100);
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -66,62 +93,109 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
     const compositorRef = useRef<Compositor | null>(null);
     const derivedCacheRef = useRef<{ validUntil: number } | null>(null);
     const isPlayingRef = useRef(isPlaying);
+    const rateRef = useRef(playbackRate);
     const durationRef = useRef(duration);
     const renderFrameRef = useRef<() => void>(() => {});
-    // Muted video elements — video frames only, no audio
-    const sourceVideoEls = useRef<Map<string, HTMLVideoElement>>(new Map());
-    // Unmuted audio elements — audio playback from audio clips
-    const sourceAudioEls = useRef<Map<string, HTMLAudioElement>>(new Map());
+    // One object URL per source file; shared by every clip that references it.
+    const sourceUrls = useRef<Map<string, string>>(new Map());
+    // Decoded still images, one per image source (no per-clip playback state).
+    const sourceImageEls = useRef<Map<string, HTMLImageElement>>(new Map());
+    // Per-CLIP video elements (not per-source): two clips of the same source at
+    // different offsets need independent currentTime, so they can't share one
+    // element. Created lazily when a clip first becomes active; pruned when the
+    // clip leaves the timeline. Video elements are muted (frames only) — all
+    // audible sound comes from the Web Audio engine below.
+    const clipVideoEls = useRef<Map<string, HTMLVideoElement>>(new Map());
+    // Web Audio mixing engine: decodes each source once and schedules a buffer
+    // source per audio clip, so overlapping / same-source clips mix cleanly with
+    // no re-seeking. Created lazily on first play (needs a user gesture).
+    const audioEngineRef = useRef<AudioEngine | null>(null);
+    const getAudioEngine = () => {
+        if (!audioEngineRef.current) audioEngineRef.current = new AudioEngine();
+        return audioEngineRef.current;
+    };
     const videoClipsRef = useRef(videoClips);
     videoClipsRef.current = videoClips;
     const audioClipsRef = useRef(audioClips);
     audioClipsRef.current = audioClips;
-    const activeVideoClipIdRef = useRef<string | null>(null);
-    const activeVideoSourceIdRef = useRef<string | null>(null);
-    const activeAudioClipIdRef = useRef<string | null>(null);
-    const activeAudioSourceIdRef = useRef<string | null>(null);
-    // Snapshot-anchored time: cursor is independent of live clip.time so dragging a clip
-    // while playing doesn't move the playhead. clipTimeAtStart lets us detect clip drag
-    // and re-seek when the clip's position changes.
-    const clipPlaybackSnapshotRef = useRef<{
-        clipId: string;
-        clipTimeAtStart: number;
-        outputTimeAtStart: number;
-        sourceTimeAtStart: number;
-    } | null>(null);
-    const audioPlaybackSnapshotRef = useRef<{
-        clipId: string;
-        clipTimeAtStart: number;
-        outputTimeAtStart: number;
-        sourceTimeAtStart: number;
-    } | null>(null);
+    const sourcesRef = useRef(sources);
+    sourcesRef.current = sources;
+    const resolutionRef = useRef(resolution);
+    resolutionRef.current = resolution;
     const hiddenVideoTrackIdsRef = useRef(new Set(hiddenVideoTrackIds ?? []));
     const mutedAudioTrackIdsRef = useRef(new Set(mutedAudioTrackIds ?? []));
+    // Live gizmo-drag override for a single clip's transform/crop (imperative).
+    const transformOverrideRef = useRef<ClipTransformOverride | null>(null);
 
-    const getActiveVideoClip = (t: number) =>
-        videoClipsRef.current.find((c) => c.time <= t && t < c.time + c.duration) ?? null;
-    const getActiveAudioClip = (t: number) =>
-        audioClipsRef.current.find((c) => c.time <= t && t < c.time + c.duration) ?? null;
+    // All clips whose [time, time+duration) window contains t, in array order
+    // (bottom track first = back-to-front for compositing).
+    const getActiveVideoClips = (t: number) =>
+        videoClipsRef.current.filter((c) => c.time <= t && t < c.time + c.duration);
 
-    const pauseAllSourceVideos = () => {
-        for (const el of sourceVideoEls.current.values()) el.pause();
-        for (const el of sourceAudioEls.current.values()) el.pause();
-        activeVideoClipIdRef.current = null;
-        activeVideoSourceIdRef.current = null;
-        activeAudioClipIdRef.current = null;
-        activeAudioSourceIdRef.current = null;
+    const ensureVideoEl = (clip: Clip): HTMLVideoElement | null => {
+        const existing = clipVideoEls.current.get(clip.id);
+        if (existing) return existing;
+        const url = sourceUrls.current.get(clip.sourceId);
+        if (!url) return null;
+        const el = document.createElement('video');
+        el.src = url;
+        el.preload = 'auto';
+        el.muted = true;
+        clipVideoEls.current.set(clip.id, el);
+        return el;
     };
 
-    const seekSourceEl = (el: HTMLVideoElement | HTMLAudioElement, clip: Clip, t: number, play: boolean) => {
-        const targetTime = clip.sourceOffset + (t - clip.time);
-        el.currentTime = targetTime;
-        if (play) {
+    const pauseAllVideo = () => {
+        for (const el of clipVideoEls.current.values()) el.pause();
+    };
+
+    // The video clip whose element clock drives the master time when there is no
+    // audio playing (audio, when present, is the master clock — see the loop).
+    const pickVideoClock = (t: number): { clip: Clip; el: HTMLVideoElement } | null => {
+        for (const c of getActiveVideoClips(t)) {
+            if (c.type === ClipType.Image) continue;
+            const el = clipVideoEls.current.get(c.id);
+            if (el) return { clip: c, el };
+        }
+        return null;
+    };
+
+    // Chase every active VIDEO element to the master clock (audio is handled by
+    // the engine), and pause every element whose clip is behind the playhead.
+    // The clockClipId element is left to run free — it IS the clock.
+    const DRIFT = 0.15;
+    const reconcileMedia = (t: number, playing: boolean, clockClipId?: string) => {
+        const videoActive = getActiveVideoClips(t);
+        const activeIds = new Set(videoActive.map((c) => c.id));
+        for (const [id, el] of clipVideoEls.current) if (!activeIds.has(id)) el.pause();
+
+        for (const clip of videoActive) {
+            if (clip.type === ClipType.Image) continue;
+            const el = ensureVideoEl(clip);
+            if (!el) continue;
+            if (playing && clip.id === clockClipId) {
+                el.playbackRate = rateRef.current;
+                el.play()?.catch((e: Error) => { if (e.name !== 'AbortError') throw e; });
+                continue;
+            }
+            syncEl(el, clip, t, playing);
+        }
+    };
+
+    const syncEl = (el: HTMLVideoElement, clip: Clip, t: number, playing: boolean) => {
+        const target = clip.sourceOffset + (t - clip.time);
+        if (playing) {
+            // At 16x a fixed window is narrower than one rAF tick, so the chase
+            // would re-seek every frame and stall the decoder.
+            const drift = DRIFT * rateRef.current;
+            if (el.paused || Math.abs(el.currentTime - target) > drift) el.currentTime = target;
+            el.playbackRate = rateRef.current;
             el.play()?.catch((e: Error) => { if (e.name !== 'AbortError') throw e; });
         } else {
             el.pause();
-            if (el instanceof HTMLVideoElement) {
-                el.addEventListener('seeked', () => renderFrameRef.current(), { once: true });
-            }
+            el.playbackRate = 1;
+            el.currentTime = target;
+            el.addEventListener('seeked', () => renderFrameRef.current(), { once: true });
         }
     };
 
@@ -131,54 +205,73 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
         img.src = '/assets/eye.svg';
     }, []);
 
-    // Manage per-source video/audio elements for clip playback.
+    // Manage one object URL per source + a decoded image per image source. The
+    // per-clip video/audio elements are created lazily on activation (they share
+    // these URLs); they're pruned by the clip-lifecycle effect below.
     useEffect(() => {
-        const videoPool = sourceVideoEls.current;
-        const audioPool = sourceAudioEls.current;
+        const urls = sourceUrls.current;
+        const images = sourceImageEls.current;
         const activeIds = new Set(sources.map((s) => s.id));
 
         for (const src of sources) {
             if (!src.file) continue;
-            if (src.type === 'video' && !videoPool.has(src.id)) {
-                const el = document.createElement('video');
-                el.src = URL.createObjectURL(src.file);
-                el.preload = 'auto';
-                el.muted = true;
-                videoPool.set(src.id, el);
-            }
-            if (!audioPool.has(src.id)) {
-                const el = document.createElement('audio');
-                el.src = URL.createObjectURL(src.file);
-                el.preload = 'auto';
-                audioPool.set(src.id, el);
+            if (!urls.has(src.id)) urls.set(src.id, URL.createObjectURL(src.file));
+            if (src.type === 'image' && !images.has(src.id)) {
+                const img = new Image();
+                img.onload = () => {
+                    if (!isPlayingRef.current) renderFrameRef.current();
+                };
+                img.src = urls.get(src.id)!;
+                images.set(src.id, img);
             }
         }
-        for (const [id, el] of videoPool) {
-            if (!activeIds.has(id)) { URL.revokeObjectURL(el.src); videoPool.delete(id); }
-        }
-        for (const [id, el] of audioPool) {
-            if (!activeIds.has(id)) { URL.revokeObjectURL(el.src); audioPool.delete(id); }
+        for (const [id, url] of urls) {
+            if (!activeIds.has(id)) {
+                URL.revokeObjectURL(url);
+                urls.delete(id);
+                images.delete(id);
+            }
         }
     }, [sources]);
 
-    // Init compositor on mount — full-canvas layout + black frame.
-    // Layout stays at 1920x1080 always; uploadVideoElement stretches the texture to fill.
+    // Prune per-clip video elements for clips that left the timeline.
+    useEffect(() => {
+        const liveIds = new Set(videoClips.map((c) => c.id));
+        for (const [id, el] of clipVideoEls.current) {
+            if (!liveIds.has(id)) { el.pause(); clipVideoEls.current.delete(id); }
+        }
+    }, [videoClips]);
+
+    // Reschedule audio when clips change while playing (add/remove/drag/trim).
+    useEffect(() => {
+        if (isPlayingRef.current) {
+            audioEngineRef.current?.reschedule(audioClips, sourcesRef.current);
+        }
+    }, [audioClips]);
+
+    // Init compositor on mount — full-canvas layout + black frame. Base video is
+    // now a per-clip layer stack (uploadBaseLayers); the shader's uVideoRect stays
+    // full-frame and each clip carries its own fit/transform.
     useEffect(() => {
         const canvas = canvasRef.current!;
-        canvas.width = 1920;
-        canvas.height = 1080;
-        const comp = new Compositor(1920, 1080, canvas);
-        comp.setLayout(1920, 1080, 0, 0);
+        const { width, height } = resolutionRef.current;
+        canvas.width = width;
+        canvas.height = height;
+        const comp = new Compositor(width, height, canvas);
+        comp.setLayout(width, height, 0, 0);
         comp.uploadBlackFrame();
         compositorRef.current = comp;
         renderFrameRef.current();
         return () => {
             comp.dispose();
             compositorRef.current = null;
+            audioEngineRef.current?.dispose();
+            audioEngineRef.current = null;
         };
     }, []);
 
     isPlayingRef.current = isPlaying;
+    rateRef.current = playbackRate;
     overlayConfigRef.current = overlayConfig;
     durationRef.current = duration;
 
@@ -197,17 +290,48 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
         const cache = derivedCacheRef.current;
         const overlayStale = !cache || time >= cache.validUntil || time < prevTimeRef.current;
 
-        // Upload video frame — source element position is managed by seekSourceEl (paused scrub)
-        // and the render loop (playback transitions + clip drag detection).
-        const activeVideoClip = getActiveVideoClip(time);
-        const frameEl = activeVideoClip ? sourceVideoEls.current.get(activeVideoClip.sourceId) : null;
-        const videoHidden = !!activeVideoClip?.trackId && hiddenVideoTrackIdsRef.current.has(activeVideoClip.trackId);
+        // Composite every active visual clip (video + image), back-to-front, each
+        // with its own transform/crop. Element positions are reconciled to the
+        // master clock by reconcileMedia (loop) / seek (paused scrub).
         const videoLayerHidden = overlayConfigRef.current.layers.some((l) => l.id === 'video' && !l.visible);
-        if (!videoHidden && !videoLayerHidden && frameEl?.videoWidth) {
-            compositor.uploadVideoElement(frameEl);
-        } else {
-            compositor.uploadBlackFrame();
+        const layers: BaseLayer[] = [];
+        if (!videoLayerHidden) {
+            const res = resolutionRef.current;
+            for (const clip of getActiveVideoClips(time)) {
+                if (clip.trackId && hiddenVideoTrackIdsRef.current.has(clip.trackId)) continue;
+                const source = sourcesRef.current.find((s) => s.id === clip.sourceId);
+                let frame: CanvasImageSource | null = null;
+                let srcW = source?.width ?? 0;
+                let srcH = source?.height ?? 0;
+                if (clip.type === ClipType.Image) {
+                    const img = sourceImageEls.current.get(clip.sourceId);
+                    if (img?.complete && img.naturalWidth) {
+                        frame = img;
+                        srcW = srcW || img.naturalWidth;
+                        srcH = srcH || img.naturalHeight;
+                    }
+                } else {
+                    const el = clipVideoEls.current.get(clip.id);
+                    if (el?.videoWidth) {
+                        frame = el;
+                        srcW = srcW || el.videoWidth;
+                        srcH = srcH || el.videoHeight;
+                    }
+                }
+                if (!frame || !srcW || !srcH) continue;
+                const ov = transformOverrideRef.current;
+                const overridden = ov && ov.clipId === clip.id;
+                layers.push({
+                    frame,
+                    srcWidth: srcW,
+                    srcHeight: srcH,
+                    transform: overridden ? ov.transform : resolveTransform(clip, source, res),
+                    crop: overridden ? (ov.crop ?? clip.crop ?? NO_CROP) : (clip.crop ?? NO_CROP),
+                });
+            }
         }
+        if (layers.length) compositor.uploadBaseLayers(layers);
+        else compositor.uploadBlackFrame();
 
         if (overlayStale) {
             // Dev-only guard: updateOverlay runs every frame during animation, so
@@ -310,38 +434,35 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
 
     useEffect(() => {
         mutedAudioTrackIdsRef.current = new Set(mutedAudioTrackIds);
-        if (!activeAudioSourceIdRef.current) return;
-        const audioEl = sourceAudioEls.current.get(activeAudioSourceIdRef.current);
-        if (!audioEl) return;
-        const clip = audioClipsRef.current.find((c) => c.id === activeAudioClipIdRef.current);
-        const muted = clip?.trackId && mutedAudioTrackIdsRef.current.has(clip.trackId);
-        audioEl.volume = muted ? 0 : volumeRef.current;
+        audioEngineRef.current?.setMuted(mutedAudioTrackIdsRef.current, audioClipsRef.current);
     }, [mutedAudioTrackIds]);
 
     useEffect(() => {
         volumeRef.current = volume / 100;
-        if (!activeAudioSourceIdRef.current) return;
-        const audioEl = sourceAudioEls.current.get(activeAudioSourceIdRef.current);
-        if (!audioEl) return;
-        const clip = audioClipsRef.current.find((c) => c.id === activeAudioClipIdRef.current);
-        const muted = clip?.trackId && mutedAudioTrackIdsRef.current.has(clip.trackId);
-        audioEl.volume = muted ? 0 : volumeRef.current;
+        audioEngineRef.current?.setVolume(volumeRef.current);
     }, [volume]);
 
-    // Source element play/pause + snapshot reset
     useEffect(() => {
-        if (!isPlaying) {
-            pauseAllSourceVideos();
-            clipPlaybackSnapshotRef.current = null;
-            audioPlaybackSnapshotRef.current = null;
-        } else {
-            // Force re-detection of active clips so the render loop captures fresh snapshots.
-            activeVideoClipIdRef.current = null;
-            activeAudioClipIdRef.current = null;
-            clipPlaybackSnapshotRef.current = null;
-            audioPlaybackSnapshotRef.current = null;
-        }
+        if (!isPlaying) pauseAllVideo();
     }, [isPlaying]);
+
+    // Audio runs at 1x only: the engine's transport anchor maps AudioContext time
+    // to output time 1:1. This is also why the loop below can't use the audio
+    // clock while shuttling.
+    useEffect(() => {
+        if (isPlaying && playbackRate === 1) {
+            getAudioEngine().play(
+                currentTimeRef.current,
+                audioClipsRef.current,
+                sourcesRef.current,
+                volumeRef.current,
+                mutedAudioTrackIdsRef.current,
+            );
+        } else {
+            audioEngineRef.current?.pause();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isPlaying, playbackRate]);
 
     // Unified clock-driven render loop
     useEffect(() => {
@@ -356,124 +477,44 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
         let lastTs = performance.now();
 
         const loop = (ts: number) => {
+            // Master clock: the Web Audio engine's AudioContext clock when audio is
+            // playing (sample-accurate, monotonic — used even across audio gaps);
+            // else a video element's clock; else wall time. Video elements are
+            // chased to this clock (a video re-seek isn't audible). A clip drag
+            // never drags the playhead (clock is media/context time, not clip.time).
             const t = currentTimeRef.current;
-
-            // --- Video clip transitions ---
-            const activeVideoClip = getActiveVideoClip(t);
-            const videoEl = activeVideoClip ? sourceVideoEls.current.get(activeVideoClip.sourceId) : null;
-            const prevVideoId = activeVideoClipIdRef.current;
-            const newVideoId = activeVideoClip?.id ?? null;
-
-            if (newVideoId !== prevVideoId) {
-                // Clip changed (or entered/exited a clip)
-                if (prevVideoId && activeVideoSourceIdRef.current) {
-                    sourceVideoEls.current.get(activeVideoSourceIdRef.current)?.pause();
-                }
-                if (activeVideoClip && videoEl) {
-                    seekSourceEl(videoEl, activeVideoClip, t, true);
-                    clipPlaybackSnapshotRef.current = {
-                        clipId: activeVideoClip.id,
-                        clipTimeAtStart: activeVideoClip.time,
-                        outputTimeAtStart: t,
-                        sourceTimeAtStart: activeVideoClip.sourceOffset + (t - activeVideoClip.time),
-                    };
-                    activeVideoClipIdRef.current = newVideoId;
-                    activeVideoSourceIdRef.current = activeVideoClip.sourceId;
-                } else {
-                    activeVideoClipIdRef.current = null;
-                    activeVideoSourceIdRef.current = null;
-                    clipPlaybackSnapshotRef.current = null;
-                }
-            } else if (activeVideoClip && videoEl && clipPlaybackSnapshotRef.current) {
-                // Same clip — detect if it was dragged to a new position
-                if (activeVideoClip.time !== clipPlaybackSnapshotRef.current.clipTimeAtStart) {
-                    seekSourceEl(videoEl, activeVideoClip, t, true);
-                    clipPlaybackSnapshotRef.current = {
-                        clipId: activeVideoClip.id,
-                        clipTimeAtStart: activeVideoClip.time,
-                        outputTimeAtStart: t,
-                        sourceTimeAtStart: activeVideoClip.sourceOffset + (t - activeVideoClip.time),
-                    };
-                    // Forward seeks leave videoEl.currentTime briefly at the old position,
-                    // causing a transient clock dip that can push audio out of sync. Resync
-                    // audio to the current output time so any drift is corrected immediately.
-                    const syncAudioClip = getActiveAudioClip(t);
-                    const syncAudioEl = syncAudioClip
-                        ? sourceAudioEls.current.get(syncAudioClip.sourceId)
-                        : null;
-                    if (syncAudioClip && syncAudioEl) {
-                        seekSourceEl(syncAudioEl, syncAudioClip, t, true);
-                        audioPlaybackSnapshotRef.current = {
-                            clipId: syncAudioClip.id,
-                            clipTimeAtStart: syncAudioClip.time,
-                            outputTimeAtStart: t,
-                            sourceTimeAtStart: syncAudioClip.sourceOffset + (t - syncAudioClip.time),
-                        };
-                        activeAudioClipIdRef.current = syncAudioClip.id;
-                        activeAudioSourceIdRef.current = syncAudioClip.sourceId;
-                    }
-                }
-            }
-
-            // --- Audio clip transitions ---
-            const activeAudioClip = getActiveAudioClip(t);
-            const audioEl = activeAudioClip ? sourceAudioEls.current.get(activeAudioClip.sourceId) : null;
-            const prevAudioId = activeAudioClipIdRef.current;
-            const newAudioId = activeAudioClip?.id ?? null;
-
-            if (newAudioId !== prevAudioId) {
-                if (prevAudioId && activeAudioSourceIdRef.current) {
-                    sourceAudioEls.current.get(activeAudioSourceIdRef.current)?.pause();
-                }
-                if (activeAudioClip && audioEl) {
-                    seekSourceEl(audioEl, activeAudioClip, t, true);
-                    audioEl.volume = activeAudioClip.trackId && mutedAudioTrackIdsRef.current.has(activeAudioClip.trackId) ? 0 : volumeRef.current;
-                    audioPlaybackSnapshotRef.current = {
-                        clipId: activeAudioClip.id,
-                        clipTimeAtStart: activeAudioClip.time,
-                        outputTimeAtStart: t,
-                        sourceTimeAtStart: activeAudioClip.sourceOffset + (t - activeAudioClip.time),
-                    };
-                    activeAudioClipIdRef.current = newAudioId;
-                    activeAudioSourceIdRef.current = activeAudioClip.sourceId;
-                } else {
-                    activeAudioClipIdRef.current = null;
-                    activeAudioSourceIdRef.current = null;
-                    audioPlaybackSnapshotRef.current = null;
-                }
-            } else if (activeAudioClip && audioEl && audioPlaybackSnapshotRef.current) {
-                if (activeAudioClip.time !== audioPlaybackSnapshotRef.current.clipTimeAtStart) {
-                    seekSourceEl(audioEl, activeAudioClip, t, true);
-                    audioPlaybackSnapshotRef.current = {
-                        clipId: activeAudioClip.id,
-                        clipTimeAtStart: activeAudioClip.time,
-                        outputTimeAtStart: t,
-                        sourceTimeAtStart: activeAudioClip.sourceOffset + (t - activeAudioClip.time),
-                    };
-                }
-            }
-
-            // Advance output time from video element clock (via snapshot) or wall clock.
-            // Using snapshot anchor means live clip.time changes (drag) don't move the cursor.
+            const engine = audioEngineRef.current;
+            const rate = rateRef.current;
+            const hasAudio = audioClipsRef.current.length > 0;
+            const videoClock = pickVideoClock(t);
+            // Only this branch scales: the media clocks below already advance at
+            // `rate` on their own.
+            const wall = t + ((ts - lastTs) / 1000) * rate;
             let next: number;
-            const snap = clipPlaybackSnapshotRef.current;
-            if (videoEl && !videoEl.paused && snap) {
-                const snapNext = snap.outputTimeAtStart + (videoEl.currentTime - snap.sourceTimeAtStart);
-                // If video element hasn't finished seeking yet, currentTime is still at the old
-                // position, making snapNext go backward. Fall back to wall clock until it catches up.
-                next = snapNext >= t
-                    ? Math.min(snapNext, durationRef.current)
-                    : Math.min(t + (ts - lastTs) / 1000, durationRef.current);
+            if (hasAudio && engine?.isPlaying) {
+                // Audio present at 1x -> the AudioContext clock is authoritative.
+                next = engine.getOutputTime();
+                if (!isFinite(next) || next < t - 0.5) next = wall;
+            } else if (videoClock && !videoClock.el.paused && videoClock.el.readyState >= 2) {
+                // No audio (or shuttling) -> ride a video element's own clock.
+                next = videoClock.clip.time + (videoClock.el.currentTime - videoClock.clip.sourceOffset);
+                if (!isFinite(next) || next < t - 0.5) next = wall;
             } else {
-                next = Math.min(t + (ts - lastTs) / 1000, durationRef.current);
+                next = wall;
             }
+            next = Math.min(next, durationRef.current);
             lastTs = ts;
             // currentTimeRef is the single source of truth; the playhead cursor
             // reads it imperatively (usePlayhead rAF), so no React state update
             // per tick -> App never re-renders during playback.
             currentTimeRef.current = next;
+            // When audio is the clock, chase every video element to it. Otherwise
+            // the video clock element is left free and the rest are chased.
+            reconcileMedia(next, true, hasAudio ? undefined : videoClock?.clip.id);
             if (next >= durationRef.current) {
                 setIsPlaying(false);
+                pauseAllVideo();
+                audioEngineRef.current?.pause();
                 renderFrameRef.current();
                 return;
             }
@@ -482,6 +523,9 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
         };
         handle = requestAnimationFrame(loop);
         return () => cancelAnimationFrame(handle);
+        // reconcileMedia/setIsPlaying are stable-by-ref closures; the loop is
+        // (re)started only on play/pause, matching the ref-driven design.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isPlaying]);
 
     // Imperative seek — the timeline / skip buttons call this instead of routing
@@ -490,82 +534,84 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
     // clip tracking so the render loop re-detects from the new position. An
     // explicit call is unambiguously a user seek, so no delta heuristic is needed.
     const seek = (t: number) => {
-        const time = Math.max(0, Math.min(durationRef.current, t));
+        // Lower bound only: the timeline extends past the last clip, and playback
+        // still stops at durationRef in the render loop.
+        const time = Math.max(0, t);
         currentTimeRef.current = time;
+        // Video: pause elements whose clip isn't active at `time`, seek the rest.
+        // Audio: the engine re-anchors + reschedules (playing), or is silent (paused).
+        reconcileMedia(time, isPlayingRef.current);
+        if (isPlayingRef.current) {
+            audioEngineRef.current?.seek(time, audioClipsRef.current, sourcesRef.current);
+        }
         if (!isPlayingRef.current) {
-            pauseAllSourceVideos();
-            clipPlaybackSnapshotRef.current = null;
-            audioPlaybackSnapshotRef.current = null;
             // Overlay must re-derive at the new time; the seek no longer rides a
             // React re-render, so invalidate the cache explicitly.
             derivedCacheRef.current = null;
-
-            const activeVideoClip = getActiveVideoClip(time);
-            if (activeVideoClip) {
-                const el = sourceVideoEls.current.get(activeVideoClip.sourceId);
-                // Repaints again via 'seeked' once the video lands on the frame.
-                if (el) seekSourceEl(el, activeVideoClip, time, false);
-            }
-            const activeAudioClip = getActiveAudioClip(time);
-            if (activeAudioClip) {
-                const el = sourceAudioEls.current.get(activeAudioClip.sourceId);
-                if (el) seekSourceEl(el, activeAudioClip, time, false);
-            }
-            // Always paint one frame now (overlay + current video texture), so a
-            // paused seek is never silent even if 'seeked' doesn't fire.
+            // Always paint one frame now, so a paused seek is never silent even if
+            // no 'seeked' event fires.
             renderFrameRef.current();
-        } else {
-            activeVideoClipIdRef.current = null;
-            activeAudioClipIdRef.current = null;
-            clipPlaybackSnapshotRef.current = null;
-            audioPlaybackSnapshotRef.current = null;
         }
     };
-    useImperativeHandle(ref, () => ({ seek }));
+    // Stable identity for the memoized transport bar; `seek` is a fresh closure
+    // per render.
+    const seekRef = useRef(seek);
+    seekRef.current = seek;
+    const stableSeek = useCallback((t: number) => seekRef.current(t), []);
+
+    useImperativeHandle(ref, () => ({
+        seek,
+        setTransformOverride(o: ClipTransformOverride | null) {
+            transformOverrideRef.current = o;
+            renderFrameRef.current();
+        },
+        getCanvasRect: () => canvasRef.current?.getBoundingClientRect() ?? null,
+        repaint: () => {
+            derivedCacheRef.current = null;
+            renderFrameRef.current();
+        },
+    }));
+
+    // Repaint when clip data changes while paused (e.g. a committed transform),
+    // so edits show without needing to play/pause.
+    useEffect(() => {
+        if (!isPlayingRef.current) renderFrameRef.current();
+    }, [videoClips, audioClips]);
 
     return (
-        <div
-            className="relative w-full h-full flex items-center justify-center"
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-        >
-            <canvas ref={canvasRef} className="max-w-full max-h-full" style={{ aspectRatio: '16/9' }} />
-            {isHovered && <VideoControls volume={volume} onVolumeChange={setVolume} />}
-        </div>
-    );
-});
-
-// Stable no-op fallback so the memo below isn't defeated by a fresh closure when
-// no onVolumeChange is supplied.
-const NOOP = () => {};
-
-// Split out + memoized so hover/prop-driven re-renders of VideoPreview don't
-// reconcile the controls (they only depend on `volume`).
-const VideoControls = memo(function VideoControls({
-    volume,
-    onVolumeChange,
-}: {
-    volume: number;
-    onVolumeChange: (v: number) => void;
-}) {
-    return (
-        <div className="absolute bottom-3 right-3 flex items-center gap-2 rounded-md bg-black/60 px-3 py-2 backdrop-blur-sm">
-            <button
-                onClick={() => onVolumeChange(volume === 0 ? 100 : 0)}
-                className="text-white/80 hover:text-white transition-colors"
+        <div className="w-full h-full flex flex-col">
+            <div
+                className="relative flex-1 min-h-0 flex items-center justify-center"
+                onClick={(e) => {
+                    if (!onCanvasClick) return;
+                    const rect = canvasRef.current?.getBoundingClientRect();
+                    if (!rect || rect.width === 0) return;
+                    onCanvasClick(
+                        ((e.clientX - rect.left) / rect.width) * resolution.width,
+                        ((e.clientY - rect.top) / rect.height) * resolution.height,
+                    );
+                }}
             >
-                {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
-            </button>
-            <Slider
-                value={[volume]}
-                onValueChange={([v]) => onVolumeChange(v)}
-                min={0}
-                max={100}
-                step={1}
-                className="w-24"
+                <canvas ref={canvasRef} className="max-w-full max-h-full" style={{ aspectRatio: '16/9' }} />
+            </div>
+            <PlaybackControls
+                isPlaying={isPlaying}
+                setIsPlaying={setIsPlaying}
+                playbackRate={playbackRate}
+                setPlaybackRate={setPlaybackRate}
+                onSeek={stableSeek}
+                currentTimeRef={currentTimeRef}
+                duration={duration}
+                volume={volume}
+                onVolumeChange={setVolume}
             />
         </div>
     );
 });
+
+// Stable no-op fallbacks so the memoized children below aren't defeated by a
+// fresh closure when the optional callback isn't supplied.
+const NOOP = () => {};
+const NOOP_RATE = () => {};
 
 export default VideoPreview;

@@ -2,7 +2,7 @@ import { useCallback, useRef } from 'react';
 import type { Player, Decklist } from '../../../types/player';
 import type { TrackEvent, EventMeta } from '../../../types/event';
 import type { TrackType } from '../types';
-import type { Clip } from '../../../types/clip';
+import type { Clip, ClipTransform, ClipCrop } from '../../../types/clip';
 import type { ClipMoveResult } from './hookTypes';
 import { useHistory } from '@/hooks/useHistory';
 
@@ -268,6 +268,18 @@ export function usePlayerTracks(
         });
     }, [record]);
 
+    const handleUpdateClipTransform = useCallback(
+        (trackId: string, clipId: string, transform: ClipTransform, crop?: ClipCrop) => {
+            record((draft) => {
+                const clip = (draft.clipsByTrack[trackId] ?? []).find((c) => c.id === clipId);
+                if (!clip) return;
+                clip.transform = transform;
+                if (crop) clip.crop = crop;
+            });
+        },
+        [record],
+    );
+
     const handleDeleteClip = useCallback((trackId: string, clipId: string) => {
         record((draft) => {
             draft.clipsByTrack[trackId] = (draft.clipsByTrack[trackId] ?? []).filter((c) => c.id !== clipId);
@@ -407,6 +419,7 @@ export function usePlayerTracks(
         handleAddClips,
         handleAddClipsWithOverride,
         handleMoveClips,
+        handleUpdateClipTransform,
         handleDeleteClip,
         handleDeleteClips,
         handleDeleteAll,

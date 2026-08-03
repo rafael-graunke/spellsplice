@@ -32,7 +32,6 @@ import {
     TRACK_HEIGHT,
 } from './constants';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../../components/ui/resizable';
-import type { PanelImperativeHandle } from 'react-resizable-panels';
 import {
     Command,
     CommandDialog,
@@ -177,6 +176,9 @@ interface TimelineProps {
     onPasteEvents?: (items: PasteItem[], pasteTime: number, onCreated: (newIds: number[]) => void) => void;
     onCreateEvent?: (trackId: string, partial: Partial<TrackEvent> & Pick<TrackEvent, 'type'>, onCreated?: (id: number) => void) => void;
     onSelectionChange?: (ids: Set<number>) => void;
+    onClipSelectionChange?: (ids: Set<string>) => void;
+    // External (preview-click) selection request; nonce re-fires the same id.
+    clipSelectionRequest?: { clipId: string | null; nonce: number } | null;
     onDeleteClips?: (items: { trackId: string; clipId: string }[]) => void;
     onDeleteSelection?: (eventItems: DeleteItem[], clipItems: { trackId: string; clipId: string }[]) => void;
     onResizeStart?: () => void;
@@ -190,6 +192,8 @@ interface TimelineProps {
     onDeleteClip?: (trackId: string, clipId: string) => void;
     initialZoom?: number;
     onZoomChange?: (zoom: number) => void;
+    initialViewMode?: ViewMode;
+    onViewModeChange?: (mode: ViewMode) => void;
     displayCardDuration?: number;
 }
 
@@ -211,6 +215,8 @@ function TimelineInner({
     onPasteEvents,
     onCreateEvent,
     onSelectionChange,
+    onClipSelectionChange,
+    clipSelectionRequest,
     onResizeStart,
     onResizeEnd,
     onAddTrack,
@@ -224,6 +230,8 @@ function TimelineInner({
     onDeleteSelection,
     initialZoom,
     onZoomChange,
+    initialViewMode,
+    onViewModeChange,
     displayCardDuration = 5,
 }: TimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -239,6 +247,27 @@ function TimelineInner({
     const { zoom, zoomRef, setZoom } = useTimelineZoom(initialZoom ?? 20);
     useEffect(() => { onZoomChange?.(zoom); }, [zoom, onZoomChange]);
     useTimelineViewport(scrollLeftRef, zoomRef, containerWidthRef);
+
+    const [containerWidth, setContainerWidth] = useState(0);
+    useEffect(() => {
+        const el = scrollAreaRef.current;
+        if (!el) return;
+        const apply = (w: number) => {
+            containerWidthRef.current = w;
+            setContainerWidth(w);
+        };
+        apply(el.clientWidth);
+        const ro = new ResizeObserver(([entry]) => apply(entry.contentRect.width));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+
+    // Content plus one screenful of runway to drag into. `duration` (content)
+    // still drives playback stop and skip-to-end.
+    const viewExtent = useMemo(
+        () => duration + (containerWidth > 0 ? containerWidth / zoom : 0),
+        [duration, containerWidth, zoom],
+    );
     const { selectedIds, selectedClipIds, select, selectClip, selectMany, clearSelection } = useTimelineSelection();
     // Refs so that callbacks passed through TimelineEvent/TimelineClip.memo always read fresh values
     // without recreating on every selection/trackGroups change.
@@ -250,6 +279,18 @@ function TimelineInner({
     useEffect(() => {
         onSelectionChange?.(selectedIds);
     }, [selectedIds, onSelectionChange]);
+
+    useEffect(() => {
+        onClipSelectionChange?.(selectedClipIds);
+    }, [selectedClipIds, onClipSelectionChange]);
+
+    // Apply a preview-click selection request (App -> Timeline direction).
+    useEffect(() => {
+        if (!clipSelectionRequest) return;
+        if (clipSelectionRequest.clipId) selectClip(clipSelectionRequest.clipId);
+        else clearSelection();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [clipSelectionRequest?.nonce]);
 
     // Collect tracks by type in DOM order
     const eventTracks = useMemo(
@@ -406,7 +447,7 @@ function TimelineInner({
 
     const { seekTo } = usePlayhead(
         isPlaying,
-        duration,
+        viewExtent,
         currentTimeRef,
         zoomRef,
         handleSetCurrentTime,
@@ -415,7 +456,10 @@ function TimelineInner({
 
     useEffect(() => { updateCursorPosition(); }, [updateCursorPosition]);
 
-    const [viewMode, setViewMode] = useState<ViewMode>('full');
+    const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode ?? 'full');
+    useEffect(() => {
+        onViewModeChange?.(viewMode);
+    }, [viewMode, onViewModeChange]);
     const visibleGroups = useMemo(() => {
         if (viewMode === 'event') return trackGroups.filter((g) => g.type === TrackType.Event);
         if (viewMode === 'video') return trackGroups.filter((g) => g.type === TrackType.Video || g.type === TrackType.Audio);
@@ -433,33 +477,6 @@ function TimelineInner({
     targetGroupIdRef.current = targetGroupId;
     const trackGroupsRef = useRef(trackGroups);
     trackGroupsRef.current = trackGroups;
-    const panelHandlesRef = useRef<Map<string, PanelImperativeHandle>>(new Map());
-
-    // Target gets 70% of event-panel space; non-targets share 30% equally.
-    // Uses per-panel resize() so no `id` prop needed on panels (avoids library handle mapping bugs).
-    const applyFocusLayout = useCallback((newTargetId: string) => {
-        const groups = trackGroupsRef.current;
-        const handles = panelHandlesRef.current;
-        // Only consider groups currently rendered — unrendered groups (e.g. video in Event-only view)
-        // have no handle and their fallback percentage would skew eventSpace.
-        const renderedGroups = groups.filter((g) => handles.has(g.id));
-        const eventGroups = renderedGroups.filter((g) => g.type === TrackType.Event);
-        const nonEventGroups = renderedGroups.filter((g) => g.type !== TrackType.Event);
-
-        const nonEventTotal = nonEventGroups.reduce((sum, g) => sum + (handles.get(g.id)?.getSize().asPercentage ?? 0), 0);
-
-        const eventSpace = 100 - nonEventTotal;
-        const nonTargetCount = eventGroups.length - 1;
-        const otherPct = nonTargetCount > 0 ? (eventSpace * 0.3) / nonTargetCount : 0;
-        const targetPct = eventSpace - otherPct * nonTargetCount;
-
-        // Non-targets first, target last — ensures target.resize() is the final call so its
-        // size is exactly targetPct regardless of loop order or panel count.
-        const nonTargets = eventGroups.filter((g) => g.id !== newTargetId);
-        const target = eventGroups.find((g) => g.id === newTargetId);
-        for (const g of nonTargets) handles.get(g.id)?.resize(`${otherPct}%`);
-        if (target) handles.get(target.id)?.resize(`${targetPct}%`);
-    }, []);
 
     // Copy / paste state
     const [copiedItems, setCopiedItems] = useState<PasteItem[]>([]);
@@ -482,7 +499,6 @@ function TimelineInner({
             const cur = eventGroups.findIndex((g) => g.id === targetGroupId);
             const next = eventGroups[(cur + (e.shiftKey ? eventGroups.length - 1 : 1)) % eventGroups.length];
             setTargetGroupId(next.id);
-            applyFocusLayout(next.id);
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
@@ -584,7 +600,7 @@ function TimelineInner({
         onRedo,
         onSeek: seekTo,
         currentTimeRef,
-        duration,
+        duration: viewExtent,
     });
 
     const { marqueeRect, handleMarqueeMouseDown } = useMarqueeDrag(
@@ -627,11 +643,6 @@ function TimelineInner({
             className="flex flex-col h-full bg-background select-none"
         >
             <Controls
-                isPlaying={isPlaying}
-                setIsPlaying={setIsPlaying}
-                onSeek={onSeek}
-                currentTimeRef={currentTimeRef}
-                duration={duration}
                 zoom={zoomPercent}
                 onZoomChange={handleZoomChange}
                 viewMode={viewMode}
@@ -655,7 +666,7 @@ function TimelineInner({
                         className="flex-1"
                     >
                         <Ruler
-                            duration={duration}
+                            duration={viewExtent}
                             zoom={zoom}
                             scrollLeftRef={scrollLeftRef}
                             subscribe={subscribe}
@@ -679,19 +690,12 @@ function TimelineInner({
                                 className="overflow-y-auto"
                                 minSize={TRACK_HEIGHT + 2}
                                 groupResizeBehavior={group.type === TrackType.Event ? 'preserve-relative-size' : 'preserve-pixel-size'}
-                                panelRef={(h) => {
-                                    if (h) panelHandlesRef.current.set(group.id, h);
-                                    else panelHandlesRef.current.delete(group.id);
-                                }}
                             >
                                 <TrackGroup
                                     icon={TrackTypeIconMap[group.type]}
                                     label={group.label}
                                     isTarget={group.id === targetGroupId}
-                                    onSelect={group.type === TrackType.Event ? () => {
-                                        setTargetGroupId(group.id);
-                                        applyFocusLayout(group.id);
-                                    } : undefined}
+                                    onSelect={group.type === TrackType.Event ? () => setTargetGroupId(group.id) : undefined}
                                 >
                                     {group.tracks.map((track, i) => {
                                         const index = group.tracks.slice(0, i + 1).length;
@@ -705,7 +709,7 @@ function TimelineInner({
                                                 if (el) trackElsRef.current.set(track.id, el);
                                                 else trackElsRef.current.delete(track.id);
                                             }}
-                                            duration={duration}
+                                            duration={viewExtent}
                                             zoom={zoom}
                                             paddingX={TIMELINE_PADDING_X}
                                             scrollLeftRef={scrollLeftRef}
@@ -788,7 +792,7 @@ function TimelineInner({
                         zoomRef={zoomRef}
                         scrollLeftRef={scrollLeftRef}
                         paddingX={TIMELINE_PADDING_X}
-                        duration={duration}
+                        duration={viewExtent}
                     />
                 </div>
                 </div>

@@ -251,7 +251,9 @@ export function useElementDrag(
         clip: Clip,
         e: ReactMouseEvent,
     ) => {
-        const tracks = clip.type === 'VIDEO' ? videoTracksRef.current : audioTracksRef.current;
+        // Image clips are visual and live on video tracks, so they drag within
+        // the video group like video clips (only audio stays on audio tracks).
+        const tracks = clip.type === 'AUDIO' ? audioTracksRef.current : videoTracksRef.current;
         const trackIndex = tracks.findIndex((t) => t.id === fromTrackId);
         if (trackIndex === -1) return;
 
@@ -404,12 +406,12 @@ export function useElementDrag(
                 primaryTargetTrack = eventTracksRef.current[newPrimaryIndex];
             } else {
                 newPrimaryIndex = findTargetTrackIndex(
-                    drag.primary.clipType === 'VIDEO' ? videoTracksRef.current : audioTracksRef.current,
+                    drag.primary.clipType === 'AUDIO' ? audioTracksRef.current : videoTracksRef.current,
                     trackElsRef.current,
                     e.clientY,
                 );
                 indexDelta = newPrimaryIndex - drag.primaryTrackIndex;
-                primaryTargetTrack = (drag.primary.clipType === 'VIDEO' ? videoTracksRef.current : audioTracksRef.current)[newPrimaryIndex];
+                primaryTargetTrack = (drag.primary.clipType === 'AUDIO' ? audioTracksRef.current : videoTracksRef.current)[newPrimaryIndex];
             }
             targetTrackIndexRef.current = newPrimaryIndex;
 
@@ -606,7 +608,7 @@ export function useElementDrag(
                         });
                     }
                 } else {
-                    const tracks = drag.primary.clipType === 'VIDEO' ? videoTracksRef.current : audioTracksRef.current;
+                    const tracks = drag.primary.clipType === 'AUDIO' ? audioTracksRef.current : videoTracksRef.current;
                     const primaryTrack = tracks[newPrimaryIndex];
                     if (primaryTrack) {
                         const rawTime = Math.max(0, drag.primary.startTime + clampedDeltaTime);

@@ -6,7 +6,7 @@ import type { MediaSource } from '@/types/source';
 import type { TrackOverrideRow } from '@/features/timeline/hooks/usePlayerTracks';
 import { cardDataCache, restoreCardDataCache } from './cardCache';
 
-export type SourceMeta = Pick<MediaSource, 'id' | 'name' | 'duration' | 'type'>;
+export type SourceMeta = Pick<MediaSource, 'id' | 'name' | 'duration' | 'type' | 'width' | 'height'>;
 
 function sanitizeFilename(name: string): string {
     return name
@@ -34,7 +34,14 @@ export async function exportProject(
 ) {
     const zip = new JSZip();
 
-    const sourceMeta: SourceMeta[] = sources.map(({ id, name, duration, type }) => ({ id, name, duration, type }));
+    const sourceMeta: SourceMeta[] = sources.map(({ id, name, duration, type, width, height }) => ({
+        id,
+        name,
+        duration,
+        type,
+        width,
+        height,
+    }));
 
     const manifest: ProjectExport = {
         version: '1',

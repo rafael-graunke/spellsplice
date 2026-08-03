@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import type { WaveformData } from '@/hooks/useWaveformPeaks';
 import type { ClipThumbnails } from '@/hooks/useVideoThumbnails';
@@ -22,6 +22,7 @@ import {
     TRACK_GROUP_LABEL_WIDTH,
 } from './constants';
 import { cn } from '@/lib/utils';
+import { propsEqualIgnoringFunctions } from './memo';
 import {
     Tooltip,
     TooltipContent,
@@ -173,7 +174,7 @@ interface TrackInfoProps {
     onToggleSyncLock?: () => void;
 }
 
-export function TrackInfo({
+function TrackInfoInner({
     type,
     index,
     height,
@@ -294,6 +295,8 @@ export function TrackInfo({
         </div>
     );
 }
+
+export const TrackInfo = React.memo(TrackInfoInner, propsEqualIgnoringFunctions);
 
 interface TrackContentProps {
     children?: ReactNode;
@@ -594,7 +597,7 @@ interface TrackProps {
     onSetGroupHeight?: (height: number) => void;
 }
 
-export function Track({
+function TrackInner({
     track,
     trackId,
     index,
@@ -755,3 +758,7 @@ export function Track({
         </div>
     );
 }
+
+// The big one: without this, a mousemove during any drag reconciled every track
+// in the timeline, including their headers and clips.
+export const Track = React.memo(TrackInner, propsEqualIgnoringFunctions);

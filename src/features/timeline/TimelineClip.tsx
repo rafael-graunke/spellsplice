@@ -13,6 +13,7 @@ import {
     ContextMenuTrigger,
 } from '../../components/ui/context-menu';
 import { TRACK_HEIGHT } from './constants';
+import { propsEqualIgnoringFunctions } from './memo';
 
 const CLICK_THRESHOLD = 4;
 const TRIM_HANDLE_W = 8;
@@ -45,7 +46,7 @@ interface TimelineClipProps {
     thumbnails?: ClipThumbnails;
 }
 
-export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, zoom, isSelected, isBeingDragged, onMouseDown, onSelect, onDelete, onTrimStart, onRazorCut, onSplit, onUnlink, onGainChange, trackHeight = TRACK_HEIGHT, waveformData, thumbnails }: TimelineClipProps) {
+function TimelineClipInner({ clip, sourceName, sourceMissing, sourceOffline, zoom, isSelected, isBeingDragged, onMouseDown, onSelect, onDelete, onTrimStart, onRazorCut, onSplit, onUnlink, onGainChange, trackHeight = TRACK_HEIGHT, waveformData, thumbnails }: TimelineClipProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     // Derived per render, not at module scope: track height is per-track data now.
     const canvasHeight = trackHeight - 6;
@@ -264,3 +265,5 @@ export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, z
         </ContextMenu>
     );
 }
+
+export const TimelineClip = React.memo(TimelineClipInner, propsEqualIgnoringFunctions);

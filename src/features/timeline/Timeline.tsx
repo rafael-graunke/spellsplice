@@ -20,6 +20,7 @@ import { useElementDrag } from './hooks/useElementDrag';
 import { useClipTrim } from './hooks/useClipTrim';
 import type { TrimCommit } from './hooks/useClipTrim';
 import { useTimelineAutoScroll } from './hooks/useTimelineAutoScroll';
+import { useStableCallback } from './hooks/useStableCallback';
 import { useMarqueeDrag } from './hooks/useMarqueeDrag';
 import type { MoveResult, ClipMoveResult } from './hooks/hookTypes';
 import type { MediaSource } from '../../types/source';
@@ -890,6 +891,11 @@ function TimelineInner({
         onPasteEvents?.(copiedItems, pasteTime, (newIds) => { pendingSelectRef.current = newIds; });
     }, [copiedItems, onPasteEvents, selectMany]);
 
+    // Track ignores callback identity, so the two handlers that close over state
+    // no Track prop reflects (copiedItems, eventTracks) must be ref-backed.
+    const stableCopy = useStableCallback(handleCopy);
+    const stablePaste = useStableCallback(handlePaste);
+
     const handleCreateOpenChange = useCallback((open: boolean) => {
         if (open) {
             createTimeRef.current = undefined;
@@ -1087,12 +1093,12 @@ function TimelineInner({
                                             onResizeStart={onResizeStart}
                                             onResizeEnd={onResizeEnd}
                                             onDeleteSelected={() => handleDelete()}
-                                            onCopy={(_tId, _eId) => handleCopy()}
+                                            onCopy={stableCopy}
                                             onDuplicate={onDuplicateEvents ? handleDuplicateForEvent : undefined}
                                             onOpenCreateDialog={group.type === TrackType.Event
                                                 ? (time) => handleOpenCreateDialog(track.id, time)
                                                 : undefined}
-                                            onPasteAtTime={handlePaste}
+                                            onPasteAtTime={stablePaste}
                                             canPaste={copiedItems.length > 0}
                                             onUndo={onUndo}
                                             canUndo={canUndo}

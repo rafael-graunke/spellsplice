@@ -126,6 +126,25 @@ Key hooks:
 
 **Controls.tsx** — playback controls (spacebar play/pause, skip), zoom slider. Cmd+K opens event creation dialog.
 
+**Timeline render performance — invariant.** Every mousemove of a drag sets the
+ghost maps, which are `TimelineInner` state, so the whole timeline re-renders at
+pointer rate. `Track`, `TrackInfo` and `TimelineClip` are therefore memoized with
+`propsEqualIgnoringFunctions` (`src/features/timeline/memo.ts`), which compares
+all props but ignores **function identity** — the inline arrows passed to each
+track are rebuilt every render and would defeat a shallow compare. Without it,
+dragging one clip reconciled every track, every header icon, and re-attached
+every `ref={onMount}` callback.
+
+This is only sound while function props carry no stale state. Two rules:
+- A handler closing over state that no data prop reflects must be ref-backed via
+  `useStableCallback` (`handleCopy`, `handlePaste` — copying twice changes
+  `copiedItems` while `canPaste` stays `true`).
+- A handler derived from `trackGroups` is fine, because `track` comes from
+  `trackGroups` too: if the closure goes stale, `track` changed and forces the
+  render anyway. `handleBeginResize` is the exception and reads `stateRef`
+  instead of closing over `state`, since a stale resize baseline would make one
+  resize undo unrelated edits.
+
 **Track.tsx** — `Track` (single row) and `TrackGroup` (player group, collapsible via the chevron on its label strip). Track header shows sync-lock/mute/hide/block controls plus a `cursor-ns-resize` strip along its bottom edge that resizes that track. A height drag brackets `mutateTrackOverride` with `onResizeStart`/`onResizeEnd`, so the gesture collapses to one undo entry.
 
 **TimelineClip.tsx** — clip bar with waveform canvas (audio) and frame thumbnail strip (video).

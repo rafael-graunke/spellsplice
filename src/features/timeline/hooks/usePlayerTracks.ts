@@ -276,9 +276,12 @@ export function usePlayerTracks(
         });
     }, [mutate]);
 
+    // Reads the ref rather than closing over `state`, so this stays identity
+    // stable. Memoized children ignore callback identity, and a stale baseline
+    // here would make one resize undo unrelated edits along with it.
     const handleBeginResize = useCallback(() => {
-        resizeBaselineRef.current = state;
-    }, [state]);
+        resizeBaselineRef.current = stateRef.current;
+    }, []);
 
     const handleCommitResize = useCallback(() => {
         const baseline = resizeBaselineRef.current;

@@ -91,13 +91,14 @@ export function PreviewGizmo({ clip, trackId, source, resolution, previewRef, on
         };
     }, [rerender]);
 
-    // `C` toggles crop mode; Escape leaves it.
+    // `Shift+C` toggles crop mode; Escape leaves it. Plain `C` belongs to
+    // the razor tool.
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement | null;
             if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable))
                 return;
-            if (e.key === 'c' || e.key === 'C') setCropMode((m) => !m);
+            if (e.shiftKey && (e.key === 'c' || e.key === 'C')) setCropMode((m) => !m);
             else if (e.key === 'Escape') setCropMode(false);
         };
         window.addEventListener('keydown', onKey);

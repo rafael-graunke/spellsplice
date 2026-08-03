@@ -4,6 +4,18 @@ import type { Clip } from '../../types/clip';
 import type { SvgIcon } from './EventIcon';
 import { User2, Video, Volume2 } from 'lucide-react';
 
+/**
+ * Modal edit tools. Mutually exclusive, and distinct from the independent
+ * toggles (snapping, follow playhead) and the one-shot actions (split at
+ * playhead) they sit beside in the toolbar.
+ */
+export const TimelineTool = {
+    Select: 'select',
+    Razor: 'razor',
+} as const;
+
+export type TimelineTool = (typeof TimelineTool)[keyof typeof TimelineTool];
+
 export const TrackType = {
     Event: 'EVENT',
     Video: 'VIDEO',
@@ -40,6 +52,8 @@ export interface TimelineTrack {
     isBlocked: boolean;
     isHidden?: boolean;
     isMuted?: boolean;
+    /** Whether ripple edits shift this track. Undefined = locked. */
+    syncLock?: boolean;
     // Stable layer index for Event-type tracks — does not change when tracks are inserted/removed.
     // Used to filter player events (event.layer === eventLayer) and set newLayer on moves.
     eventLayer?: number;

@@ -1,9 +1,13 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { Player, Decklist } from '../../../types/player';
 import type { TrackEvent, EventMeta } from '../../../types/event';
 import type { TrackType } from '../types';
 import type { Clip, ClipTransform, ClipCrop } from '../../../types/clip';
+import type { Marker, MarkerColor } from '../../../types/marker';
+import { DEFAULT_MARKER_COLOR } from '../../../types/marker';
 import type { ClipMoveResult } from './hookTypes';
+import type { TimeRange, TrimEdge } from '../editOps';
+import { mapTimeAfterRipple, mergeRanges, splitGeometry, trimClip } from '../editOps';
 import { useHistory } from '@/hooks/useHistory';
 
 type PlayerInit = Omit<Player, 'track'>;
@@ -15,15 +19,109 @@ export type TrackOverrideRow = {
     isBlocked: boolean;
     isHidden?: boolean;
     isMuted?: boolean;
+    /** Whether ripple edits shift this row. Undefined = locked (the default). */
+    syncLock?: boolean;
 };
 
 type TracksState = {
     players: Player[];
     trackOverrides: Record<string, TrackOverrideRow[]>;
     clipsByTrack: Record<string, Clip[]>;
+    markers: Marker[];
 };
 
 const COLLISION_THRESHOLD = 2.0;
+
+/** Rows explicitly opted out of ripple. Everything else rides along. */
+function unlockedRowIds(state: TracksState): Set<string> {
+    const out = new Set<string>();
+    for (const rows of Object.values(state.trackOverrides)) {
+        for (const r of rows) if (r.syncLock === false) out.add(r.id);
+    }
+    return out;
+}
+
+function isEventLayerLocked(state: TracksState, playerId: string, layer: number): boolean {
+    const rows = state.trackOverrides[playerId];
+    if (!rows) return true;
+    const row = rows.find((r) => (r.eventLayer ?? 0) === layer);
+    return row ? row.syncLock !== false : true;
+}
+
+/**
+ * Close the given output-time ranges: every clip and event that starts after a
+ * range slides left by the total length of the ranges before it.
+ *
+ * Events shift too. Overlay timing is authored against the video, so a ripple
+ * that moved only clips would silently desync every event downstream of the cut.
+ */
+function applyRipple(draft: TracksState, ranges: TimeRange[]): void {
+    const merged = mergeRanges(ranges);
+    if (merged.length === 0) return;
+    const unlocked = unlockedRowIds(draft);
+
+    for (const trackId of Object.keys(draft.clipsByTrack)) {
+        if (unlocked.has(trackId)) continue;
+        for (const clip of draft.clipsByTrack[trackId]) {
+            clip.time = mapTimeAfterRipple(clip.time, merged);
+        }
+    }
+    for (const player of draft.players) {
+        for (const ev of player.track.events) {
+            if (!isEventLayerLocked(draft, player.id, ev.layer)) continue;
+            ev.time = mapTimeAfterRipple(ev.time, merged);
+        }
+    }
+    for (const marker of draft.markers) {
+        marker.time = mapTimeAfterRipple(marker.time, merged);
+    }
+}
+
+/** Shift everything at or after `from` by `delta`, honouring sync lock. */
+function applyShiftFrom(draft: TracksState, from: number, delta: number): void {
+    if (delta === 0) return;
+    const unlocked = unlockedRowIds(draft);
+    for (const trackId of Object.keys(draft.clipsByTrack)) {
+        if (unlocked.has(trackId)) continue;
+        for (const clip of draft.clipsByTrack[trackId]) {
+            if (clip.time >= from - 1e-9) clip.time = Math.max(0, clip.time + delta);
+        }
+    }
+    for (const player of draft.players) {
+        for (const ev of player.track.events) {
+            if (!isEventLayerLocked(draft, player.id, ev.layer)) continue;
+            if (ev.time >= from - 1e-9) ev.time = Math.max(0, ev.time + delta);
+        }
+    }
+    for (const marker of draft.markers) {
+        if (marker.time >= from - 1e-9) marker.time = Math.max(0, marker.time + delta);
+    }
+}
+
+function findClipEntry(
+    state: TracksState,
+    clipId: string,
+): { trackId: string; clip: Clip } | null {
+    for (const [trackId, clips] of Object.entries(state.clipsByTrack)) {
+        const clip = clips.find((c) => c.id === clipId);
+        if (clip) return { trackId, clip };
+    }
+    return null;
+}
+
+/** A clip plus every clip sharing its linkId (the A/V halves of one source). */
+function withLinked(state: TracksState, clipId: string): Array<{ trackId: string; clip: Clip }> {
+    const entry = findClipEntry(state, clipId);
+    if (!entry) return [];
+    if (!entry.clip.linkId) return [entry];
+    const out: Array<{ trackId: string; clip: Clip }> = [];
+    for (const [trackId, clips] of Object.entries(state.clipsByTrack)) {
+        for (const clip of clips) {
+            if (clip.linkId === entry.clip.linkId) out.push({ trackId, clip });
+        }
+    }
+    return out;
+}
 
 function findAvailableLayer(
     events: TrackEvent[],
@@ -52,6 +150,7 @@ export function usePlayerTracks(
     savedPlayers?: Player[],
     savedClipsByTrack?: Record<string, Clip[]>,
     savedTrackOverrides?: Record<string, TrackOverrideRow[]>,
+    savedMarkers?: Marker[],
 ) {
     const initialState: TracksState = {
         players: savedPlayers ??
@@ -61,6 +160,7 @@ export function usePlayerTracks(
             })),
         trackOverrides: savedTrackOverrides ?? {},
         clipsByTrack: savedClipsByTrack ?? {},
+        markers: savedMarkers ?? [],
     };
 
     const {
@@ -79,6 +179,9 @@ export function usePlayerTracks(
     const players = state.players;
     const trackOverrides = state.trackOverrides;
     const clipsByTrack = state.clipsByTrack;
+    const markers = state.markers;
+    const stateRef = useRef(state);
+    useEffect(() => { stateRef.current = state; });
 
     const nextEventId = useRef(
         savedPlayers
@@ -294,6 +397,165 @@ export function usePlayerTracks(
         });
     }, [record]);
 
+    /**
+     * Commit a trim drag. `ripple` slides everything downstream by the change in
+     * the clip's end, closing (or opening) the gap the trim would leave.
+     */
+    const handleTrimClip = useCallback((
+        clipId: string,
+        edge: TrimEdge,
+        desiredTime: number,
+        sourceDuration: number,
+        ripple = false,
+    ) => {
+        const targets = withLinked(stateRef.current, clipId);
+        const primary = targets.find((t) => t.clip.id === clipId);
+        if (!primary) return;
+        const neighbours = stateRef.current.clipsByTrack[primary.trackId] ?? [];
+        const next = trimClip(primary.clip, edge, desiredTime, sourceDuration, neighbours);
+        const dTime = next.time - primary.clip.time;
+        const dDuration = next.duration - primary.clip.duration;
+        const dOffset = next.sourceOffset - primary.clip.sourceOffset;
+        if (dTime === 0 && dDuration === 0) return;
+        const oldEnd = primary.clip.time + primary.clip.duration;
+
+        record((draft) => {
+            for (const { trackId, clip } of targets) {
+                const target = (draft.clipsByTrack[trackId] ?? []).find((c) => c.id === clip.id);
+                if (!target) continue;
+                target.time = Math.max(0, target.time + dTime);
+                target.duration = Math.max(0, target.duration + dDuration);
+                target.sourceOffset = Math.max(0, target.sourceOffset + dOffset);
+            }
+            if (!ripple) return;
+            // Head trims move the clip's start, so the run of downstream material
+            // begins at the old end either way.
+            const delta = edge === 'end' ? dDuration : -dTime;
+            applyShiftFrom(draft, oldEnd, delta);
+        });
+    }, [record]);
+
+    /** Blade every given clip at `t`, splitting linked partners with it. */
+    const handleSplitClips = useCallback((clipIds: string[], t: number) => {
+        const ids = new Set<string>();
+        for (const id of clipIds) {
+            for (const { clip } of withLinked(stateRef.current, id)) ids.add(clip.id);
+        }
+        if (ids.size === 0) return [];
+
+        // Both halves of a linked pair get the SAME new linkId, so the right
+        // halves stay linked to each other rather than to what they were cut from.
+        const rightLinkSuffix = `:${t.toFixed(4)}`;
+        const additions: Array<{ trackId: string; clip: Clip; leftId: string; leftDuration: number }> = [];
+        for (const [trackId, clips] of Object.entries(stateRef.current.clipsByTrack)) {
+            for (const clip of clips) {
+                if (!ids.has(clip.id)) continue;
+                const geo = splitGeometry(clip, t);
+                if (!geo) continue;
+                additions.push({
+                    trackId,
+                    leftId: clip.id,
+                    leftDuration: geo.left.duration,
+                    clip: {
+                        ...clip,
+                        id: crypto.randomUUID(),
+                        time: geo.right.time,
+                        duration: geo.right.duration,
+                        sourceOffset: geo.right.sourceOffset,
+                        linkId: clip.linkId ? clip.linkId + rightLinkSuffix : undefined,
+                    },
+                });
+            }
+        }
+        if (additions.length === 0) return [];
+
+        record((draft) => {
+            for (const { trackId, clip, leftId, leftDuration } of additions) {
+                const left = (draft.clipsByTrack[trackId] ?? []).find((c) => c.id === leftId);
+                if (left) left.duration = leftDuration;
+                draft.clipsByTrack[trackId] = [...(draft.clipsByTrack[trackId] ?? []), clip];
+            }
+        });
+        return additions.map((a) => a.clip.id);
+    }, [record]);
+
+    /** Delete and close the gap. Events and markers ride the shift. */
+    const handleRippleDelete = useCallback((
+        clipItems: { trackId: string; clipId: string }[],
+        eventDeletions: { playerId: string; eventIds: number[] }[],
+    ) => {
+        const ranges: TimeRange[] = [];
+        for (const { trackId, clipId } of clipItems) {
+            const clip = (stateRef.current.clipsByTrack[trackId] ?? []).find((c) => c.id === clipId);
+            if (clip) ranges.push({ start: clip.time, end: clip.time + clip.duration });
+        }
+        const deletedIds = new Set(clipItems.map((i) => i.clipId));
+        record((draft) => {
+            for (const { playerId, eventIds } of eventDeletions) {
+                const player = draft.players.find((p) => p.id === playerId);
+                if (!player) continue;
+                const idSet = new Set(eventIds);
+                player.track.events = player.track.events.filter((e) => !idSet.has(e.id));
+            }
+            for (const { trackId } of clipItems) {
+                draft.clipsByTrack[trackId] = (draft.clipsByTrack[trackId] ?? []).filter(
+                    (c) => !deletedIds.has(c.id),
+                );
+            }
+            applyRipple(draft, ranges);
+        });
+    }, [record]);
+
+    const handleCloseGaps = useCallback((ranges: TimeRange[]) => {
+        if (ranges.length === 0) return;
+        record((draft) => applyRipple(draft, ranges));
+    }, [record]);
+
+    const handleUpdateClipGain = useCallback((trackId: string, clipId: string, gain: number) => {
+        record((draft) => {
+            const clip = (draft.clipsByTrack[trackId] ?? []).find((c) => c.id === clipId);
+            if (clip) clip.gain = gain;
+        });
+    }, [record]);
+
+    const handleUnlinkClip = useCallback((clipId: string) => {
+        const targets = withLinked(stateRef.current, clipId);
+        if (targets.length < 2) return;
+        record((draft) => {
+            for (const { trackId, clip } of targets) {
+                const target = (draft.clipsByTrack[trackId] ?? []).find((c) => c.id === clip.id);
+                if (target) delete target.linkId;
+            }
+        });
+    }, [record]);
+
+    const handleAddMarker = useCallback((time: number, color: MarkerColor = DEFAULT_MARKER_COLOR) => {
+        const marker: Marker = { id: crypto.randomUUID(), time, color };
+        record((draft) => { draft.markers.push(marker); });
+        return marker;
+    }, [record]);
+
+    const handleUpdateMarker = useCallback((id: string, updates: Partial<Omit<Marker, 'id'>>) => {
+        const recipe = (draft: TracksState) => {
+            const marker = draft.markers.find((m) => m.id === id);
+            if (marker) Object.assign(marker, updates);
+        };
+        // Renaming is keystroke-by-keystroke; coalesce it into one history entry
+        // the same way event meta edits do, or a name costs 20 undos.
+        const key = `marker-${id}`;
+        const now = Date.now();
+        if (lastMetaRef.current?.key === key && now - lastMetaRef.current.timestamp < 1000) {
+            mutate(recipe);
+        } else {
+            record(recipe);
+        }
+        lastMetaRef.current = { key, timestamp: now };
+    }, [record, mutate]);
+
+    const handleDeleteMarker = useCallback((id: string) => {
+        record((draft) => { draft.markers = draft.markers.filter((m) => m.id !== id); });
+    }, [record]);
+
     const relinkClips = useCallback((oldSourceId: string, newSourceId: string) => {
         record((draft) => {
             for (const trackId of Object.keys(draft.clipsByTrack)) {
@@ -325,8 +587,9 @@ export function usePlayerTracks(
         incoming: Player[],
         clipsByTrack: Record<string, Clip[]> = {},
         trackOverrides: Record<string, TrackOverrideRow[]> = {},
+        markers: Marker[] = [],
     ) => {
-        setState({ players: incoming, trackOverrides, clipsByTrack });
+        setState({ players: incoming, trackOverrides, clipsByTrack, markers });
         clearHistory();
         const maxId = Math.max(
             0,
@@ -403,6 +666,16 @@ export function usePlayerTracks(
         players,
         trackOverrides,
         clipsByTrack,
+        markers,
+        handleTrimClip,
+        handleSplitClips,
+        handleRippleDelete,
+        handleCloseGaps,
+        handleUpdateClipGain,
+        handleUnlinkClip,
+        handleAddMarker,
+        handleUpdateMarker,
+        handleDeleteMarker,
         handleCreateEvent,
         handleCreateEventAutoLayer,
         handleDeleteEvents,

@@ -1,9 +1,19 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import type { RefObject } from 'react';
 import { MIN_ZOOM, MAX_ZOOM } from './constants';
+import type { Marker } from '../../types/marker';
+import { MarkerColorMap } from '../../types/marker';
+import type { Snapper } from './snapping';
+import { resolvePlayheadTime } from './snapping';
 
 const SCROLL_BUCKET_PX = 256;
 const OVERSCAN_PX = 512;
+/**
+ * Hit box, much wider than the 6px flag it contains. `M` drops a marker exactly
+ * at the playhead, whose 24px handle sits on the same spot, so a marker needs a
+ * real target and a z-index above the cursor or it is unclickable on creation.
+ */
+const MARKER_HIT_W = 14;
 
 function formatTime(seconds: number): string {
     const mins = Math.floor(seconds / 60);
@@ -30,6 +40,12 @@ interface RulerProps {
     setMaxScroll: (max: number) => void;
     paddingX?: number;
     colors?: RulerColors;
+    markers?: Marker[];
+    onMarkerClick?: (marker: Marker, e: React.MouseEvent) => void;
+    inPoint?: number | null;
+    outPoint?: number | null;
+    onScrollGesture?: () => void;
+    createSnapper?: () => Snapper | null;
 }
 
 const DEFAULT_COLORS: Required<RulerColors> = {
@@ -37,7 +53,7 @@ const DEFAULT_COLORS: Required<RulerColors> = {
     label: 'text-zinc-400',
 };
 
-function Ruler({ duration, zoom, scrollLeftRef, subscribe, onSeek, setScroll, setMaxScroll, paddingX = 0, colors }: RulerProps) {
+function Ruler({ duration, zoom, scrollLeftRef, subscribe, onSeek, setScroll, setMaxScroll, paddingX = 0, colors, markers, onMarkerClick, inPoint, outPoint, onScrollGesture, createSnapper }: RulerProps) {
     const { tick: tickColor, label: labelColor } = { ...DEFAULT_COLORS, ...colors };
     const outerRef = useRef<HTMLDivElement>(null);
     const innerRef = useRef<HTMLDivElement>(null);
@@ -84,6 +100,7 @@ function Ruler({ duration, zoom, scrollLeftRef, subscribe, onSeek, setScroll, se
             const delta = e.clientX - dragRef.current.startX;
             if (Math.abs(delta) > 4) dragRef.current.moved = true;
             if (dragRef.current.moved) {
+                onScrollGesture?.();
                 setScroll(scrollLeftRef.current - delta);
                 dragRef.current.startX = e.clientX;
             }
@@ -92,7 +109,8 @@ function Ruler({ duration, zoom, scrollLeftRef, subscribe, onSeek, setScroll, se
         const onMouseUp = (e: MouseEvent) => {
             if (dragRef.current && !dragRef.current.moved && outerRef.current) {
                 const x = e.clientX - outerRef.current.getBoundingClientRect().left;
-                onSeek(Math.max(0, Math.min(duration, (x - paddingX + scrollLeftRef.current) / zoom)));
+                const raw = Math.max(0, Math.min(duration, (x - paddingX + scrollLeftRef.current) / zoom));
+                onSeek(resolvePlayheadTime(raw, createSnapper?.() ?? null, e.altKey).time);
             }
             dragRef.current = null;
             setGrabbing(false);
@@ -130,6 +148,39 @@ function Ruler({ duration, zoom, scrollLeftRef, subscribe, onSeek, setScroll, se
                 className="absolute inset-y-0 left-0"
                 style={{ width: duration * zoom, transform: `translateX(${-(scrollLeftRef.current ?? 0)}px)`, left: paddingX }}
             >
+                {inPoint != null && outPoint != null && outPoint > inPoint && (
+                    <div
+                        className="absolute top-0 h-1.5 bg-sky-400/80 rounded-sm pointer-events-none"
+                        style={{ left: inPoint * zoom, width: (outPoint - inPoint) * zoom }}
+                    />
+                )}
+                {inPoint != null && (
+                    <div
+                        className="absolute top-0 h-2.5 w-0.5 bg-sky-400 pointer-events-none"
+                        style={{ left: inPoint * zoom }}
+                    />
+                )}
+                {outPoint != null && (
+                    <div
+                        className="absolute top-0 h-2.5 w-0.5 bg-sky-400 pointer-events-none"
+                        style={{ left: outPoint * zoom - 2 }}
+                    />
+                )}
+                {markers?.map((m) => (
+                    <div
+                        key={m.id}
+                        title={m.name || undefined}
+                        className="group absolute top-0 bottom-0 z-30 flex justify-start cursor-pointer"
+                        style={{ left: m.time * zoom - MARKER_HIT_W / 2, width: MARKER_HIT_W }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); onMarkerClick?.(m, e); }}
+                    >
+                        <div
+                            className={`h-3 w-1.5 rounded-b-sm transition-all group-hover:h-4 group-hover:ring-1 group-hover:ring-white ${MarkerColorMap[m.color].bg}`}
+                            style={{ marginLeft: MARKER_HIT_W / 2 - 3 }}
+                        />
+                    </div>
+                ))}
                 {ticks.map((t) => {
                     const hasLabel = t % labelInterval === 0;
                     return (

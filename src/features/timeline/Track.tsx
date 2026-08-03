@@ -2,11 +2,12 @@ import { useRef, useEffect, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import type { WaveformData } from '@/hooks/useWaveformPeaks';
 import type { ClipThumbnails } from '@/hooks/useVideoThumbnails';
-import { Eye, EyeOff, Lock, Volume2, VolumeOff } from 'lucide-react';
+import { Eye, EyeOff, Link, Link2Off, Lock, Volume2, VolumeOff } from 'lucide-react';
 import type { TimelineTrack } from './types';
 import { TrackType, TrackTypeColorMap } from './types';
 import type { TrackEvent } from '../../types/event';
 import type { Clip } from '../../types/clip';
+import type { TrimEdge } from './editOps';
 import type { GhostPos, ClipGhostPos } from './hooks/hookTypes';
 import TimelineEvent from './TimelineEvent';
 import { TimelineClip } from './TimelineClip';
@@ -122,9 +123,11 @@ interface TrackInfoProps {
     isBlocked: boolean;
     isHidden?: boolean;
     isMuted?: boolean;
+    syncLock?: boolean;
     onToggleBlocked: () => void;
     onToggleHidden?: () => void;
     onToggleMuted?: () => void;
+    onToggleSyncLock?: () => void;
 }
 
 export function TrackInfo({
@@ -133,12 +136,17 @@ export function TrackInfo({
     isBlocked,
     isHidden,
     isMuted,
+    syncLock,
     onToggleBlocked,
     onToggleHidden,
     onToggleMuted,
+    onToggleSyncLock,
 }: TrackInfoProps) {
     const showVisibility = type === TrackType.Video;
     const showMute = type === TrackType.Audio;
+    // Undefined means "never configured", which is locked — ripple edits move
+    // every track unless one is explicitly opted out.
+    const locked = syncLock !== false;
 
     return (
         <div
@@ -155,6 +163,23 @@ export function TrackInfo({
             </span>
             <div className="h-full w-full border-t border-zinc-600 flex items-center justify-end">
                 <div className="flex items-center gap-1 px-2">
+                    {onToggleSyncLock && (
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        className="text-zinc-500 hover:text-zinc-300 transition-colors"
+                                        onClick={onToggleSyncLock}
+                                    >
+                                        {locked ? <Link size={14} /> : <Link2Off size={14} className="text-zinc-600" />}
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                    {locked ? 'Sync lock on — ripple edits move this track' : 'Sync lock off'}
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                    )}
                     {showVisibility && (
                         <button
                             className="text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -218,6 +243,8 @@ interface TrackContentProps {
     canDeleteTrack?: boolean;
     onDropSource?: (sourceId: string, time: number) => void;
     acceptSourceType?: 'video' | 'audio';
+    onCloseGapAtTime?: (time: number) => void;
+    onCloseAllGaps?: () => void;
 }
 
 export function TrackContent({
@@ -244,6 +271,8 @@ export function TrackContent({
     canDeleteTrack,
     onDropSource,
     acceptSourceType,
+    onCloseGapAtTime,
+    onCloseAllGaps,
 }: TrackContentProps) {
     const innerRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -368,6 +397,17 @@ export function TrackContent({
                     Paste
                     <ContextMenuShortcut>{modKey}+V</ContextMenuShortcut>
                 </ContextMenuItem>
+                {onCloseGapAtTime && (
+                    <>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem disabled={isBlocked} onClick={() => onCloseGapAtTime(clickTimeRef.current)}>
+                            Close gap
+                        </ContextMenuItem>
+                        <ContextMenuItem disabled={isBlocked} onClick={onCloseAllGaps}>
+                            Close all gaps
+                        </ContextMenuItem>
+                    </>
+                )}
                 <ContextMenuSeparator />
                 <ContextMenuItem disabled={!canUndo} onClick={onUndo}>
                     Undo
@@ -445,6 +485,14 @@ interface TrackProps {
     acceptSourceType?: 'video' | 'audio';
     waveformMap?: Map<string, WaveformData>;
     thumbnailMap?: Map<string, ClipThumbnails>;
+    onToggleSyncLock?: () => void;
+    onTrimStart?: (trackId: string, clip: Clip, edge: TrimEdge, e: React.MouseEvent) => void;
+    onRazorCut?: (clipId: string, time: number) => void;
+    onSplitClip?: (clipId: string) => void;
+    onUnlinkClip?: (clipId: string) => void;
+    onClipGainChange?: (trackId: string, clipId: string, gain: number) => void;
+    onCloseGapAtTime?: (time: number) => void;
+    onCloseAllGaps?: () => void;
 }
 
 export function Track({
@@ -497,6 +545,14 @@ export function Track({
     acceptSourceType,
     waveformMap,
     thumbnailMap,
+    onToggleSyncLock,
+    onTrimStart,
+    onRazorCut,
+    onSplitClip,
+    onUnlinkClip,
+    onClipGainChange,
+    onCloseGapAtTime,
+    onCloseAllGaps,
 }: TrackProps) {
     const isEventTrack = track.type === TrackType.Event;
     const showEvents = isEventTrack && !track.isHidden && events && events.length > 0;
@@ -510,9 +566,11 @@ export function Track({
                 isBlocked={track.isBlocked}
                 isHidden={track.isHidden}
                 isMuted={track.isMuted}
+                syncLock={track.syncLock}
                 onToggleBlocked={onToggleBlocked}
                 onToggleHidden={onToggleHidden}
                 onToggleMuted={onToggleMuted}
+                onToggleSyncLock={onToggleSyncLock}
             />
             <TrackContent
                 duration={duration}
@@ -537,6 +595,8 @@ export function Track({
                 canDeleteTrack={canDeleteTrack}
                 onDropSource={onDropSource}
                 acceptSourceType={acceptSourceType}
+                onCloseGapAtTime={onCloseGapAtTime}
+                onCloseAllGaps={onCloseAllGaps}
             >
                 {showEvents && events.map((event) => (
                     <TimelineEvent
@@ -571,6 +631,11 @@ export function Track({
                         }}
                         onSelect={onSelectClip ? (additive) => onSelectClip(trackId, clip.id, additive) : undefined}
                         onDelete={onDeleteClip ? () => onDeleteClip(trackId, clip.id) : undefined}
+                        onTrimStart={onTrimStart && !track.isBlocked ? (edge, e) => onTrimStart(trackId, clip, edge, e) : undefined}
+                        onRazorCut={onRazorCut && !track.isBlocked ? (time) => onRazorCut(clip.id, time) : undefined}
+                        onSplit={onSplitClip && !track.isBlocked ? () => onSplitClip(clip.id) : undefined}
+                        onUnlink={onUnlinkClip && !track.isBlocked ? () => onUnlinkClip(clip.id) : undefined}
+                        onGainChange={onClipGainChange && !track.isBlocked ? (gain) => onClipGainChange(trackId, clip.id, gain) : undefined}
                         waveformData={waveformMap?.get(clip.sourceId)}
                         thumbnails={thumbnailMap?.get(clip.id)}
                     />

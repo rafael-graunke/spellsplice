@@ -178,7 +178,7 @@ export class AudioEngine {
         const when = Math.max(ctx.currentTime, whenCtx);
 
         const gain = ctx.createGain();
-        gain.gain.value = this.isClipMuted(clip) ? 0 : 1;
+        gain.gain.value = this.clipGain(clip);
         gain.connect(this.masterGain);
         const src = ctx.createBufferSource();
         src.buffer = buffer;
@@ -200,6 +200,22 @@ export class AudioEngine {
 
     private isClipMuted(clip: Clip): boolean {
         return clip.trackId ? this.mutedTrackIds.has(clip.trackId) : false;
+    }
+
+    /** Per-clip rubber-band gain, folded together with the track mute. */
+    private clipGain(clip: Clip): number {
+        return this.isClipMuted(clip) ? 0 : (clip.gain ?? 1);
+    }
+
+    /** Apply gain edits to already-scheduled voices without a reschedule. */
+    setClipGains(clips: Clip[]): void {
+        if (!this.ctx) return;
+        const clipById = new Map(clips.map((c) => [c.id, c]));
+        for (const voice of this.voices.values()) {
+            const clip = clipById.get(voice.clipId);
+            if (!clip) continue;
+            voice.gain.gain.setTargetAtTime(this.clipGain(clip), this.ctx.currentTime, VOLUME_RAMP);
+        }
     }
 
     private stopAllVoices(): void {
@@ -235,8 +251,7 @@ export class AudioEngine {
         for (const voice of this.voices.values()) {
             const clip = clipById.get(voice.clipId);
             if (!clip) continue;
-            const target = this.isClipMuted(clip) ? 0 : 1;
-            voice.gain.gain.setTargetAtTime(target, this.ctx.currentTime, VOLUME_RAMP);
+            voice.gain.gain.setTargetAtTime(this.clipGain(clip), this.ctx.currentTime, VOLUME_RAMP);
         }
     }
 

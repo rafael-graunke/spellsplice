@@ -58,6 +58,10 @@ interface VideoPreviewProps {
     mutedAudioTrackIds?: Set<string>;
     volume?: number;
     onVolumeChange?: (v: number) => void;
+    inPoint?: number | null;
+    outPoint?: number | null;
+    loop?: boolean;
+    onToggleLoop?: () => void;
     // A click on the preview surface, reported in project (canvas) coordinates,
     // for hit-testing which clip was clicked.
     onCanvasClick?: (x: number, y: number) => void;
@@ -80,6 +84,10 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
     mutedAudioTrackIds,
     volume = 100,
     onVolumeChange,
+    inPoint = null,
+    outPoint = null,
+    loop = false,
+    onToggleLoop = NOOP,
     onCanvasClick,
 }: VideoPreviewProps, ref) {
     const setVolume = onVolumeChange ?? NOOP;
@@ -95,6 +103,9 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
     const isPlayingRef = useRef(isPlaying);
     const rateRef = useRef(playbackRate);
     const durationRef = useRef(duration);
+    const loopRef = useRef(loop);
+    const inPointRef = useRef(inPoint);
+    const outPointRef = useRef(outPoint);
     const renderFrameRef = useRef<() => void>(() => {});
     // One object URL per source file; shared by every clip that references it.
     const sourceUrls = useRef<Map<string, string>>(new Map());
@@ -243,10 +254,18 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
     }, [videoClips]);
 
     // Reschedule audio when clips change while playing (add/remove/drag/trim).
+    // A gain-only edit skips the reschedule: tearing down and restarting every
+    // voice mid-playback is audible, and the rubber band commits on every drag.
+    const scheduleSigRef = useRef('');
     useEffect(() => {
-        if (isPlayingRef.current) {
-            audioEngineRef.current?.reschedule(audioClips, sourcesRef.current);
-        }
+        const sig = audioClips
+            .map((c) => `${c.id}:${c.sourceId}:${c.time}:${c.duration}:${c.sourceOffset}`)
+            .join('|');
+        const layoutChanged = sig !== scheduleSigRef.current;
+        scheduleSigRef.current = sig;
+        if (!isPlayingRef.current) return;
+        if (layoutChanged) audioEngineRef.current?.reschedule(audioClips, sourcesRef.current);
+        else audioEngineRef.current?.setClipGains(audioClips);
     }, [audioClips]);
 
     // Init compositor on mount — full-canvas layout + black frame. Base video is
@@ -274,6 +293,9 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
     rateRef.current = playbackRate;
     overlayConfigRef.current = overlayConfig;
     durationRef.current = duration;
+    loopRef.current = loop;
+    inPointRef.current = inPoint;
+    outPointRef.current = outPoint;
 
     // Scoreboard SVGs decode asynchronously; when one becomes ready, invalidate
     // the overlay cache and repaint so it appears on the next frame.
@@ -468,9 +490,15 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
     useEffect(() => {
         if (!isPlaying) return;
 
-        // If playback starts at end of timeline (e.g. after reaching duration), restart from 0.
-        if (currentTimeRef.current >= durationRef.current) {
-            currentTimeRef.current = 0;
+        // In/out bounds playback only while looping. Plain play runs through to
+        // the end of the content, as it does in Premiere and Resolve: marking a
+        // range for export must not quietly shorten the transport.
+        const stopAt = () =>
+            (loopRef.current ? outPointRef.current : null) ?? durationRef.current;
+        const wrapTo = () => (loopRef.current ? inPointRef.current : null) ?? 0;
+
+        if (currentTimeRef.current >= stopAt()) {
+            currentTimeRef.current = wrapTo();
         }
 
         let handle: number;
@@ -502,7 +530,8 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
             } else {
                 next = wall;
             }
-            next = Math.min(next, durationRef.current);
+            const limit = stopAt();
+            next = Math.min(next, limit);
             lastTs = ts;
             // currentTimeRef is the single source of truth; the playhead cursor
             // reads it imperatively (usePlayhead rAF), so no React state update
@@ -511,7 +540,17 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
             // When audio is the clock, chase every video element to it. Otherwise
             // the video clock element is left free and the rest are chased.
             reconcileMedia(next, true, hasAudio ? undefined : videoClock?.clip.id);
-            if (next >= durationRef.current) {
+            if (next >= limit) {
+                if (loopRef.current) {
+                    const start = wrapTo();
+                    currentTimeRef.current = start;
+                    reconcileMedia(start, true);
+                    audioEngineRef.current?.seek(start, audioClipsRef.current, sourcesRef.current);
+                    derivedCacheRef.current = null;
+                    renderFrameRef.current();
+                    handle = requestAnimationFrame(loop);
+                    return;
+                }
                 setIsPlaying(false);
                 pauseAllVideo();
                 audioEngineRef.current?.pause();
@@ -604,6 +643,10 @@ const VideoPreview = forwardRef<VideoPreviewHandle, VideoPreviewProps>(function 
                 duration={duration}
                 volume={volume}
                 onVolumeChange={setVolume}
+                loop={loop}
+                onToggleLoop={onToggleLoop}
+                inPoint={inPoint}
+                outPoint={outPoint}
             />
         </div>
     );

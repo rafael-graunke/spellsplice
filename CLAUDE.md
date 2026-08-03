@@ -72,10 +72,10 @@ Layout: top AppBar + left Sources panel + main area (react-resizable-panels), ve
 - `TrackEvent` — `{ id, time, layer: number, type: EventType, resizable, duration?, meta? }` — no `color` field; color derived from `EventColorMap`
 - `EventType` — 12 values: `ADD_TO_HAND`, `REMOVE_FROM_HAND`, `LOSE_LIFE`, `GAIN_LIFE`, `REVEAL_FROM_HAND`, `STACK_DECK`, `UNSTACK_DECK`, `DISPLAY_CARD`, `WIN`, `HIDE_UI`, `SHOW_UI`, `RESET`
 - `MediaSource` — `{ id, name, type: 'video'|'audio', duration, file?, thumbnailUrl?, loading? }` — source file in Sources panel
-- `Clip` — `{ id, type: ClipType, time, duration, sourceId, sourceOffset, trackId? }` — placed on timeline video/audio tracks. `time` = output-timeline position; `sourceOffset` = start within source file.
+- `Clip` — `{ id, type: ClipType, time, duration, sourceId, sourceOffset, trackId?, transform?, crop?, linkId?, gain? }` — placed on timeline video/audio tracks. `time` = output-timeline position; `sourceOffset` = start within source file. `linkId` is shared by the video/audio halves of one dropped source, so trim, blade, move and delete apply to both. `gain` is linear audio gain (1 = unity), edited via the in-clip rubber band.
 - `ClipType` — `VIDEO | AUDIO`
 - `TimelineTrackGroup` — `{ id, label, type: TrackType, tracks: TimelineTrack[] }` — one group per player (Event type) + shared video/audio groups
-- `TimelineTrack` — `{ id, type, events, clips?, player?, isBlocked, isHidden?, isMuted?, eventLayer? }` — single row. `eventLayer` stable index for filtering player events.
+- `TimelineTrack` — `{ id, type, events, clips?, player?, isBlocked, isHidden?, isMuted?, syncLock?, eventLayer? }` — single row. `eventLayer` stable index for filtering player events. `syncLock` (undefined = locked) decides whether ripple edits shift this row.
 - `TrackType` — `EVENT | VIDEO | AUDIO`
 - `ProjectConfig` — `{ title, author, defaultLifeTotal, defaultLayerCount, overlayStartHidden }` — project-level settings stored in state
 
@@ -115,7 +115,8 @@ Replaced the old single-player timeline. All timeline editing now goes through t
 - `useTimelineKeyboard` — keyboard shortcuts (delete, undo/redo).
 - `useElementDrag` — unified drag for events and clips; vertical drag changes layer/track, horizontal changes time/clip.time.
 - `useMarqueeDrag` — rubber-band multi-select.
-- `useTimelineAutoScroll` — auto-scrolls during drag near edges.
+- `useTimelineAutoScroll` — playhead-follow during playback (page scroll). Suspends on a manual scroll, resumes on the next play. (Edge-scroll during a drag lives inside `useElementDrag`.)
+- `useClipTrim` — clip edge trimming. Head trims move `time`, `sourceOffset` and `duration` together; Ctrl/Cmd makes it a ripple trim.
 
 **Controls.tsx** — playback controls (spacebar play/pause, skip), zoom slider. Cmd+K opens event creation dialog.
 
@@ -129,7 +130,36 @@ Replaced the old single-player timeline. All timeline editing now goes through t
 
 **Cursor.tsx** — playhead cursor overlay (imperative handle for perf).
 
-**constants.ts** (`src/features/timeline/constants.ts`) — `RULER_HEIGHT` (40px), `TRACK_HEIGHT` (48px), `TRACK_GROUP_LABEL_WIDTH`, `TRACK_INFO_WIDTH`, `MIN_ZOOM` (5 px/sec), `MAX_ZOOM` (50 px/sec).
+**constants.ts** (`src/features/timeline/constants.ts`) — `RULER_HEIGHT` (40px), `TRACK_HEIGHT` (48px), `TRACK_GROUP_LABEL_WIDTH`, `TRACK_INFO_WIDTH`, `MIN_ZOOM` (5 px/sec), `MAX_ZOOM` (50 px/sec), `PREVIEW_FPS`, `SHUTTLE_RATES`.
+
+**snapping.ts** — `makeSnapper(targets, zoom, threshold)` returns a binary-search snapper; `collectSnapTargets` gathers clip edges, event times, markers, in/out and the playhead. Thresholds are in **pixels** (`SNAP_THRESHOLD_PX = 8`, `PLAYHEAD_SNAP_THRESHOLD_PX = 6`), never seconds, so they behave at every zoom. Hold Alt to bypass. Also holds `quantizeToFrame` and `resolvePlayheadTime`.
+
+**editOps.ts** — pure geometry for the edit operations: `trimClip`, `splitGeometry`, `mergeRanges`, `mapTimeAfterRipple`, `findGap` / `findAllGaps`, `collectEditPoints`. No React, no state; the hooks and `usePlayerTracks` call into it.
+
+### Timeline toolbar
+
+Three species of control, grouped and separated because they behave differently:
+
+- **Modes** (`TimelineTool`, radio group, leading-left) — exactly one active, changes what dragging means. `V` select, `C` razor, `Escape` back to select. Session state in `Timeline.tsx`, deliberately **not** persisted: reopening in razor mode would turn the first click on a clip into a cut.
+- **Toggles** — independent on/off: snapping (`S`), follow playhead. Persisted to `spellsplice-editor`.
+- **Actions** — fire once, no state: split at playhead (`B`), add marker (`M`). Rendered with momentary press feedback instead of a persistent fill, because an action has no "on" state. Membership rule is strictly *frequent and otherwise undiscoverable*; anything rarer stays in the context menus or this group becomes a junk drawer.
+
+Razor-as-a-mode and split-at-playhead-as-an-action are both correct and not redundant: click-cutting and cut-where-the-playhead-is are different gestures, and Premiere (`C` + `Ctrl+K`) and Resolve (`B` + `Ctrl+\\`) both ship both.
+
+**`isTypingTarget(target, key)` takes the key for a reason.** Text entry swallows every shortcut, but a focused *control* only consumes Space and Enter. Treating a focused button as a blanket typing target silently disabled every single-letter shortcut the moment a toolbar button was clicked. Pass `e.key` at every call site. Dialogs are detected via `closest('[role="dialog"]')` (they trap focus), never a global `querySelector`, which would also match unrelated mounted popovers.
+
+### Editing model
+
+- **Snapping** — persistent toggle (`S`, magnet button in the timeline toolbar), on by default, persisted to `spellsplice-editor`. Follows Resolve: one switch governs clip/event drags, trims **and the playhead**. Alt bypasses it everywhere.
+- **Playhead** — always lands on a frame (`quantizeToFrame`) unless it snapped, in which case the snap target wins; clip times are free floats, so quantizing a snapped time would push the playhead back off the edit point. Playhead snapping uses a **sparser** target set than clips (clip edges, markers, in/out, 0 — no event times): event tracks are dense here in a way a normal NLE timeline is not, and `Shift+↑`/`↓` already lands on event times exactly. Entry points are `Cursor.startDrag` and `Ruler`'s click-to-seek, both via `resolvePlayheadTime`.
+- **Trim** — 8px edge handles on clips. Hard-stops at the media limit (red inset ring on the ghost) and at neighbouring clips.
+- **Blade** — `B` splits every clip the playhead crosses; a clip selection narrows it, `Shift+B` forces all tracks. Linked partners split together and the two right halves stay linked to each other.
+- **Ripple** — `Shift+Delete` deletes and closes the gap. Scope is **sync lock** per track (link icon in the track header, locked unless explicitly turned off). Events and markers ride the shift, because overlay timing is authored against the video; anything inside a removed range collapses onto the cut point (`mapTimeAfterRipple`).
+- **In/out + loop** — `I` / `O` mark, `Ctrl+Shift+I/O` clear, `X` marks the clip under the playhead, `Shift+L` toggles loop (not `Ctrl+L` — the browser owns that for the address bar). In/out bounds the transport only while looping (plain play still runs to the end, as in Premiere/Resolve). It is session state in `App.tsx` (not saved to the project) and doubles as the **export range** (`ExportOptions.range`, rebased to zero in `pipeline.ts`).
+- **Markers** — `M` adds at the playhead, `Shift+M` / `Ctrl+Shift+M` navigate, click a ruler flag to rename/recolour/delete. Stored in `TracksState.markers` (so undo/redo, autosave and `.sps` cover them) and deliberately NOT `TrackEvent`s: they never reach `derivePlayerState`, the renderers, or the export.
+- **Navigation** — `↑`/`↓` step clip edit points, `Shift+↑`/`↓` step event times, `Home`/`End` jump to the ends, `←`/`→` nudge a frame (`Shift` a second).
+
+Single-letter shortcuts share `isTypingTarget` (`src/features/timeline/keyboard.ts`), which also excludes focused buttons/selects — otherwise Space and Enter both activate the control and fire the shortcut.
 
 ## State Derivation (`src/lib/`)
 
@@ -319,7 +349,7 @@ Because `semantic-release` runs only at promotion, commit type still matters for
 
 **v2 targets**:
 - Add / remove players from within the app
-- **Non-linear video editing** (in progress — basic clips + drag implemented; missing: trimming, multi-source sync, playback engine per-clip seeking, full export integration)
+- **Non-linear video editing** (in progress — clips, drag, snapping, trim, blade, ripple delete, A/V link, sync lock, markers, in/out + loop, per-clip audio gain and playhead follow implemented; missing: slip/slide/roll, retime, three-point editing, audio gain keyframes)
 - Live overlay mode: the `/overlay` route renders a transparent 1920x1080 canvas (no chroma key). The Live Mode controller UI (in the main app) syncs to it over a WebSocket via a small local relay (`spellsplice-relay.py`), configured in `LiveModeDialog` > Connection. Added to OBS as a transparent Browser Source pointing at `/overlay?ws=<relay>`. See `useLiveModeSocket.ts` and `OverlayPage.tsx`. (No `/control` route, no BroadcastChannel.)
 - Full overlay UI editor (drag/resize/style any element) + layout export & sharing
 - Built-in macro library (common spell sequences like Brainstorm) + user-defined macros

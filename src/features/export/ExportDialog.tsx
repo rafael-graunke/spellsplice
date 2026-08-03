@@ -23,6 +23,8 @@ interface ExportDialogProps {
     players: Player[];
     config: ProjectConfig;
     hiddenVideoTrackIds?: Set<string>;
+    inPoint?: number | null;
+    outPoint?: number | null;
 }
 
 type Status = 'idle' | 'running' | 'done' | 'error';
@@ -44,12 +46,22 @@ function phaseLabel(p: ExportProgress): string {
 
 const canExport = 'showSaveFilePicker' in window;
 
-export function ExportDialog({ open, onClose, videoClips, audioClips, sources, players, config, hiddenVideoTrackIds }: ExportDialogProps) {
+function formatClock(seconds: number): string {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+export function ExportDialog({ open, onClose, videoClips, audioClips, sources, players, config, hiddenVideoTrackIds, inPoint, outPoint }: ExportDialogProps) {
     const [status, setStatus] = useState<Status>('idle');
     const [progress, setProgress] = useState<ExportProgress | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [fps, setFps] = useState(60);
+    const [useRange, setUseRange] = useState(true);
     const abortRef = useRef<AbortController | null>(null);
+
+    const hasRange = inPoint != null && outPoint != null && outPoint > inPoint;
+    const range = hasRange && useRange ? { start: inPoint, end: outPoint } : undefined;
 
     const pct = progress && progress.totalFrames > 0
         ? (progress.currentFrame / progress.totalFrames) * 100
@@ -82,6 +94,7 @@ export function ExportDialog({ open, onClose, videoClips, audioClips, sources, p
                     annotationConfig: config.annotationConfig,
                     layers: config.layers,
                 },
+                range,
             }, hiddenVideoTrackIds);
             setStatus('done');
         } catch (err) {
@@ -130,6 +143,16 @@ export function ExportDialog({ open, onClose, videoClips, audioClips, sources, p
                                     <option value={30}>30 fps</option>
                                 </select>
                             </label>
+                            {hasRange && (
+                                <label className="flex flex-row items-center gap-2 text-sm">
+                                    <input
+                                        type="checkbox"
+                                        checked={useRange}
+                                        onChange={(e) => setUseRange(e.target.checked)}
+                                    />
+                                    Export in/out range only ({formatClock(inPoint)} – {formatClock(outPoint)})
+                                </label>
+                            )}
                             </div>
                         <DialogFooter>
                             <Button variant="outline" onClick={handleClose}>Cancel</Button>

@@ -4,6 +4,7 @@ import type { ProjectConfig } from '@/types/config';
 import type { Clip } from '@/types/clip';
 import type { MediaSource } from '@/types/source';
 import type { TrackOverrideRow } from '@/features/timeline/hooks/usePlayerTracks';
+import type { Marker } from '@/types/marker';
 import { cardDataCache, restoreCardDataCache } from './cardCache';
 
 export type SourceMeta = Pick<MediaSource, 'id' | 'name' | 'duration' | 'type' | 'width' | 'height'>;
@@ -23,6 +24,7 @@ export interface ProjectExport {
     clipsByTrack?: Record<string, Clip[]>;
     trackOverrides?: Record<string, TrackOverrideRow[]>;
     sources?: SourceMeta[];
+    markers?: Marker[];
 }
 
 export async function exportProject(
@@ -31,6 +33,7 @@ export async function exportProject(
     clipsByTrack: Record<string, Clip[]>,
     trackOverrides: Record<string, TrackOverrideRow[]>,
     sources: MediaSource[],
+    markers: Marker[] = [],
 ) {
     const zip = new JSZip();
 
@@ -51,6 +54,7 @@ export async function exportProject(
         clipsByTrack,
         trackOverrides,
         sources: sourceMeta,
+        markers,
     };
 
     zip.file('project.json', JSON.stringify(manifest, null, 2));

@@ -4,6 +4,7 @@ import type { EventType } from '../../../types/event';
 import type { TimelineTrack } from '../types';
 import type { Clip, ClipType } from '../../../types/clip';
 import { ClipColorMap } from '../../../types/clip';
+import type { Snapper } from '../snapping';
 import type { GhostPos, MoveResult, ClipGhostPos, ClipMoveResult } from './hookTypes';
 
 export type { GhostPos, MoveResult, ClipGhostPos, ClipMoveResult };
@@ -40,6 +41,27 @@ interface ElementDragState {
     startScrollLeft: number;
     primaryTrackIndex: number;
     primaryGroupId: string | null;
+    snapper: Snapper | null;
+}
+
+/**
+ * Snap the whole selection by whichever of its edges lands closest to a target,
+ * so dragging a clip latches on its head or its tail, whichever is nearer.
+ */
+function snapDelta(
+    elements: DragElement[],
+    baseDelta: number,
+    snapper: Snapper | null,
+    disabled: boolean,
+): { delta: number; target: number | null } {
+    if (!snapper || disabled) return { delta: baseDelta, target: null };
+    const edges: number[] = [];
+    for (const el of elements) {
+        edges.push(el.startTime + baseDelta);
+        if (el.duration > 0) edges.push(el.startTime + el.duration + baseDelta);
+    }
+    const snap = snapper(edges);
+    return { delta: baseDelta + snap.delta, target: snap.target };
 }
 
 function makeEventGhost(el: EventElement, newTime: number, zoom: number): GhostPos {
@@ -123,7 +145,14 @@ export function useElementDrag(
     selectedClipIds: Set<string>,
     onMoveEvents: (moves: MoveResult[], newTracksInfo?: Map<string, { groupId: string; eventLayer: number; targetLocalIndex: number }>) => void,
     onMoveClips: (moves: ClipMoveResult[]) => void,
+    createSnapper: (excludeClipIds: Set<string>, excludeEventIds: Set<number>) => Snapper | null,
 ) {
+    const [snapTarget, setSnapTarget] = useState<number | null>(null);
+    const createSnapperRef = useRef(createSnapper);
+    createSnapperRef.current = createSnapper;
+    // Delta the ghosts were drawn with; mouseup reuses it so the drop lands
+    // exactly where the user saw it snap.
+    const snappedDeltaRef = useRef<number | null>(null);
     const [eventGhostsByTrack, setEventGhostsByTrack] = useState<Map<string, GhostPos[]>>(new Map());
     const eventGhostsByTrackRef = useRef(eventGhostsByTrack);
     eventGhostsByTrackRef.current = eventGhostsByTrack;
@@ -158,6 +187,16 @@ export function useElementDrag(
     onMoveEventsRef.current = onMoveEvents;
     const onMoveClipsRef = useRef(onMoveClips);
     onMoveClipsRef.current = onMoveClips;
+
+    const buildSnapper = (primary: DragElement, companions: DragElement[]): Snapper | null => {
+        const clipIds = new Set<string>();
+        const eventIds = new Set<number>();
+        for (const el of [primary, ...companions]) {
+            if (el.kind === 'clip') clipIds.add(el.id);
+            else eventIds.add(el.id);
+        }
+        return createSnapperRef.current(clipIds, eventIds);
+    };
 
     const stopAutoScroll = () => {
         scrollSpeedXRef.current = 0;
@@ -241,6 +280,7 @@ export function useElementDrag(
             startScrollLeft: scrollLeftRef.current,
             primaryTrackIndex: trackIndex,
             primaryGroupId: primaryGroup?.id ?? null,
+            snapper: buildSnapper(primary, companions),
         };
         targetTrackIndexRef.current = trackIndex;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -313,6 +353,7 @@ export function useElementDrag(
             startScrollLeft: scrollLeftRef.current,
             primaryTrackIndex: trackIndex,
             primaryGroupId: null,
+            snapper: buildSnapper(primary, companions),
         };
         targetTrackIndexRef.current = trackIndex;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -342,7 +383,11 @@ export function useElementDrag(
             const deltaTime = rawDeltaX / zoom;
             const allElements = [drag.primary, ...drag.companions];
             const minStartTime = Math.min(...allElements.map((el) => el.startTime));
-            const clampedDeltaTime = Math.max(deltaTime, -minStartTime);
+            const rawDelta = Math.max(deltaTime, -minStartTime);
+            const snapped = snapDelta(allElements, rawDelta, drag.snapper, e.altKey);
+            const clampedDeltaTime = Math.max(snapped.delta, -minStartTime);
+            snappedDeltaRef.current = clampedDeltaTime;
+            setSnapTarget(snapped.target);
 
             if (!isDragging()) {
                 const eventIds = new Set<number>();
@@ -510,7 +555,8 @@ export function useElementDrag(
                 const deltaTime = deltaX / zoom;
                 const allElements = [drag.primary, ...drag.companions];
                 const minStartTime = Math.min(...allElements.map((el) => el.startTime));
-                const clampedDeltaTime = Math.max(deltaTime, -minStartTime);
+                const clampedDeltaTime = snappedDeltaRef.current
+                    ?? Math.max(deltaTime, -minStartTime);
 
                 const newPrimaryIndex = targetTrackIndexRef.current;
                 let indexDelta = newPrimaryIndex - drag.primaryTrackIndex;
@@ -670,10 +716,12 @@ export function useElementDrag(
             }
 
             moveDragRef.current = null;
+            snappedDeltaRef.current = null;
             setEventGhostsByTrack(new Map());
             setClipGhostsByTrack(new Map());
             setDraggingEventIds(new Set());
             setDraggingClipIds(new Set());
+            setSnapTarget(null);
         };
 
         window.addEventListener('mousemove', onMouseMove);
@@ -691,6 +739,7 @@ export function useElementDrag(
         clipGhostsByTrack,
         draggingEventIds,
         draggingClipIds,
+        dragSnapTarget: snapTarget,
         handleEventDragStart,
         handleClipDragStart,
     };

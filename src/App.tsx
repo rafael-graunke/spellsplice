@@ -12,6 +12,7 @@ import type {
     ViewMode,
 } from './features/timeline/Timeline';
 import type { MoveResult } from './features/timeline/hooks/hookTypes';
+import type { TrimCommit } from './features/timeline/hooks/useClipTrim';
 import type { Clip } from './types/clip';
 import { ClipType } from './types/clip';
 import {
@@ -118,14 +119,25 @@ type SavedState = {
         thumbnailUrl?: string;
     }>;
     config?: ProjectConfig;
+    markers?: import('./types/marker').Marker[];
 };
 
-type EditorConfig = { volume: number; zoom: number; viewMode: ViewMode };
+type EditorConfig = {
+    volume: number;
+    zoom: number;
+    viewMode: ViewMode;
+    snapEnabled: boolean;
+    followPlayhead: boolean;
+    loop: boolean;
+};
 
 const DEFAULT_EDITOR_CONFIG: EditorConfig = {
     volume: 100,
     zoom: 20,
     viewMode: 'full',
+    snapEnabled: true,
+    followPlayhead: true,
+    loop: false,
 };
 
 function loadEditorConfig(): EditorConfig {
@@ -180,6 +192,13 @@ function App() {
     const [volume, setVolume] = useState(() => loadEditorConfig().volume);
     const [zoom, setZoom] = useState(() => loadEditorConfig().zoom);
     const [viewMode, setViewMode] = useState(() => loadEditorConfig().viewMode);
+    const [snapEnabled, setSnapEnabled] = useState(() => loadEditorConfig().snapEnabled);
+    const [followPlayhead, setFollowPlayhead] = useState(() => loadEditorConfig().followPlayhead);
+    const [loop, setLoop] = useState(() => loadEditorConfig().loop);
+    // In/out are a session range, not project data: they scope playback and the
+    // export, and are cheap to re-mark.
+    const [inPoint, setInPoint] = useState<number | null>(null);
+    const [outPoint, setOutPoint] = useState<number | null>(null);
 
     const [isDirty, setIsDirty] = useState(false);
     const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -270,6 +289,16 @@ function App() {
         players,
         trackOverrides,
         clipsByTrack,
+        markers,
+        handleTrimClip,
+        handleSplitClips,
+        handleRippleDelete,
+        handleCloseGaps,
+        handleUpdateClipGain,
+        handleUnlinkClip,
+        handleAddMarker,
+        handleUpdateMarker,
+        handleDeleteMarker,
         handleCreateEventAutoLayer,
         handleDeleteEvents,
         handleDuplicateEvents,
@@ -302,7 +331,8 @@ function App() {
             ? migrateLegacyEvents(savedStateInit.players)
             : undefined,
         savedStateInit?.clipsByTrack,
-        savedStateInit?.trackOverrides
+        savedStateInit?.trackOverrides,
+        savedStateInit?.markers
     );
 
     useEffect(() => {
@@ -341,6 +371,7 @@ function App() {
                     trackOverrides,
                     sources: serializedSources,
                     config: projectConfig,
+                    markers,
                 })
             );
         }
@@ -350,7 +381,7 @@ function App() {
             return;
         }
         setIsDirty(true);
-    }, [players, clipsByTrack, trackOverrides, sources, projectConfig]);
+    }, [players, clipsByTrack, trackOverrides, sources, projectConfig, markers]);
 
     const isFirstEditorRender = useRef(true);
     useEffect(() => {
@@ -360,9 +391,9 @@ function App() {
         }
         localStorage.setItem(
             EDITOR_KEY,
-            JSON.stringify({ volume, zoom, viewMode })
+            JSON.stringify({ volume, zoom, viewMode, snapEnabled, followPlayhead, loop })
         );
-    }, [volume, zoom, viewMode]);
+    }, [volume, zoom, viewMode, snapEnabled, followPlayhead, loop]);
 
     const isFirstConfigRender = useRef(true);
     useEffect(() => {
@@ -410,6 +441,8 @@ function App() {
     clipsByTrackRef.current = clipsByTrack;
     const trackOverridesRef = useRef(trackOverrides);
     trackOverridesRef.current = trackOverrides;
+    const markersRef = useRef(markers);
+    markersRef.current = markers;
 
     const handleExport = useCallback(async () => {
         await exportProject(
@@ -417,7 +450,8 @@ function App() {
             projectConfigRef.current,
             clipsByTrackRef.current,
             trackOverridesRef.current,
-            sourcesRef.current
+            sourcesRef.current,
+            markersRef.current
         );
         setIsDirty(false);
     }, []);
@@ -432,8 +466,11 @@ function App() {
             resetPlayers(
                 migrateLegacyEvents(manifest.players),
                 manifest.clipsByTrack ?? {},
-                manifest.trackOverrides ?? {}
+                manifest.trackOverrides ?? {},
+                manifest.markers ?? []
             );
+            setInPoint(null);
+            setOutPoint(null);
 
             setSources(offlineSources);
             setSelectedEvents([]);
@@ -692,6 +729,7 @@ function App() {
                 eventLayer: t.eventLayer,
                 isHidden: t.isHidden,
                 isMuted: t.isMuted,
+                syncLock: t.syncLock,
             }));
             currentRows.splice(position === 'above' ? idx + 1 : idx, 0, newRow);
             recordTrackOverride(groupId, currentRows);
@@ -781,6 +819,67 @@ function App() {
             );
         },
         [handleDeleteAll, trackInfoByTrackId]
+    );
+
+    const handleRippleDeleteSelection = useCallback(
+        (
+            clipItems: { trackId: string; clipId: string }[],
+            eventItems: DeleteItem[]
+        ) => {
+            const byPlayer = new Map<string, number[]>();
+            for (const { trackId, eventId } of eventItems) {
+                const groupId =
+                    trackInfoByTrackId.get(trackId)?.groupId ?? trackId;
+                const arr = byPlayer.get(groupId) ?? [];
+                arr.push(eventId);
+                byPlayer.set(groupId, arr);
+            }
+            handleRippleDelete(
+                clipItems,
+                Array.from(byPlayer, ([playerId, eventIds]) => ({
+                    playerId,
+                    eventIds,
+                }))
+            );
+        },
+        [handleRippleDelete, trackInfoByTrackId]
+    );
+
+    const handleTrimCommit = useCallback(
+        (commit: TrimCommit) => {
+            handleTrimClip(
+                commit.clipId,
+                commit.edge,
+                commit.desiredTime,
+                commit.sourceDuration,
+                commit.ripple
+            );
+        },
+        [handleTrimClip]
+    );
+
+    const handleToggleLoop = useCallback(() => setLoop((v) => !v), []);
+
+    const handleToggleSyncLock = useCallback(
+        (groupId: string, trackId: string) => {
+            const group = trackGroups.find((g) => g.id === groupId);
+            if (!group) return;
+            recordTrackOverride(
+                groupId,
+                group.tracks.map((t) => ({
+                    id: t.id,
+                    type: t.type,
+                    isBlocked: t.isBlocked,
+                    eventLayer: t.eventLayer,
+                    isHidden: t.isHidden,
+                    isMuted: t.isMuted,
+                    // Undefined reads as locked, so the flip of "locked" is
+                    // exactly "was it explicitly unlocked".
+                    syncLock: t.id === trackId ? t.syncLock === false : t.syncLock,
+                }))
+            );
+        },
+        [trackGroups, recordTrackOverride]
     );
 
     const handleDuplicate = useCallback(
@@ -898,6 +997,7 @@ function App() {
                         eventLayer: t.eventLayer,
                         isHidden: t.isHidden,
                         isMuted: t.isMuted,
+                        syncLock: t.syncLock,
                     })),
                     newRow,
                 ];
@@ -916,6 +1016,9 @@ function App() {
                       ? ClipType.Image
                       : ClipType.Audio;
             const isVisual = clipType === ClipType.Video || clipType === ClipType.Image;
+            // A video source lands as a video + audio pair; the shared linkId is
+            // what keeps trim, blade, move and delete from desyncing them.
+            const linkId = source.type === 'video' ? crypto.randomUUID() : undefined;
             const clip: Clip = {
                 id: crypto.randomUUID(),
                 type: clipType,
@@ -923,6 +1026,7 @@ function App() {
                 duration: clipDuration,
                 sourceId,
                 sourceOffset: 0,
+                ...(linkId ? { linkId } : {}),
                 ...(isVisual
                     ? { transform: defaultTransform(source, projectConfigRef.current.resolution) }
                     : {}),
@@ -960,6 +1064,7 @@ function App() {
                             ...clip,
                             id: crypto.randomUUID(),
                             type: ClipType.Audio,
+                            transform: undefined,
                         },
                     });
                     if (audioResolution.updatedRows)
@@ -1067,6 +1172,7 @@ function App() {
                     eventLayer: t.eventLayer,
                     isHidden: t.isHidden,
                     isMuted: t.isMuted,
+                    syncLock: t.syncLock,
                 }));
                 rows[idx] = { ...rows[idx], [field]: !rows[idx][field] };
                 recordTrackOverride(group.id, rows);
@@ -1267,6 +1373,8 @@ function App() {
                 players={players}
                 config={projectConfig}
                 hiddenVideoTrackIds={hiddenVideoTrackIds}
+                inPoint={inPoint}
+                outPoint={outPoint}
             />
             <RelinkDialog
                 open={relinkDialogOpen}
@@ -1343,6 +1451,10 @@ function App() {
                                         mutedAudioTrackIds={mutedAudioTrackIds}
                                         volume={volume}
                                         onVolumeChange={setVolume}
+                                        loop={loop}
+                                        onToggleLoop={handleToggleLoop}
+                                        inPoint={inPoint}
+                                        outPoint={outPoint}
                                         onCanvasClick={handlePreviewCanvasClick}
                                     />
                                     {!isPlaying && selectedVisualClip && (
@@ -1417,6 +1529,26 @@ function App() {
                             onDeleteClips={handleDeleteClips}
                             onDeleteSelection={handleDeleteSelection}
                             onUpdateTrack={handleToggleTrack}
+                            markers={markers}
+                            onAddMarker={handleAddMarker}
+                            onUpdateMarker={handleUpdateMarker}
+                            onDeleteMarker={handleDeleteMarker}
+                            onTrimClip={handleTrimCommit}
+                            onSplitClips={handleSplitClips}
+                            onRippleDelete={handleRippleDeleteSelection}
+                            onCloseGaps={handleCloseGaps}
+                            onClipGainChange={handleUpdateClipGain}
+                            onUnlinkClip={handleUnlinkClip}
+                            onToggleSyncLock={handleToggleSyncLock}
+                            snapEnabled={snapEnabled}
+                            onToggleSnap={() => setSnapEnabled((v) => !v)}
+                            followPlayhead={followPlayhead}
+                            onToggleFollow={() => setFollowPlayhead((v) => !v)}
+                            inPoint={inPoint}
+                            outPoint={outPoint}
+                            onSetInPoint={setInPoint}
+                            onSetOutPoint={setOutPoint}
+                            onToggleLoop={handleToggleLoop}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>

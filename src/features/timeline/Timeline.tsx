@@ -6,7 +6,7 @@ import Controls from './Controls';
 import { Track, TrackGroup } from './Track';
 import Ruler from './Ruler';
 import type { TimelineTrackGroup } from './types';
-import { TrackType, TrackTypeIconMap } from './types';
+import { TimelineTool, TrackType, TrackTypeIconMap } from './types';
 import type { TrackEvent } from '../../types/event';
 import { EventType } from '../../types/event';
 import { DEFAULT_ANNOTATION_SLOT_ID } from '../../types/config';
@@ -17,9 +17,21 @@ import { usePlayhead } from './hooks/usePlayhead';
 import { useTimelineSelection } from './hooks/useTimelineSelection';
 import { useTimelineKeyboard } from './hooks/useTimelineKeyboard';
 import { useElementDrag } from './hooks/useElementDrag';
+import { useClipTrim } from './hooks/useClipTrim';
+import type { TrimCommit } from './hooks/useClipTrim';
+import { useTimelineAutoScroll } from './hooks/useTimelineAutoScroll';
 import { useMarqueeDrag } from './hooks/useMarqueeDrag';
 import type { MoveResult, ClipMoveResult } from './hooks/hookTypes';
 import type { MediaSource } from '../../types/source';
+import type { Marker } from '../../types/marker';
+import { MARKER_COLORS, MarkerColorMap } from '../../types/marker';
+import { cn } from '@/lib/utils';
+import { PLAYHEAD_SNAP_THRESHOLD_PX, collectSnapTargets, makeSnapper } from './snapping';
+import type { Snapper } from './snapping';
+import type { TimeRange, TrimEdge } from './editOps';
+import { collectEditPoints, findAllGaps, findGap } from './editOps';
+import { Input } from '../../components/ui/input';
+import { Button } from '../../components/ui/button';
 import { useWaveformPeaks } from '@/hooks/useWaveformPeaks';
 import { useVideoThumbnails } from '@/hooks/useVideoThumbnails';
 import type { ClipInfo } from '@/hooks/useVideoThumbnails';
@@ -142,6 +154,52 @@ function CreateEventDialog({ open, onOpenChange, setIsPlaying, onCreateEvent, di
     );
 }
 
+interface MarkerEditorProps {
+    marker: Marker;
+    onChange: (updates: Partial<Omit<Marker, 'id'>>) => void;
+    onDelete: () => void;
+    onClose: () => void;
+}
+
+function MarkerEditor({ marker, onChange, onDelete, onClose }: MarkerEditorProps) {
+    return (
+        <div className="absolute left-1/2 top-2 z-50 -translate-x-1/2 w-64 rounded-md border bg-popover p-3 shadow-md flex flex-col gap-2">
+            <Input
+                autoFocus
+                placeholder="Marker name"
+                defaultValue={marker.name ?? ''}
+                onChange={(e) => onChange({ name: e.target.value })}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') onClose(); }}
+            />
+            {/* gap-1 left no room for the selected swatch's ring + offset. */}
+            <div className="flex flex-row items-center gap-2.5">
+                {MARKER_COLORS.map((c) => (
+                    <button
+                        key={c}
+                        type="button"
+                        aria-label={c}
+                        aria-pressed={marker.color === c}
+                        onClick={() => onChange({ color: c })}
+                        className={cn(
+                            'size-5 rounded-full cursor-pointer transition-transform hover:scale-115',
+                            MarkerColorMap[c].bg,
+                            marker.color === c
+                                ? 'ring-2 ring-white ring-offset-2 ring-offset-popover'
+                                : 'ring-1 ring-white/25',
+                        )}
+                    />
+                ))}
+            </div>
+            <div className="flex flex-row justify-between gap-2">
+                <Button size="sm" variant="ghost" className="text-destructive" onClick={onDelete}>
+                    Delete
+                </Button>
+                <Button size="sm" variant="secondary" onClick={onClose}>Done</Button>
+            </div>
+        </div>
+    );
+}
+
 export interface PasteItem {
     trackId: string;
     event: TrackEvent;
@@ -195,6 +253,29 @@ interface TimelineProps {
     initialViewMode?: ViewMode;
     onViewModeChange?: (mode: ViewMode) => void;
     displayCardDuration?: number;
+    markers: Marker[];
+    onAddMarker: (time: number) => void;
+    onUpdateMarker: (id: string, updates: Partial<Omit<Marker, 'id'>>) => void;
+    onDeleteMarker: (id: string) => void;
+    onTrimClip: (commit: TrimCommit) => void;
+    onSplitClips: (clipIds: string[], time: number) => void;
+    onRippleDelete: (
+        clipItems: { trackId: string; clipId: string }[],
+        eventItems: DeleteItem[],
+    ) => void;
+    onCloseGaps: (ranges: TimeRange[]) => void;
+    onClipGainChange: (trackId: string, clipId: string, gain: number) => void;
+    onUnlinkClip: (clipId: string) => void;
+    onToggleSyncLock: (groupId: string, trackId: string) => void;
+    snapEnabled: boolean;
+    onToggleSnap: () => void;
+    followPlayhead: boolean;
+    onToggleFollow: () => void;
+    inPoint: number | null;
+    outPoint: number | null;
+    onSetInPoint: (t: number | null) => void;
+    onSetOutPoint: (t: number | null) => void;
+    onToggleLoop: () => void;
 }
 
 function TimelineInner({
@@ -233,6 +314,26 @@ function TimelineInner({
     initialViewMode,
     onViewModeChange,
     displayCardDuration = 5,
+    markers,
+    onAddMarker,
+    onUpdateMarker,
+    onDeleteMarker,
+    onTrimClip,
+    onSplitClips,
+    onRippleDelete,
+    onCloseGaps,
+    onClipGainChange,
+    onUnlinkClip,
+    onToggleSyncLock,
+    snapEnabled,
+    onToggleSnap,
+    followPlayhead,
+    onToggleFollow,
+    inPoint,
+    outPoint,
+    onSetInPoint,
+    onSetOutPoint,
+    onToggleLoop,
 }: TimelineProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
@@ -355,6 +456,52 @@ function TimelineInner({
         clearSelection();
     }, [blockedTrackIdsKey, clearSelection]);
 
+    const allTracks = useMemo(
+        () => [...eventTracks, ...videoTracks, ...audioTracks],
+        [eventTracks, videoTracks, audioTracks],
+    );
+    const clipTracks = useMemo(() => [...videoTracks, ...audioTracks], [videoTracks, audioTracks]);
+    const clipTracksRef = useRef(clipTracks);
+    clipTracksRef.current = clipTracks;
+
+    // Everything the snap machinery reads is captured through refs, so the
+    // factory below can stay stable across renders while a drag is in flight.
+    const snapCtxRef = useRef({ allTracks, markers, inPoint, outPoint, enabled: snapEnabled });
+    snapCtxRef.current = { allTracks, markers, inPoint, outPoint, enabled: snapEnabled };
+
+    const createSnapper = useCallback((
+        excludeClipIds: Set<string>,
+        excludeEventIds?: Set<number>,
+    ): Snapper | null => {
+        const ctx = snapCtxRef.current;
+        if (!ctx.enabled) return null;
+        const targets = collectSnapTargets({
+            tracks: ctx.allTracks,
+            excludeClipIds,
+            excludeEventIds,
+            playhead: currentTimeRef.current,
+            markers: ctx.markers,
+            inPoint: ctx.inPoint,
+            outPoint: ctx.outPoint,
+        });
+        return makeSnapper(targets, zoomRef.current);
+    }, [currentTimeRef, zoomRef]);
+
+    // Sparser than the clip snapper: clip edges, markers and in/out only. The
+    // playhead itself is obviously not a target for itself.
+    const createPlayheadSnapper = useCallback((): Snapper | null => {
+        const ctx = snapCtxRef.current;
+        if (!ctx.enabled) return null;
+        const targets = collectSnapTargets({
+            tracks: ctx.allTracks,
+            includeEvents: false,
+            markers: ctx.markers,
+            inPoint: ctx.inPoint,
+            outPoint: ctx.outPoint,
+        });
+        return makeSnapper(targets, zoomRef.current, PLAYHEAD_SNAP_THRESHOLD_PX);
+    }, [zoomRef]);
+
     const handleMoveEvents = useCallback(
         (moves: MoveResult[], newTracksInfo?: Map<string, { groupId: string; eventLayer: number; targetLocalIndex: number }>) => {
             onMoveEvent?.(moves, newTracksInfo);
@@ -372,6 +519,7 @@ function TimelineInner({
         clipGhostsByTrack,
         draggingEventIds,
         draggingClipIds,
+        dragSnapTarget,
         handleEventDragStart,
         handleClipDragStart,
     } = useElementDrag(
@@ -388,7 +536,70 @@ function TimelineInner({
         selectedClipIds,
         handleMoveEvents,
         handleMoveClips,
+        createSnapper,
     );
+
+    const { trimGhost, trimSnapTarget, trimmingClipId, handleTrimStart } = useClipTrim(
+        zoomRef,
+        scrollLeftRef,
+        createSnapper,
+        onTrimClip,
+    );
+
+    const sourceDurationMap = useMemo(() => {
+        const map = new Map<string, number>();
+        for (const s of sources ?? []) map.set(s.id, s.duration ?? 0);
+        return map;
+    }, [sources]);
+    const sourceDurationMapRef = useRef(sourceDurationMap);
+    sourceDurationMapRef.current = sourceDurationMap;
+
+    const beginTrim = useCallback((
+        trackId: string,
+        clip: import('../../types/clip').Clip,
+        edge: TrimEdge,
+        e: React.MouseEvent,
+    ) => {
+        const track = clipTracksRef.current.find((t) => t.id === trackId);
+        handleTrimStart(
+            trackId,
+            clip,
+            edge,
+            e,
+            sourceDurationMapRef.current.get(clip.sourceId) ?? 0,
+            track?.clips ?? [],
+        );
+    }, [handleTrimStart]);
+
+    // Ghosts from a move drag plus the one from an in-flight trim, so both use
+    // the same overlay path in TrackContent.
+    const mergedClipGhosts = useMemo(() => {
+        if (!trimGhost) return clipGhostsByTrack;
+        const next = new Map(clipGhostsByTrack);
+        next.set(trimGhost.trackId, [
+            ...(next.get(trimGhost.trackId) ?? []),
+            {
+                left: trimGhost.left,
+                width: trimGhost.width,
+                // Red inset ring is the "no more media" signal; the edge has
+                // stopped moving even though the pointer has not.
+                color: trimGhost.atMediaLimit
+                    ? `${trimGhost.color} ring-2 ring-inset ring-red-500`
+                    : trimGhost.color,
+            },
+        ]);
+        return next;
+    }, [clipGhostsByTrack, trimGhost]);
+
+    const hiddenClipIds = useMemo(() => {
+        if (!trimmingClipId) return draggingClipIds;
+        const next = new Set(draggingClipIds);
+        next.add(trimmingClipId);
+        return next;
+    }, [draggingClipIds, trimmingClipId]);
+
+    const [playheadSnapTarget, setPlayheadSnapTarget] = useState<number | null>(null);
+    const snapTarget = trimSnapTarget ?? dragSnapTarget ?? playheadSnapTarget;
 
     const sourceNameMap = useMemo(() => {
         const map = new Map<string, string>();
@@ -456,6 +667,21 @@ function TimelineInner({
 
     useEffect(() => { updateCursorPosition(); }, [updateCursorPosition]);
 
+    const { suspendFollow } = useTimelineAutoScroll({
+        isPlaying,
+        mode: followPlayhead ? 'page' : 'off',
+        currentTimeRef,
+        zoomRef,
+        scrollLeftRef,
+        containerWidthRef,
+        setScroll,
+        paddingX: TIMELINE_PADDING_X,
+    });
+
+    // Deliberately not persisted: reopening the app in razor mode would turn the
+    // first click on a clip into a cut.
+    const [tool, setTool] = useState<TimelineTool>(TimelineTool.Select);
+
     const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode ?? 'full');
     useEffect(() => {
         onViewModeChange?.(viewMode);
@@ -480,6 +706,13 @@ function TimelineInner({
 
     // Copy / paste state
     const [copiedItems, setCopiedItems] = useState<PasteItem[]>([]);
+    // The id, never a snapshot: a copied Marker would go stale the moment
+    // onUpdateMarker recorded a change, leaving the editor showing old values.
+    const [editingMarkerId, setEditingMarkerId] = useState<string | null>(null);
+    const editingMarker = useMemo(
+        () => markers.find((m) => m.id === editingMarkerId) ?? null,
+        [markers, editingMarkerId],
+    );
 
     // Create event state
     const [createOpen, setCreateOpen] = useState(false);
@@ -512,7 +745,7 @@ function TimelineInner({
         if (toSelect.length > 0) selectMany(toSelect, []);
     }, [trackByEventId, selectMany]);
 
-    const handleDelete = useCallback(() => {
+    const collectSelection = useCallback(() => {
         const eventItems: DeleteItem[] = [];
         for (const id of selectedIdsRef.current) {
             const trackId = trackByEventIdRef.current.get(id);
@@ -524,6 +757,11 @@ function TimelineInner({
             const trackId = clipTrackByClipIdRef.current.get(clipId);
             if (trackId && !blockedTrackIdsRef.current.has(trackId)) clipItems.push({ trackId, clipId });
         }
+        return { eventItems, clipItems };
+    }, []);
+
+    const handleDelete = useCallback(() => {
+        const { eventItems, clipItems } = collectSelection();
 
         if (eventItems.length === 0 && clipItems.length === 0) return;
 
@@ -534,7 +772,73 @@ function TimelineInner({
             if (clipItems.length > 0) onDeleteClips?.(clipItems);
         }
         clearSelection();
-    }, [onDeleteSelection, onDeleteEvents, onDeleteClips, clearSelection]);
+    }, [collectSelection, onDeleteSelection, onDeleteEvents, onDeleteClips, clearSelection]);
+
+    const handleRippleDeleteSelection = useCallback(() => {
+        const { eventItems, clipItems } = collectSelection();
+        if (eventItems.length === 0 && clipItems.length === 0) return;
+        onRippleDelete(clipItems, eventItems);
+        clearSelection();
+    }, [collectSelection, onRippleDelete, clearSelection]);
+
+    /**
+     * Split every clip the playhead crosses. A selection narrows the cut to
+     * those clips (Premiere's "targeted tracks" without a track-targeting UI);
+     * `allTracks` overrides that.
+     */
+    const handleBlade = useCallback((allTracks: boolean) => {
+        const t = currentTimeRef.current;
+        const selected = selectedClipIdsRef.current;
+        const ids: string[] = [];
+        for (const track of clipTracksRef.current) {
+            if (track.isBlocked) continue;
+            for (const clip of track.clips ?? []) {
+                if (t <= clip.time || t >= clip.time + clip.duration) continue;
+                if (!allTracks && selected.size > 0 && !selected.has(clip.id)) continue;
+                ids.push(clip.id);
+            }
+        }
+        if (ids.length > 0) onSplitClips(ids, t);
+    }, [currentTimeRef, onSplitClips]);
+
+    /** `X`: set in/out to the bounds of the clip under the playhead. */
+    const handleMarkClip = useCallback(() => {
+        const t = currentTimeRef.current;
+        for (const track of clipTracksRef.current) {
+            for (const clip of track.clips ?? []) {
+                if (t >= clip.time && t < clip.time + clip.duration) {
+                    onSetInPoint(clip.time);
+                    onSetOutPoint(clip.time + clip.duration);
+                    return;
+                }
+            }
+        }
+    }, [currentTimeRef, onSetInPoint, onSetOutPoint]);
+
+    const handleCloseGapAtTime = useCallback((trackId: string, time: number) => {
+        const track = clipTracksRef.current.find((t) => t.id === trackId);
+        const gap = findGap(track?.clips ?? [], time);
+        if (gap) onCloseGaps([gap]);
+    }, [onCloseGaps]);
+
+    const handleCloseAllGaps = useCallback((trackId: string) => {
+        const track = clipTracksRef.current.find((t) => t.id === trackId);
+        onCloseGaps(findAllGaps(track?.clips ?? []));
+    }, [onCloseGaps]);
+
+    const editPoints = useMemo(
+        () => collectEditPoints(clipTracks.map((t) => t.clips ?? [])),
+        [clipTracks],
+    );
+    const eventPoints = useMemo(() => {
+        const set = new Set<number>();
+        for (const track of eventTracks) for (const ev of track.events) set.add(ev.time);
+        return [...set].sort((a, b) => a - b);
+    }, [eventTracks]);
+    const markerTimes = useMemo(
+        () => markers.map((m) => m.time).sort((a, b) => a - b),
+        [markers],
+    );
 
     const handleCopy = useCallback(() => {
         if (selectedIdsRef.current.size === 0) return;
@@ -592,8 +896,13 @@ function TimelineInner({
         onCreateEvent?.(createTrackId, finalPartial, (id) => { pendingSelectRef.current = [id]; });
     }, [createTrackId, onCreateEvent]);
 
+    const handleRazorCut = useCallback((clipId: string, time: number) => {
+        onSplitClips([clipId], time);
+    }, [onSplitClips]);
+
     useTimelineKeyboard({
         onDelete: handleDelete,
+        onRippleDelete: handleRippleDeleteSelection,
         onCopy: handleCopy,
         onPaste: () => handlePaste(currentTimeRef.current),
         onUndo,
@@ -601,6 +910,19 @@ function TimelineInner({
         onSeek: seekTo,
         currentTimeRef,
         duration: viewExtent,
+        contentDuration: duration,
+        editPoints,
+        eventPoints,
+        markerTimes,
+        onBlade: handleBlade,
+        onToggleSnap,
+        onAddMarker: () => onAddMarker(currentTimeRef.current),
+        onSetIn: () => onSetInPoint(currentTimeRef.current),
+        onSetOut: () => onSetOutPoint(currentTimeRef.current),
+        onClearInOut: () => { onSetInPoint(null); onSetOutPoint(null); },
+        onMarkClip: handleMarkClip,
+        onToggleLoop,
+        onSetTool: setTool,
     });
 
     const { marqueeRect, handleMarqueeMouseDown } = useMarqueeDrag(
@@ -622,6 +944,7 @@ function TimelineInner({
         const onWheel = (e: WheelEvent) => {
             if (!(e.ctrlKey || e.metaKey)) return;
             e.preventDefault();
+            suspendFollow();
             const scrollAreaLeft =
                 scrollAreaRef.current?.getBoundingClientRect().left ?? 0;
             const pivotPx = e.clientX - scrollAreaLeft - TIMELINE_PADDING_X;
@@ -635,7 +958,7 @@ function TimelineInner({
         };
         el.addEventListener('wheel', onWheel, { passive: false });
         return () => el.removeEventListener('wheel', onWheel);
-    }, [scrollLeftRef, setScroll, setZoom, zoomRef]);
+    }, [scrollLeftRef, setScroll, setZoom, zoomRef, suspendFollow]);
 
     return (
         <div
@@ -647,6 +970,14 @@ function TimelineInner({
                 onZoomChange={handleZoomChange}
                 viewMode={viewMode}
                 setViewMode={setViewMode}
+                snapEnabled={snapEnabled}
+                onToggleSnap={onToggleSnap}
+                followPlayhead={followPlayhead}
+                onToggleFollow={onToggleFollow}
+                tool={tool}
+                onToolChange={setTool}
+                onBlade={() => handleBlade(false)}
+                onAddMarker={() => onAddMarker(currentTimeRef.current)}
             />
             <div
                 ref={contentRef}
@@ -674,6 +1005,12 @@ function TimelineInner({
                             setScroll={setScroll}
                             setMaxScroll={setMaxScroll}
                             paddingX={TIMELINE_PADDING_X}
+                            markers={markers}
+                            onMarkerClick={(m) => setEditingMarkerId(m.id)}
+                            inPoint={inPoint}
+                            outPoint={outPoint}
+                            onScrollGesture={suspendFollow}
+                            createSnapper={createPlayheadSnapper}
                         />
                     </div>
                 </div>
@@ -746,8 +1083,8 @@ function TimelineInner({
                                             onDeleteTrack={() => onDeleteTrack?.(group.id, track.id)}
                                             canDeleteTrack={group.tracks.length > 1}
                                             clips={track.clips}
-                                            clipGhosts={clipGhostsByTrack.get(track.id)}
-                                            draggingClipIds={draggingClipIds}
+                                            clipGhosts={mergedClipGhosts.get(track.id)}
+                                            draggingClipIds={hiddenClipIds}
                                             selectedClipIds={selectedClipIds}
                                             sourceNameMap={sourceNameMap}
                                             sourceOfflineIds={sourceOfflineIds}
@@ -758,13 +1095,21 @@ function TimelineInner({
                                             acceptSourceType={track.type === TrackType.Video ? 'video' : track.type === TrackType.Audio ? 'audio' : undefined}
                                             waveformMap={waveformMap}
                                             thumbnailMap={thumbnailMap}
+                                            onToggleSyncLock={() => onToggleSyncLock(group.id, track.id)}
+                                            onTrimStart={group.type === TrackType.Event || tool !== TimelineTool.Select ? undefined : beginTrim}
+                                            onRazorCut={group.type === TrackType.Event || tool !== TimelineTool.Razor ? undefined : handleRazorCut}
+                                            onSplitClip={(clipId) => onSplitClips([clipId], currentTimeRef.current)}
+                                            onUnlinkClip={onUnlinkClip}
+                                            onClipGainChange={track.type === TrackType.Audio ? onClipGainChange : undefined}
+                                            onCloseGapAtTime={group.type === TrackType.Event ? undefined : (time) => handleCloseGapAtTime(track.id, time)}
+                                            onCloseAllGaps={group.type === TrackType.Event ? undefined : () => handleCloseAllGaps(track.id)}
                                         />
                                         );
                                     })}
                                 </TrackGroup>
                             </ResizablePanel>,
                             ...(i < trackGroups.length - 1
-                                ? [<ResizableHandle key={`handle-${group.id}`} className="aria-[orientation=horizontal]:h-1 bg-zinc-950" />]
+                                ? [<ResizableHandle key={`handle-${group.id}`} className="" />]
                                 : []),
                         ])}
                     </ResizablePanelGroup>
@@ -780,10 +1125,24 @@ function TimelineInner({
                         />
                     )}
                 </div>
+                {editingMarker && (
+                    <MarkerEditor
+                        marker={editingMarker}
+                        onChange={(updates) => onUpdateMarker(editingMarker.id, updates)}
+                        onDelete={() => { onDeleteMarker(editingMarker.id); setEditingMarkerId(null); }}
+                        onClose={() => setEditingMarkerId(null)}
+                    />
+                )}
                 <div
                     className="absolute inset-y-0 pointer-events-none overflow-hidden"
                     style={{ left: TRACK_GROUP_LABEL_WIDTH + TRACK_INFO_WIDTH, right: 0 }}
                 >
+                    {snapTarget != null && (
+                        <div
+                            className="absolute inset-y-0 w-px bg-white/90 z-50"
+                            style={{ left: TIMELINE_PADDING_X + snapTarget * zoom - scrollLeftRef.current }}
+                        />
+                    )}
                     <Cursor
                         ref={cursorRef}
                         setIsPlaying={setIsPlaying}
@@ -793,6 +1152,8 @@ function TimelineInner({
                         scrollLeftRef={scrollLeftRef}
                         paddingX={TIMELINE_PADDING_X}
                         duration={viewExtent}
+                        createSnapper={createPlayheadSnapper}
+                        onSnapTargetChange={setPlayheadSnapTarget}
                     />
                 </div>
                 </div>

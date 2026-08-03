@@ -192,3 +192,26 @@
         transform: scaleX(0);
     }
 }
+
+/*
+ * Playhead scrub: pointer capture already routes the events, but a captured
+ * element's cursor is not honoured consistently, so force it on everything the
+ * pointer crosses. Without this the cursor flickers through clip (grab), trim
+ * handle (ew-resize) and ruler (pointer) styles mid-drag.
+ */
+body.playhead-dragging,
+body.playhead-dragging * {
+    cursor: col-resize !important;
+}
+
+/*
+ * Tailwind v4's preflight no longer sets `cursor: pointer` on buttons, so every
+ * shadcn control renders with an arrow. Restored in the base layer, which loses
+ * to utilities, so a button with an explicit cursor-* class still wins.
+ */
+@layer base {
+    button:not(:disabled),
+    [role='button']:not([aria-disabled='true']) {
+        cursor: pointer;
+    }
+}

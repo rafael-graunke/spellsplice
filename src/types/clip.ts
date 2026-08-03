@@ -90,4 +90,26 @@ export interface Clip {
     transform?: ClipTransform;
     /** Normalised source crop for visual clips. Absent = no crop. */
     crop?: ClipCrop;
+    /**
+     * Shared by clips that must stay in sync (the video and audio halves of one
+     * source). Trim, blade, move and delete apply to every clip with the same
+     * linkId. Absent = unlinked.
+     */
+    linkId?: string;
+    /** Linear audio gain, 1 = unity. Absent = unity. Audio clips only. */
+    gain?: number;
+}
+
+/** Linear gain <-> dB, with a floor so the rubber band can reach silence. */
+export const GAIN_MIN_DB = -32;
+export const GAIN_MAX_DB = 6;
+
+export function gainToDb(gain: number): number {
+    if (gain <= 0) return GAIN_MIN_DB;
+    return Math.max(GAIN_MIN_DB, Math.min(GAIN_MAX_DB, 20 * Math.log10(gain)));
+}
+
+export function dbToGain(db: number): number {
+    if (db <= GAIN_MIN_DB) return 0;
+    return Math.pow(10, Math.min(db, GAIN_MAX_DB) / 20);
 }

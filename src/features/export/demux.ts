@@ -202,7 +202,7 @@ async function decodeSourceAudio(file: File, signal: AbortSignal): Promise<Audio
 // merged by timestamp: two frames claim the same instant and decoders play them back-to-back.
 // Everything must be summed to one PCM timeline first.
 export async function mixClipAudio(
-    clips: ReadonlyArray<{ sourceId: string; sourceOffset: number; duration: number; time: number }>,
+    clips: ReadonlyArray<{ sourceId: string; sourceOffset: number; duration: number; time: number; gain?: number }>,
     files: ReadonlyMap<string, File>,
     signal: AbortSignal,
     targetCodec: 'mp4a.40.2' | 'opus' = 'mp4a.40.2',
@@ -227,7 +227,15 @@ export async function mixClipAudio(
     for (const clip of usable) {
         const node = mixCtx.createBufferSource();
         node.buffer = buffers.get(clip.sourceId)!;
-        node.connect(mixCtx.destination);
+        const gainValue = clip.gain ?? 1;
+        if (gainValue === 1) {
+            node.connect(mixCtx.destination);
+        } else {
+            const gainNode = mixCtx.createGain();
+            gainNode.gain.value = gainValue;
+            node.connect(gainNode);
+            gainNode.connect(mixCtx.destination);
+        }
         node.start(clip.time, clip.sourceOffset, clip.duration);
     }
     const audioBuffer = await mixCtx.startRendering();

@@ -30,6 +30,11 @@ import type { Resolution } from '@/types/config';
 export interface ExportOptions {
     fps?: number;
     overlay: OverlayConfig;
+    /**
+     * Timeline window to render, from the in/out points. Output timestamps are
+     * rebased to zero, so the file starts at `range.start`.
+     */
+    range?: { start: number; end: number };
 }
 
 export interface ExportProgress {
@@ -72,9 +77,12 @@ async function collectClipAudio(
     if (usable.length === 0) return null;
 
     const soleSource = usable.length === 1 ? sourceMap.get(usable[0].sourceId) : undefined;
+    // A gain other than unity has to go through the mixer: the passthrough
+    // copies encoded frames, which cannot be scaled without decoding.
+    const unityGain = usable.every((c) => (c.gain ?? 1) === 1);
     // Opus is excluded: WebCodecs AudioDecoder for mp4a.40.2 is unavailable on Linux Chromium
     // (patent licensing), so those builds can only decode AAC via decodeAudioData in the mix path.
-    if (soleSource?.file && soleSource.type === 'video' && targetCodec !== 'opus') {
+    if (soleSource?.file && soleSource.type === 'video' && targetCodec !== 'opus' && unityGain) {
         const clip = usable[0];
         const meta = await getAudioTrackMeta(soleSource.file);
         if (meta) {
@@ -113,7 +121,7 @@ export async function exportVideo(
     options: ExportOptions,
     hiddenVideoTrackIds?: Set<string>,
 ): Promise<void> {
-    const { fps = 60, overlay } = options;
+    const { fps = 60, overlay, range } = options;
     const videoLayerHidden = overlay.layers.some((l) => l.id === 'video' && !l.visible);
     // DISPLAY_CARD uses its own configured enter/exit animation length.
     const cardAnim = cardDisplayAnimSeconds(overlay.cardDisplay);
@@ -135,11 +143,15 @@ export async function exportVideo(
         }
     }
 
-    const totalDuration = Math.max(
+    const contentEnd = Math.max(
         0,
         ...sortedVisualClips.map(c => c.time + c.duration),
         ...sortedAudioClips.map(c => c.time + c.duration),
     );
+    const rangeStart = Math.max(0, range?.start ?? 0);
+    const rangeEnd = Math.min(contentEnd, range?.end ?? contentEnd);
+    const totalDuration = Math.max(0, rangeEnd - rangeStart);
+    if (totalDuration <= 0) throw new Error('Export range is empty — clear the in/out points or move them apart.');
     const totalFrames = Math.ceil(totalDuration * fps);
 
     let framesEncoded = 0;
@@ -227,6 +239,26 @@ export async function exportVideo(
         muxerAudioMeta = opus.meta;
     }
 
+    // Audio chunks carry absolute timeline timestamps; rebase them onto the
+    // range. Chunks straddling the in point are dropped rather than given a
+    // negative timestamp, which costs at most one frame (~23ms) of head.
+    if (rangeStart > 0 || rangeEnd < contentEnd) {
+        const startUs = rangeStart * 1e6;
+        const endUs = rangeEnd * 1e6;
+        audioChunks = audioChunks
+            .filter((c) => c.timestamp >= startUs && c.timestamp < endUs)
+            .map((c) => {
+                const data = new Uint8Array(c.byteLength);
+                c.copyTo(data);
+                return new EncodedAudioChunk({
+                    type: c.type,
+                    timestamp: Math.round(c.timestamp - startUs),
+                    duration: c.duration ?? undefined,
+                    data,
+                });
+            });
+    }
+
     const muxer = await createMuxer(format, writableStream, { fps, width: OUT_W, height: OUT_H, audioMeta: muxerAudioMeta });
     const encoder = new Encoder(codec, fps, OUT_W, OUT_H, (chunk, meta) => muxer.addVideoChunk(chunk, meta));
     const compositor = new Compositor(OUT_W, OUT_H);
@@ -237,7 +269,8 @@ export async function exportVideo(
     const tracks = players.map(p => p.track);
     let overlayValidUntil = -Infinity;
     let frameIdx = 0;
-    const targetTimes = Array.from({ length: totalFrames }, (_, i) => i / fps);
+    // Timeline times; output timestamps subtract rangeStart so the file is zero-based.
+    const targetTimes = Array.from({ length: totalFrames }, (_, i) => rangeStart + i / fps);
     // One decode cursor per active video clip, created lazily / disposed on exit.
     const providers = new Map<string, VideoClipProvider>();
 
@@ -299,7 +332,7 @@ export async function exportVideo(
     // encode it. Empty layers -> black (letterbox / gap).
     const encodeFrame = async (layers: BaseLayer[]) => {
         const targetSec = targetTimes[frameIdx];
-        const timestampUs = Math.round(targetSec * 1e6);
+        const timestampUs = Math.round((targetSec - rangeStart) * 1e6);
         await updateOverlay(targetSec);
         if (layers.length > 0) compositor.uploadBaseLayers(layers);
         else compositor.uploadBlackFrame();

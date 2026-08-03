@@ -1,8 +1,9 @@
-import React, { useRef, useEffect } from 'react';
-import { Image as ImageIcon } from 'lucide-react';
+import React, { useRef, useEffect, useState } from 'react';
+import { Image as ImageIcon, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { ClipColorMap, ClipType } from '../../types/clip';
+import { ClipColorMap, ClipType, GAIN_MAX_DB, GAIN_MIN_DB, dbToGain, gainToDb } from '../../types/clip';
 import type { Clip } from '../../types/clip';
+import type { TrimEdge } from './editOps';
 import type { WaveformData } from '@/hooks/useWaveformPeaks';
 import type { ClipThumbnails } from '@/hooks/useVideoThumbnails';
 import {
@@ -15,6 +16,11 @@ import { TRACK_HEIGHT } from './constants';
 
 const CLICK_THRESHOLD = 4;
 const CLIP_CANVAS_HEIGHT = TRACK_HEIGHT - 6;
+const TRIM_HANDLE_W = 8;
+// Below this the two handles would cover the whole clip, leaving nothing to grab
+// for a move.
+const MIN_TRIMMABLE_PX = 3 * TRIM_HANDLE_W;
+const DB_RANGE = GAIN_MAX_DB - GAIN_MIN_DB;
 // Chrome silently yields a blank canvas past ~32767px, which at MAX_ZOOM is an 11-minute clip.
 const MAX_WAVEFORM_CANVAS_W = 8192;
 const THUMB_H = CLIP_CANVAS_HEIGHT - 10;
@@ -31,12 +37,19 @@ interface TimelineClipProps {
     onMouseDown: (e: React.MouseEvent) => void;
     onSelect?: (additive: boolean) => void;
     onDelete?: () => void;
+    onTrimStart?: (edge: TrimEdge, e: React.MouseEvent) => void;
+    /** Razor mode: cut here. Present only while the razor tool is active. */
+    onRazorCut?: (time: number) => void;
+    onSplit?: () => void;
+    onUnlink?: () => void;
+    onGainChange?: (gain: number) => void;
     waveformData?: WaveformData;
     thumbnails?: ClipThumbnails;
 }
 
-export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, zoom, isSelected, isBeingDragged, onMouseDown, onSelect, onDelete, waveformData, thumbnails }: TimelineClipProps) {
+export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, zoom, isSelected, isBeingDragged, onMouseDown, onSelect, onDelete, onTrimStart, onRazorCut, onSplit, onUnlink, onGainChange, waveformData, thumbnails }: TimelineClipProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [dragDb, setDragDb] = useState<number | null>(null);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -83,12 +96,46 @@ export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, z
         return () => clearTimeout(timer);
     }, [waveformData, clip.sourceOffset, clip.duration, clip.type, zoom]);
 
+    const clipPx = clip.duration * zoom;
+    // Layout vs interaction, deliberately separate: the label indents to clear
+    // the trim zone based on width alone, so switching tools (which disables the
+    // handles) doesn't shift the clip's text sideways.
+    const hasTrimZone = clipPx >= MIN_TRIMMABLE_PX;
+    const showTrimHandles = !!onTrimStart && !onRazorCut && hasTrimZone;
+    const db = dragDb ?? gainToDb(clip.gain ?? 1);
+    const gainY = (1 - (db - GAIN_MIN_DB) / DB_RANGE) * 100;
+
+    const handleGainDown = (e: React.MouseEvent) => {
+        if (!onGainChange) return;
+        e.stopPropagation();
+        e.preventDefault();
+        const startY = e.clientY;
+        const startDb = db;
+        let latest = startDb;
+        const onMove = (ev: MouseEvent) => {
+            latest = Math.max(
+                GAIN_MIN_DB,
+                Math.min(GAIN_MAX_DB, startDb - ((ev.clientY - startY) / CLIP_CANVAS_HEIGHT) * DB_RANGE),
+            );
+            setDragDb(latest);
+        };
+        const onUp = () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+            setDragDb(null);
+            onGainChange(dbToGain(latest));
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    };
+
     return (
         <ContextMenu>
             <ContextMenuTrigger asChild>
                 <div
                     className={cn(
-                        'absolute cursor-grab active:cursor-grabbing overflow-hidden h-full select-none border-1',
+                        'absolute overflow-hidden h-full select-none border-1',
+                        onRazorCut ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing',
                         sourceMissing
                             ? 'bg-red-950/80 border-red-500'
                             : sourceOffline
@@ -99,6 +146,12 @@ export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, z
                     )}
                     style={{ left: clip.time * zoom, width: clip.duration * zoom }}
                     onMouseDown={(e) => {
+                        if (onRazorCut) {
+                            e.stopPropagation();
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            onRazorCut(clip.time + (e.clientX - rect.left) / zoom);
+                            return;
+                        }
                         const startX = e.clientX;
                         const startY = e.clientY;
                         const handleUp = (ev: MouseEvent) => {
@@ -112,7 +165,6 @@ export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, z
                     }}
                 >
                     {clip.type === ClipType.Video && (() => {
-                        const clipPx = clip.duration * zoom;
                         const showStart = clipPx >= THUMB_W;
                         const showEnd = clipPx >= 2 * THUMB_W;
                         if (!showStart) return null;
@@ -144,20 +196,62 @@ export function TimelineClip({ clip, sourceName, sourceMissing, sourceOffline, z
                             style={{ width: '100%', height: '100%' }}
                         />
                     )}
+                    {clip.type === ClipType.Audio && onGainChange && (
+                        <>
+                            <div
+                                className="absolute inset-x-0 h-2 -translate-y-1/2 cursor-ns-resize z-20 group"
+                                style={{ top: `${gainY}%` }}
+                                onMouseDown={handleGainDown}
+                            >
+                                <div className={cn(
+                                    'absolute inset-x-0 top-1/2 -translate-y-1/2 h-px bg-white/70 group-hover:h-0.5 group-hover:bg-white',
+                                    dragDb !== null && 'h-0.5 bg-white',
+                                )} />
+                            </div>
+                            {dragDb !== null && (
+                                <span className="absolute right-1 top-1 text-[10px] font-medium tabular-nums text-white bg-black/60 rounded px-1 pointer-events-none z-30">
+                                    {dragDb <= GAIN_MIN_DB ? '-∞' : `${dragDb > 0 ? '+' : ''}${dragDb.toFixed(1)}`} dB
+                                </span>
+                            )}
+                        </>
+                    )}
                     <span className={cn(
-                        'absolute inset-0 flex items-center px-2 text-xs truncate pointer-events-none',
+                        'absolute inset-0 flex items-center gap-1 px-2 text-xs truncate pointer-events-none',
                         clip.type === ClipType.Image && 'pl-7',
+                        hasTrimZone && 'pl-3',
                         sourceMissing ? 'text-red-300' : sourceOffline ? 'text-amber-300' : 'text-white/90',
                     )}>
-                        {sourceMissing
-                            ? 'Source deleted — relink via Manage Sources'
-                            : sourceOffline
-                                ? `${sourceName} (Offline)`
-                                : sourceName}
+                        {clip.linkId && <Link2 className="size-3 shrink-0 opacity-70" />}
+                        <span className="truncate">
+                            {sourceMissing
+                                ? 'Source deleted — relink via Manage Sources'
+                                : sourceOffline
+                                    ? `${sourceName} (Offline)`
+                                    : sourceName}
+                        </span>
                     </span>
+                    {showTrimHandles && (
+                        <>
+                            <div
+                                className="absolute left-0 inset-y-0 z-20 cursor-ew-resize hover:bg-white/40"
+                                style={{ width: TRIM_HANDLE_W }}
+                                onMouseDown={(e) => onTrimStart?.('start', e)}
+                            />
+                            <div
+                                className="absolute right-0 inset-y-0 z-20 cursor-ew-resize hover:bg-white/40"
+                                style={{ width: TRIM_HANDLE_W }}
+                                onMouseDown={(e) => onTrimStart?.('end', e)}
+                            />
+                        </>
+                    )}
                 </div>
             </ContextMenuTrigger>
             <ContextMenuContent>
+                {onSplit && <ContextMenuItem onClick={onSplit}>Split at playhead</ContextMenuItem>}
+                {onUnlink && clip.linkId && <ContextMenuItem onClick={onUnlink}>Unlink audio/video</ContextMenuItem>}
+                {onGainChange && clip.type === ClipType.Audio && (clip.gain ?? 1) !== 1 && (
+                    <ContextMenuItem onClick={() => onGainChange(1)}>Reset gain</ContextMenuItem>
+                )}
                 <ContextMenuItem
                     onClick={onDelete}
                     className="text-destructive focus:text-destructive"

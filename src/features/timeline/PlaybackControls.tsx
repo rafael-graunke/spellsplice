@@ -1,7 +1,9 @@
 import React, { useEffect, useRef } from 'react';
-import { FastForward, Pause, Play, Rewind, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react';
+import { FastForward, Pause, Play, Repeat, Rewind, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
+import { cn } from '@/lib/utils';
 import { PREVIEW_FPS, SHUTTLE_RATES } from './constants';
+import { isTypingTarget } from './keyboard';
 import type { RefObject } from 'react';
 
 /** `HH:MM:SS:FF`, derived from one total-frame count so fields can't disagree. */
@@ -60,6 +62,10 @@ export interface PlaybackControlsProps {
     duration: number;
     volume: number;
     onVolumeChange: (v: number) => void;
+    loop: boolean;
+    onToggleLoop: () => void;
+    inPoint: number | null;
+    outPoint: number | null;
 }
 
 function PlaybackControls({
@@ -72,6 +78,10 @@ function PlaybackControls({
     duration,
     volume,
     onVolumeChange,
+    loop,
+    onToggleLoop,
+    inPoint,
+    outPoint,
 }: PlaybackControlsProps) {
     // `K` held turns L/J into single-frame jogs (standard NLE behaviour), so the
     // held state has to survive between keydown events.
@@ -104,17 +114,9 @@ function PlaybackControls({
     };
 
     useEffect(() => {
-        // Buttons matter as much as text fields: a focused button handles Space
-        // itself, so without this it re-activates AND playback toggles.
-        const isTypingTarget = (t: EventTarget | null) => {
-            const el = t as HTMLElement | null;
-            if (!el) return false;
-            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable) return true;
-            return !!el.closest?.('button, select, a[href], [role="button"], [role="combobox"]');
-        };
         const onKeyDown = (e: KeyboardEvent) => {
-            if (isTypingTarget(e.target)) return;
-            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (isTypingTarget(e.target, e.key)) return;
+            if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
             switch (e.code) {
                 case 'Space':
                     if (e.repeat) return;
@@ -185,9 +187,24 @@ function PlaybackControls({
                 }
                 <FastForward size={18} className="cursor-pointer" onClick={shuttleUp} aria-label="Shuttle faster (L)" />
                 <SkipForward size={18} className="cursor-pointer" onClick={() => onSeek(duration)} aria-label="Go to end" />
+                <button
+                    type="button"
+                    onClick={onToggleLoop}
+                    aria-pressed={loop}
+                    aria-label="Loop playback (Shift+L)"
+                    title="Loop playback (Shift+L)"
+                    className={cn('transition-colors', loop ? 'text-primary' : 'text-muted-foreground hover:text-foreground')}
+                >
+                    <Repeat size={16} />
+                </button>
             </div>
 
             <div className="flex flex-row items-center justify-end gap-2">
+                {inPoint != null && outPoint != null && outPoint > inPoint && (
+                    <span className="text-xs tabular-nums text-sky-400" title="In / out range">
+                        {formatTimecode(outPoint - inPoint)}
+                    </span>
+                )}
                 <button
                     type="button"
                     onClick={() => onVolumeChange(volume === 0 ? 100 : 0)}

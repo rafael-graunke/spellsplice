@@ -714,6 +714,14 @@ function TimelineInner({
     // first click on a clip into a cut.
     const [tool, setTool] = useState<TimelineTool>(TimelineTool.Select);
 
+    /**
+     * Live height while a resize drag is in flight. Local to the timeline on
+     * purpose: routing it through project state re-rendered App (and therefore
+     * every clip memo, the preview, the duration calc…) on every mousemove.
+     * Only the commit on mouse-up reaches `trackOverrides` and history.
+     */
+    const [draftHeight, setDraftHeight] = useState<{ trackId: string; height: number } | null>(null);
+
     // Target player state — which Event group receives Ctrl+K events
     const [targetGroupId, setTargetGroupId] = useState<string | undefined>(undefined);
     useEffect(() => {
@@ -1129,10 +1137,13 @@ function TimelineInner({
                                             onClipGainChange={track.type === TrackType.Audio ? onClipGainChange : undefined}
                                             onCloseGapAtTime={group.type === TrackType.Event ? undefined : (time) => handleCloseGapAtTime(track.id, time)}
                                             onCloseAllGaps={group.type === TrackType.Event ? undefined : () => handleCloseAllGaps(track.id)}
-                                            onResizeHeight={(h) => onSetTrackHeight(group.id, track.id, h)}
-                                            onHeightResizeStart={onResizeStart}
-                                            onHeightResizeEnd={onResizeEnd}
-                                            onSetGroupHeight={(h) => onSetGroupHeight(group.id, h)}
+                                            heightOverride={draftHeight?.trackId === track.id ? draftHeight.height : undefined}
+                                            onResizeHeight={group.type === TrackType.Event ? undefined : (h) => setDraftHeight({ trackId: track.id, height: h })}
+                                            onResizeCommit={group.type === TrackType.Event ? undefined : (h) => {
+                                                setDraftHeight(null);
+                                                onSetTrackHeight(group.id, track.id, h);
+                                            }}
+                                            onSetGroupHeight={group.type === TrackType.Event ? undefined : (h) => onSetGroupHeight(group.id, h)}
                                         />
                                         );
                                     })}

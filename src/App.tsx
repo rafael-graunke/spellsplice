@@ -334,7 +334,6 @@ function App() {
         handleUpdateMeta,
         handleUpdatePlayer,
         recordTrackOverride,
-        mutateTrackOverride,
         handleDeleteTrack,
         handleAddClipsWithOverride,
         handleMoveClips,
@@ -893,13 +892,13 @@ function App() {
         );
     }, []);
 
-    // Live write during the drag; handleBeginResize/handleCommitResize bracket
-    // it so the whole gesture is one undo entry.
+    // Called once, on mouse-up. The drag itself previews via Timeline-local
+    // state, so this is a single history entry rather than one per pixel.
     const handleSetTrackHeight = useCallback(
         (groupId: string, trackId: string, height: number) => {
             const group = trackGroups.find((g) => g.id === groupId);
             if (!group) return;
-            mutateTrackOverride(
+            recordTrackOverride(
                 groupId,
                 group.tracks.map((t) => ({
                     ...toOverrideRow(t),
@@ -907,7 +906,7 @@ function App() {
                 }))
             );
         },
-        [trackGroups, mutateTrackOverride]
+        [trackGroups, recordTrackOverride]
     );
 
     const handleSetGroupHeight = useCallback(

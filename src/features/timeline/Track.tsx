@@ -161,9 +161,10 @@ interface TrackInfoProps {
     type: TimelineTrack['type'];
     index: number;
     height: number;
+    /** Live preview during the drag; must not touch project state. */
     onResizeHeight?: (height: number) => void;
-    onResizeStart?: () => void;
-    onResizeEnd?: () => void;
+    /** Final height on mouse-up; this is the one that records history. */
+    onResizeCommit?: (height: number) => void;
     isBlocked: boolean;
     isHidden?: boolean;
     isMuted?: boolean;
@@ -179,8 +180,7 @@ function TrackInfoInner({
     index,
     height,
     onResizeHeight,
-    onResizeStart,
-    onResizeEnd,
+    onResizeCommit,
     isBlocked,
     isHidden,
     isMuted,
@@ -194,23 +194,25 @@ function TrackInfoInner({
     const showMute = type === TrackType.Audio;
 
     // Dragging the bottom edge of the header resizes the track, which is where
-    // Premiere and Resolve put it.
+    // Premiere and Resolve put it. Moves only preview; the commit on mouse-up
+    // is what reaches project state and history.
     const startHeightDrag = (e: React.MouseEvent) => {
         if (!onResizeHeight) return;
         e.preventDefault();
         e.stopPropagation();
         const startY = e.clientY;
         const startHeight = height;
-        onResizeStart?.();
+        let latest = startHeight;
         const onMove = (ev: MouseEvent) => {
-            onResizeHeight(
-                Math.round(Math.max(MIN_TRACK_HEIGHT, Math.min(MAX_TRACK_HEIGHT, startHeight + (ev.clientY - startY)))),
+            latest = Math.round(
+                Math.max(MIN_TRACK_HEIGHT, Math.min(MAX_TRACK_HEIGHT, startHeight + (ev.clientY - startY))),
             );
+            onResizeHeight(latest);
         };
         const onUp = () => {
             window.removeEventListener('mousemove', onMove);
             window.removeEventListener('mouseup', onUp);
-            onResizeEnd?.();
+            if (latest !== startHeight) onResizeCommit?.(latest);
         };
         window.addEventListener('mousemove', onMove);
         window.addEventListener('mouseup', onUp);
@@ -536,9 +538,10 @@ interface TrackProps {
     trackId: string;
     index: number;
     duration: number;
+    /** Live height during a resize drag, before it is committed. */
+    heightOverride?: number;
     onResizeHeight?: (height: number) => void;
-    onHeightResizeStart?: () => void;
-    onHeightResizeEnd?: () => void;
+    onResizeCommit?: (height: number) => void;
     zoom: number;
     paddingX?: number;
     scrollLeftRef: RefObject<number>;
@@ -655,12 +658,12 @@ function TrackInner({
     onClipGainChange,
     onCloseGapAtTime,
     onCloseAllGaps,
+    heightOverride,
     onResizeHeight,
-    onHeightResizeStart,
-    onHeightResizeEnd,
+    onResizeCommit,
     onSetGroupHeight,
 }: TrackProps) {
-    const height = track.height ?? TRACK_HEIGHT;
+    const height = heightOverride ?? track.height ?? TRACK_HEIGHT;
     const isEventTrack = track.type === TrackType.Event;
     const showEvents = isEventTrack && !track.isHidden && events && events.length > 0;
     const showClips = !isEventTrack && clips && clips.length > 0;
@@ -672,8 +675,7 @@ function TrackInner({
                 index={index}
                 height={height}
                 onResizeHeight={onResizeHeight}
-                onResizeStart={onHeightResizeStart}
-                onResizeEnd={onHeightResizeEnd}
+                onResizeCommit={onResizeCommit}
                 isBlocked={track.isBlocked}
                 isHidden={track.isHidden}
                 isMuted={track.isMuted}

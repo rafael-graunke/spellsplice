@@ -139,11 +139,16 @@ This is only sound while function props carry no stale state. Two rules:
 - A handler closing over state that no data prop reflects must be ref-backed via
   `useStableCallback` (`handleCopy`, `handlePaste` — copying twice changes
   `copiedItems` while `canPaste` stays `true`).
-- A handler derived from `trackGroups` is fine, because `track` comes from
-  `trackGroups` too: if the closure goes stale, `track` changed and forces the
-  render anyway. `handleBeginResize` is the exception and reads `stateRef`
-  instead of closing over `state`, since a stale resize baseline would make one
-  resize undo unrelated edits.
+- **Any handler that rebuilds `TrackOverrideRow[]` must read `trackGroupsRef`,
+  never close over `trackGroups`.** `TrackInfo`'s props are all scalars, so it
+  does not re-render when an unrelated track changes; it therefore keeps a
+  closure over a stale `trackGroups` and the next mute / sync-lock / height edit
+  rebuilds the group's rows from stale data, silently reverting the previous
+  one. (Reasoning that "`track` changed too, so the render refreshes it" holds
+  for `Track` and NOT for `TrackInfo` — do not rely on it.)
+- `handleBeginResize` reads `stateRef` rather than closing over `state`, for the
+  same reason: a stale resize baseline would make one resize undo unrelated
+  edits along with it.
 
 **Track.tsx** — `Track` (single row) and `TrackGroup` (player group, collapsible via the chevron on its label strip). Track header shows sync-lock/mute/hide/block controls plus a `cursor-ns-resize` strip along its bottom edge that resizes that track. A height drag brackets `mutateTrackOverride` with `onResizeStart`/`onResizeEnd`, so the gesture collapses to one undo entry.
 

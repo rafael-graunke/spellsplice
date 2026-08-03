@@ -726,6 +726,9 @@ function App() {
         [players, trackOverrides, clipsByTrack]
     );
 
+    const trackGroupsRef = useRef(trackGroups);
+    trackGroupsRef.current = trackGroups;
+
     const trackInfoByTrackId = useMemo(() => {
         const map = new Map<string, { groupId: string; eventLayer: number }>();
         for (const group of trackGroups) {
@@ -741,7 +744,7 @@ function App() {
 
     const handleAddTrack = useCallback(
         (groupId: string, trackId: string, position: 'above' | 'below') => {
-            const group = trackGroups.find((g) => g.id === groupId);
+            const group = trackGroupsRef.current.find((g) => g.id === groupId);
             if (!group) return;
             const maxLayer = Math.max(
                 ...group.tracks.map((t) => t.eventLayer ?? 0)
@@ -758,7 +761,7 @@ function App() {
             currentRows.splice(position === 'above' ? idx + 1 : idx, 0, newRow);
             recordTrackOverride(groupId, currentRows);
         },
-        [trackGroups, recordTrackOverride]
+        [recordTrackOverride]
     );
 
     const handleSelectionChange = useCallback((ids: Set<number>) => {
@@ -896,7 +899,7 @@ function App() {
     // state, so this is a single history entry rather than one per pixel.
     const handleSetTrackHeight = useCallback(
         (groupId: string, trackId: string, height: number) => {
-            const group = trackGroups.find((g) => g.id === groupId);
+            const group = trackGroupsRef.current.find((g) => g.id === groupId);
             if (!group) return;
             recordTrackOverride(
                 groupId,
@@ -906,24 +909,24 @@ function App() {
                 }))
             );
         },
-        [trackGroups, recordTrackOverride]
+        [recordTrackOverride]
     );
 
     const handleSetGroupHeight = useCallback(
         (groupId: string, height: number) => {
-            const group = trackGroups.find((g) => g.id === groupId);
+            const group = trackGroupsRef.current.find((g) => g.id === groupId);
             if (!group) return;
             recordTrackOverride(
                 groupId,
                 group.tracks.map((t) => ({ ...toOverrideRow(t), height }))
             );
         },
-        [trackGroups, recordTrackOverride]
+        [recordTrackOverride]
     );
 
     const handleToggleSyncLock = useCallback(
         (groupId: string, trackId: string) => {
-            const group = trackGroups.find((g) => g.id === groupId);
+            const group = trackGroupsRef.current.find((g) => g.id === groupId);
             if (!group) return;
             recordTrackOverride(
                 groupId,
@@ -935,7 +938,7 @@ function App() {
                 }))
             );
         },
-        [trackGroups, recordTrackOverride]
+        [recordTrackOverride]
     );
 
     const handleDuplicate = useCallback(
@@ -1027,12 +1030,12 @@ function App() {
                 group: TimelineTrackGroup,
                 preferredTrackId: string
             ): { id: string; updatedRows?: TrackOverrideRow[] } => {
-                if (!clipsCollide(clipsByTrack[preferredTrackId] ?? [])) {
+                if (!clipsCollide(clipsByTrackRef.current[preferredTrackId] ?? [])) {
                     return { id: preferredTrackId };
                 }
                 for (const t of group.tracks) {
                     if (t.id === preferredTrackId || t.isBlocked) continue;
-                    if (!clipsCollide(clipsByTrack[t.id] ?? []))
+                    if (!clipsCollide(clipsByTrackRef.current[t.id] ?? []))
                         return { id: t.id };
                 }
                 const maxLayer = Math.max(
@@ -1052,7 +1055,7 @@ function App() {
                 return { id: newRow.id, updatedRows };
             };
 
-            const group = trackGroups.find((g) =>
+            const group = trackGroupsRef.current.find((g) =>
                 g.tracks.some((t) => t.id === trackId)
             );
             if (!group) return;
@@ -1095,7 +1098,7 @@ function App() {
                 });
 
             if (source.type === 'video') {
-                const audioGroup = trackGroups.find(
+                const audioGroup = trackGroupsRef.current.find(
                     (g) => g.type === TrackType.Audio
                 );
                 const firstAudioTrack = audioGroup?.tracks.find(
@@ -1125,7 +1128,7 @@ function App() {
 
             handleAddClipsWithOverride(entries, overrides);
         },
-        [trackGroups, clipsByTrack, handleAddClipsWithOverride]
+        [handleAddClipsWithOverride]
     );
 
     const videoClips = useMemo(
@@ -1210,7 +1213,7 @@ function App() {
 
     const handleToggleTrack = useCallback(
         (trackId: string, field: 'isHidden' | 'isMuted' | 'isBlocked') => {
-            for (const group of trackGroups) {
+            for (const group of trackGroupsRef.current) {
                 const idx = group.tracks.findIndex((t) => t.id === trackId);
                 if (idx === -1) continue;
                 const rows: TrackOverrideRow[] = group.tracks.map(toOverrideRow);
@@ -1219,7 +1222,7 @@ function App() {
                 break;
             }
         },
-        [trackGroups, recordTrackOverride]
+        [recordTrackOverride]
     );
 
     // Content duration, not the timeline's scrollable extent (Timeline derives

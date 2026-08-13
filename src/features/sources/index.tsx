@@ -4,6 +4,7 @@ import type { MediaSource } from '../../types/source';
 import type { Clip } from '../../types/clip';
 import { SourceCard } from './SourceCard';
 import { getMediaMetadata, generateThumbnail } from '../../lib/generateThumbnail';
+import { fingerprintOf } from '../../lib/matchSources';
 
 interface SourcesProps {
     sources: MediaSource[];
@@ -36,6 +37,7 @@ function SourcesInner({ sources, setSources, clipsByTrack, onOpenRelinkDialog, o
                     duration: 0,
                     file,
                     loading: true,
+                    ...fingerprintOf(file),
                 };
                 setSources((prev) => [...prev, source]);
 

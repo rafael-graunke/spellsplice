@@ -204,7 +204,9 @@ Single-letter shortcuts share `isTypingTarget` (`src/features/timeline/keyboard.
 
 **index.tsx** (`Sources`) — drag-and-drop + file-picker for video/audio files. Generates thumbnail via `generateThumbnail` and duration via `getFileDuration`. Shows clip-use counts (counts references across all `clipsByTrack`). Red dot when any source has no `file` (offline). Link button opens `RelinkDialog`.
 
-**RelinkDialog.tsx** — lists all sources; offline sources have a "Choose file" button to reattach. Called on project open when saved sources have no matching file in the ZIP.
+**RelinkDialog.tsx** — lists all sources. Offline sources get a batch reconnect header (`Reconnect` / `Folder…` / `Files…`), a confidence-coded auto-match per row, and a `<select>` to override a wrong guess. Opened only when `resolveMedia` could not reattach everything exactly.
+
+`Reconnect` is a button, not something the open path does automatically: `requestPermission()` needs user activation and the `await`s inside `importProject` consume the activation from the File > Open click. `resolveMedia` therefore *queries* permission only.
 
 ## Settings Dialog (`src/features/settings/`)
 
@@ -297,7 +299,17 @@ Fetches go through `scryfallQueue.ts`'s `slowFetch` (500ms throttle). Stores `no
 - `project.json` — `{ version: '1', createdAt, players: Player[], config?, clipsByTrack?, trackOverrides?, sources?: SourceMeta[] }`
 - `card-data-cache.json` — serialized `cardDataCache`
 
-Media source files are **not bundled** — sources are stored as metadata only (`id, name, duration, type`). On import, all sources come back offline; `RelinkDialog` prompts the user to reattach files.
+Media source files are **not bundled** — sources are stored as metadata only (`id, name, duration, type, width, height`) plus a relink fingerprint (`size, lastModified, relativePath`). The manifest also carries `id` (stable project uuid) and `mediaRoot` (display name of the last media folder).
+
+On import every source comes back offline and `resolveMedia` tries to reattach them; `RelinkDialog` only opens if that falls short. The same resolve runs on localStorage autosave restore, which is the far more frequent path (a page refresh drops every `File`).
+
+## Media Relinking (`src/lib/`)
+
+**matchSources.ts** — pure matcher, no IO. `matchSources(sources, candidates, durations?)` scores every (source, file) pair and assigns **globally greedily**: all pairs sorted by score, a pair taken only when both ends are unclaimed. Picking each source's own best match independently lets two sources claim one file and the loser silently ends up empty. Tiers: `size+lastModified` → `size+name` → `relativePath` → `name+duration` → `name` → fuzzy+duration → duration → fuzzy. `type` is a hard filter, never a weighted signal.
+
+**resolveMedia.ts** — the IO half. `matchCandidates` runs the free metadata tiers first and only probes durations (`getMediaMetadata`, concurrency 4, ≤60 files) for the leftovers, so the common case decodes nothing. `resolveMedia(projectId, sources)` looks up the remembered folder, walks it, and returns matches + every candidate found.
+
+**mediaRoots.ts** — `FileSystemDirectoryHandle` persistence in IndexedDB (`spellsplice-media`), keyed by project id. Handles are structured-cloneable into IndexedDB but **not** into JSON, which is why the `.sps` carries only the id and a folder *name*; the capability itself never leaves the machine. `collectFiles` walks ≤4 deep, ≤2000 files.
 
 `exportProject(players, config, clipsByTrack, trackOverrides, sources)` — builds ZIP, triggers browser download.
 `importProject(file)` — extracts manifest, restores card cache, returns `offlineSources`.

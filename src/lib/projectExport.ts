@@ -7,7 +7,18 @@ import type { TrackOverrideRow } from '@/features/timeline/hooks/usePlayerTracks
 import type { Marker } from '@/types/marker';
 import { cardDataCache, restoreCardDataCache } from './cardCache';
 
-export type SourceMeta = Pick<MediaSource, 'id' | 'name' | 'duration' | 'type' | 'width' | 'height'>;
+export type SourceMeta = Pick<
+    MediaSource,
+    | 'id'
+    | 'name'
+    | 'duration'
+    | 'type'
+    | 'width'
+    | 'height'
+    | 'size'
+    | 'lastModified'
+    | 'relativePath'
+>;
 
 function sanitizeFilename(name: string): string {
     return name
@@ -19,6 +30,15 @@ function sanitizeFilename(name: string): string {
 export interface ProjectExport {
     version: '1';
     createdAt: string;
+    /**
+     * Stable per-project id. Keys the media-root directory handle in IndexedDB
+     * (see lib/mediaRoots.ts) so reopening a project can silently reattach its
+     * media. Handles are structured-cloneable into IndexedDB but not into JSON,
+     * so only the id and a display name for the folder live in the .sps.
+     */
+    id?: string;
+    /** Display-only name of the last media folder, e.g. "Match3-raw". */
+    mediaRoot?: string;
     players: Player[];
     config?: ProjectConfig;
     clipsByTrack?: Record<string, Clip[]>;
@@ -34,21 +54,30 @@ export async function exportProject(
     trackOverrides: Record<string, TrackOverrideRow[]>,
     sources: MediaSource[],
     markers: Marker[] = [],
+    projectId?: string,
+    mediaRoot?: string,
 ) {
     const zip = new JSZip();
 
-    const sourceMeta: SourceMeta[] = sources.map(({ id, name, duration, type, width, height }) => ({
-        id,
-        name,
-        duration,
-        type,
-        width,
-        height,
-    }));
+    const sourceMeta: SourceMeta[] = sources.map(
+        ({ id, name, duration, type, width, height, size, lastModified, relativePath }) => ({
+            id,
+            name,
+            duration,
+            type,
+            width,
+            height,
+            size,
+            lastModified,
+            relativePath,
+        }),
+    );
 
     const manifest: ProjectExport = {
         version: '1',
         createdAt: new Date().toISOString(),
+        id: projectId,
+        mediaRoot,
         players,
         config,
         clipsByTrack,

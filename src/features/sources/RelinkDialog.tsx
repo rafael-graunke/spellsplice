@@ -1,5 +1,5 @@
-import { useRef, useState, useMemo } from 'react';
-import { AudioLines, Link2, Link2Off, Trash2 } from 'lucide-react';
+import { useRef, useState, useMemo, useEffect, useCallback } from 'react';
+import { AudioLines, FolderOpen, Link2, Link2Off, Loader2, Plus, Trash2 } from 'lucide-react';
 import type { MediaSource } from '../../types/source';
 import type { Clip } from '../../types/clip';
 import { Button } from '@/components/ui/button';
@@ -10,17 +10,31 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { toCandidates, unclaimedFiles, type CandidateFile, type SourceMatch } from '@/lib/matchSources';
+import { matchCandidates, type MediaResolution } from '@/lib/resolveMedia';
+import {
+    collectFiles,
+    ensureReadPermission,
+    getMediaRoot,
+    pickMediaRoot,
+    setMediaRoot,
+    supportsDirectoryPicker,
+} from '@/lib/mediaRoots';
 
 interface RelinkDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    projectId: string;
     sources: MediaSource[];
     clipsByTrack: Record<string, Clip[]>;
     onRelink: (sourceId: string, file: File) => void;
+    onRelinkMany: (pairs: Array<{ sourceId: string; file: File }>) => void;
     onDelete: (sourceId: string) => void;
     onRelinkClips: (oldSourceId: string, newSourceId: string) => void;
     onDeleteOrphanedClips: (sourceId: string) => void;
     deletedSourceNames: Record<string, string>;
+    /** Seeded by App from the resolve it already ran on project open. */
+    resolution?: MediaResolution | null;
 }
 
 function clipCount(sourceId: string, clipsByTrack: Record<string, Clip[]>): number {
@@ -29,21 +43,138 @@ function clipCount(sourceId: string, clipsByTrack: Record<string, Clip[]>): numb
         .filter((c) => c.sourceId === sourceId).length;
 }
 
+const CONFIDENCE_STYLE: Record<SourceMatch['confidence'], string> = {
+    exact: 'text-green-500',
+    strong: 'text-green-500',
+    weak: 'text-amber-500',
+    none: 'text-destructive',
+};
+
 export function RelinkDialog({
     open,
     onOpenChange,
+    projectId,
     sources,
     clipsByTrack,
     onRelink,
+    onRelinkMany,
     onDelete,
     onRelinkClips,
     onDeleteOrphanedClips,
     deletedSourceNames,
+    resolution,
 }: RelinkDialogProps) {
     const [confirmId, setConfirmId] = useState<string | null>(null);
     const [confirmOrphanId, setConfirmOrphanId] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const filesInputRef = useRef<HTMLInputElement>(null);
+    const dirInputRef = useRef<HTMLInputElement>(null);
     const pendingRelinkId = useRef<string | null>(null);
+
+    const [candidates, setCandidates] = useState<CandidateFile[]>([]);
+    const [matches, setMatches] = useState<Map<string, SourceMatch>>(new Map());
+    const [rootName, setRootName] = useState<string | undefined>();
+    const [needsPermission, setNeedsPermission] = useState(false);
+    const [busy, setBusy] = useState(false);
+
+    const offlineSources = useMemo(() => sources.filter((s) => !s.file), [sources]);
+
+    useEffect(() => {
+        if (!open) return;
+        setRootName(resolution?.rootName);
+        setNeedsPermission(resolution?.needsPermission ?? false);
+        if (resolution?.matches.length) {
+            setMatches(new Map(resolution.matches.map((m) => [m.sourceId, m])));
+            setCandidates(resolution.candidates);
+        }
+    }, [open, resolution]);
+
+    const runMatch = useCallback(
+        async (cands: CandidateFile[]) => {
+            setBusy(true);
+            try {
+                setCandidates(cands);
+                const next = await matchCandidates(offlineSources, cands);
+                setMatches(new Map(next.map((m) => [m.sourceId, m])));
+            } finally {
+                setBusy(false);
+            }
+        },
+        [offlineSources],
+    );
+
+    const handleChooseFolder = useCallback(async () => {
+        if (!supportsDirectoryPicker()) {
+            dirInputRef.current?.click();
+            return;
+        }
+        const handle = await pickMediaRoot();
+        if (!handle) return;
+        setBusy(true);
+        try {
+            await setMediaRoot(projectId, handle);
+            setRootName(handle.name);
+            setNeedsPermission(false);
+            await runMatch(await collectFiles(handle));
+        } finally {
+            setBusy(false);
+        }
+    }, [projectId, runMatch]);
+
+    const handleReconnect = useCallback(async () => {
+        const handle = await getMediaRoot(projectId);
+        if (!handle) {
+            await handleChooseFolder();
+            return;
+        }
+        // Called straight from the click, so user activation is still live and
+        // requestPermission is allowed to prompt.
+        if (!(await ensureReadPermission(handle, { request: true }))) return;
+        setBusy(true);
+        try {
+            setNeedsPermission(false);
+            await runMatch(await collectFiles(handle));
+        } finally {
+            setBusy(false);
+        }
+    }, [projectId, handleChooseFolder, runMatch]);
+
+    const handleOverride = useCallback((sourceId: string, cand: CandidateFile | null) => {
+        setMatches((prev) => {
+            const next = new Map(prev);
+            if (!cand) {
+                next.set(sourceId, { sourceId, confidence: 'none', reason: 'no match' });
+                return next;
+            }
+            // A file can only back one source, so take it from whoever holds it.
+            for (const [id, m] of next) {
+                if (m.file === cand.file && id !== sourceId)
+                    next.set(id, { sourceId: id, confidence: 'none', reason: 'no match' });
+            }
+            next.set(sourceId, { sourceId, file: cand.file, confidence: 'strong', reason: 'chosen' });
+            return next;
+        });
+    }, []);
+
+    const pending = useMemo(
+        () =>
+            offlineSources
+                .map((s) => matches.get(s.id))
+                .filter((m): m is SourceMatch & { file: File } => !!m?.file)
+                .map((m) => ({ sourceId: m.sourceId, file: m.file })),
+        [offlineSources, matches],
+    );
+
+    const handleApply = useCallback(() => {
+        onRelinkMany(pending);
+        setMatches(new Map());
+        setCandidates([]);
+    }, [onRelinkMany, pending]);
+
+    const unclaimed = useMemo(
+        () => unclaimedFiles(candidates, Array.from(matches.values())),
+        [candidates, matches],
+    );
 
     const handleRelinkClick = (sourceId: string) => {
         pendingRelinkId.current = sourceId;
@@ -83,7 +214,7 @@ export function RelinkDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-lg" showCloseButton>
+            <DialogContent className="sm:max-w-xl" showCloseButton>
                 <DialogHeader>
                     <DialogTitle>Manage Sources</DialogTitle>
                 </DialogHeader>
@@ -95,6 +226,69 @@ export function RelinkDialog({
                     className="hidden"
                     onChange={handleFileChange}
                 />
+                <input
+                    ref={filesInputRef}
+                    type="file"
+                    accept="video/*,audio/*,image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                        if (e.target.files?.length) runMatch(toCandidates(e.target.files));
+                        e.target.value = '';
+                    }}
+                />
+                <input
+                    ref={dirInputRef}
+                    type="file"
+                    multiple
+                    // No handle comes back from a directory input, so this path
+                    // matches once but cannot power a silent relink next open.
+                    // @ts-expect-error non-standard attribute, supported everywhere it matters
+                    webkitdirectory=""
+                    className="hidden"
+                    onChange={(e) => {
+                        if (e.target.files?.length) runMatch(toCandidates(e.target.files));
+                        e.target.value = '';
+                    }}
+                />
+
+                {offlineSources.length > 0 && (
+                    <div className="flex items-center gap-2 rounded border border-border bg-muted/30 px-2 py-1.5">
+                        <div className="flex-1 min-w-0 text-xs">
+                            {rootName ? (
+                                <>
+                                    <span className="text-muted-foreground">Media folder: </span>
+                                    <span className="font-medium">{rootName}</span>
+                                    {needsPermission && (
+                                        <span className="text-amber-500"> · permission needed</span>
+                                    )}
+                                </>
+                            ) : (
+                                <span className="text-muted-foreground">
+                                    {offlineSources.length} offline source
+                                    {offlineSources.length !== 1 ? 's' : ''}
+                                </span>
+                            )}
+                        </div>
+                        {busy && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+                        {needsPermission && (
+                            <Button size="xs" onClick={handleReconnect} disabled={busy}>
+                                Reconnect
+                            </Button>
+                        )}
+                        <Button size="xs" variant="outline" onClick={handleChooseFolder} disabled={busy}>
+                            <FolderOpen className="w-3 h-3" /> Folder…
+                        </Button>
+                        <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={() => filesInputRef.current?.click()}
+                            disabled={busy}
+                        >
+                            <Plus className="w-3 h-3" /> Files…
+                        </Button>
+                    </div>
+                )}
 
                 <div className="flex flex-col gap-1 max-h-80 overflow-y-auto -mx-1 px-1">
                     {sources.length === 0 && orphanedGroups.length === 0 ? (
@@ -105,6 +299,8 @@ export function RelinkDialog({
                                 const offline = !source.file;
                                 const count = clipCount(source.id, clipsByTrack);
                                 const confirming = confirmId === source.id;
+                                const match = offline ? matches.get(source.id) : undefined;
+                                const showPicker = offline && candidates.length > 0;
 
                                 return (
                                     <div
@@ -140,7 +336,15 @@ export function RelinkDialog({
                                             </div>
                                             <div className="text-xs text-muted-foreground flex gap-1.5">
                                                 {offline ? (
-                                                    <span className="text-destructive font-medium">Offline</span>
+                                                    match?.file ? (
+                                                        <span className={CONFIDENCE_STYLE[match.confidence]}>
+                                                            → {match.file.name} ({match.reason})
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-destructive font-medium">
+                                                            {candidates.length > 0 ? 'Not found' : 'Offline'}
+                                                        </span>
+                                                    )
                                                 ) : (
                                                     <span className="text-green-500">Online</span>
                                                 )}
@@ -174,6 +378,47 @@ export function RelinkDialog({
                                             </div>
                                         ) : (
                                             <div className="flex items-center gap-1 shrink-0">
+                                                {showPicker && (
+                                                    <select
+                                                        className="text-xs bg-muted border border-border rounded px-1 py-0.5 max-w-36"
+                                                        value={
+                                                            match?.file
+                                                                ? String(
+                                                                      candidates.findIndex(
+                                                                          (c) => c.file === match.file,
+                                                                      ),
+                                                                  )
+                                                                : ''
+                                                        }
+                                                        onChange={(e) =>
+                                                            handleOverride(
+                                                                source.id,
+                                                                e.target.value === ''
+                                                                    ? null
+                                                                    : candidates[Number(e.target.value)],
+                                                            )
+                                                        }
+                                                    >
+                                                        <option value="">Not linked</option>
+                                                        {match?.file && (
+                                                            <option
+                                                                value={candidates.findIndex(
+                                                                    (c) => c.file === match.file,
+                                                                )}
+                                                            >
+                                                                {match.file.name}
+                                                            </option>
+                                                        )}
+                                                        {unclaimed.map((c) => (
+                                                            <option
+                                                                key={candidates.indexOf(c)}
+                                                                value={candidates.indexOf(c)}
+                                                            >
+                                                                {c.relativePath ?? c.file.name}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                )}
                                                 <Button
                                                     size="icon-xs"
                                                     variant={offline ? 'default' : 'ghost'}
@@ -282,7 +527,13 @@ export function RelinkDialog({
                     )}
                 </div>
 
-                <DialogFooter showCloseButton />
+                <DialogFooter showCloseButton>
+                    {pending.length > 0 && (
+                        <Button size="sm" onClick={handleApply} disabled={busy}>
+                            Relink {pending.length}
+                        </Button>
+                    )}
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     );

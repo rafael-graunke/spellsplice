@@ -33,6 +33,9 @@ import { exportProject, importProject } from '@/lib/projectExport';
 import { migrateLegacyEvents } from '@/lib/migrateProject';
 import { RelinkDialog } from './features/sources/RelinkDialog';
 import { getMediaMetadata, generateThumbnail } from '@/lib/generateThumbnail';
+import { fingerprintOf } from '@/lib/matchSources';
+import { resolveMedia, type MediaResolution } from '@/lib/resolveMedia';
+import { deleteMediaRoot } from '@/lib/mediaRoots';
 import VideoPreview, {
     type VideoPreviewHandle,
 } from './features/timeline/VideoPreview';
@@ -126,6 +129,8 @@ function toOverrideRow(t: TimelineTrack): TrackOverrideRow {
 }
 
 type SavedState = {
+    id?: string;
+    mediaRoot?: string;
     players: Player[];
     clipsByTrack: Record<string, import('./types/clip').Clip[]>;
     trackOverrides: Record<string, TrackOverrideRow[]>;
@@ -135,6 +140,9 @@ type SavedState = {
         type: 'video' | 'audio';
         duration?: number;
         thumbnailUrl?: string;
+        size?: number;
+        lastModified?: number;
+        relativePath?: string;
     }>;
     config?: ProjectConfig;
     markers?: import('./types/marker').Marker[];
@@ -234,8 +242,16 @@ function App() {
         undefined
     );
     const [cardsReady, setCardsReady] = useState(false);
-    const [relinkDialogOpen, setRelinkDialogOpen] = useState(
-        () => (savedStateInit?.sources?.length ?? 0) > 0
+    // Opened by the media resolve, not by the mere presence of offline sources:
+    // a project whose folder is still remembered reattaches silently and should
+    // never show the dialog.
+    const [relinkDialogOpen, setRelinkDialogOpen] = useState(false);
+    const [mediaResolution, setMediaResolution] = useState<MediaResolution | null>(null);
+    const [projectId, setProjectId] = useState(
+        () => savedStateInit?.id ?? crypto.randomUUID()
+    );
+    const [mediaRoot, setMediaRootName] = useState<string | undefined>(
+        () => savedStateInit?.mediaRoot
     );
     const [deletedSourceNames, setDeletedSourceNames] = useState<
         Record<string, string>
@@ -249,7 +265,12 @@ function App() {
     const liveModeRef = useRef<LiveModeHandle>(null);
     const isFirstPlayersRender = useRef(true);
     const skipDirtyRef = useRef(false);
+    const suppressDirtyRef = useRef(false);
     const clearAutosaveRef = useRef(false);
+    const projectIdRef = useRef(projectId);
+    projectIdRef.current = projectId;
+    const mediaRootRef = useRef(mediaRoot);
+    mediaRootRef.current = mediaRoot;
     const currentTimeRef = useRef(0);
     const videoPreviewRef = useRef<VideoPreviewHandle>(null);
 
@@ -379,17 +400,22 @@ function App() {
             localStorage.removeItem(PROJECT_KEY);
         } else {
             const serializedSources = sources.map(
-                ({ id, name, type, duration, thumbnailUrl }) => ({
+                ({ id, name, type, duration, thumbnailUrl, size, lastModified, relativePath }) => ({
                     id,
                     name,
                     type,
                     duration,
                     thumbnailUrl,
+                    size,
+                    lastModified,
+                    relativePath,
                 })
             );
             localStorage.setItem(
                 PROJECT_KEY,
                 JSON.stringify({
+                    id: projectIdRef.current,
+                    mediaRoot: mediaRootRef.current,
                     players,
                     clipsByTrack,
                     trackOverrides,
@@ -400,6 +426,10 @@ function App() {
             );
         }
         if (isDirty) return;
+        // An automatic relink reattaches files that already matched what was
+        // saved, so nothing serialized actually changed. Marking the project
+        // dirty for it would put an unsaved-changes prompt on every reload.
+        if (suppressDirtyRef.current) return;
         if (skipDirtyRef.current) {
             skipDirtyRef.current = false;
             return;
@@ -476,6 +506,104 @@ function App() {
     const markersRef = useRef(markers);
     markersRef.current = markers;
 
+    const handleRelinkMany = useCallback(
+        async (pairs: Array<{ sourceId: string; file: File }>) => {
+            if (pairs.length === 0) return;
+            const byId = new Map(pairs.map((p) => [p.sourceId, p.file]));
+            setSources((prev) =>
+                prev.map((s) => {
+                    const file = byId.get(s.id);
+                    return file
+                        ? {
+                              ...s,
+                              file,
+                              loading: true,
+                              thumbnailUrl: undefined,
+                              ...fingerprintOf(file),
+                          }
+                        : s;
+                })
+            );
+            await Promise.all(
+                pairs.map(async ({ sourceId, file }) => {
+                    const meta = await getMediaMetadata(file).catch(() => ({
+                        duration: 0,
+                        width: 0,
+                        height: 0,
+                    }));
+                    const thumbnailUrl = file.type.startsWith('audio')
+                        ? undefined
+                        : await generateThumbnail(file).catch(() => undefined);
+                    setSources((prev) =>
+                        prev.map((s) =>
+                            s.id === sourceId
+                                ? {
+                                      ...s,
+                                      duration: meta.duration,
+                                      width: meta.width || undefined,
+                                      height: meta.height || undefined,
+                                      thumbnailUrl,
+                                      loading: false,
+                                  }
+                                : s
+                        )
+                    );
+                })
+            );
+        },
+        []
+    );
+
+    const handleRelinkSource = useCallback(
+        (sourceId: string, file: File) => handleRelinkMany([{ sourceId, file }]),
+        [handleRelinkMany]
+    );
+
+    /**
+     * Reattaches media from the project's remembered folder. Everything matched
+     * exactly is applied without UI; anything less certain opens the dialog with
+     * the matches pre-filled for review.
+     */
+    const runMediaResolve = useCallback(
+        async (id: string, offlineSources: MediaSource[]) => {
+            if (offlineSources.length === 0) return;
+            const resolution = await resolveMedia(id, offlineSources);
+            const exact = resolution.matches.filter(
+                (m): m is typeof m & { file: File } => !!m.file && m.confidence === 'exact'
+            );
+            if (exact.length === offlineSources.length) {
+                suppressDirtyRef.current = true;
+                try {
+                    await handleRelinkMany(
+                        exact.map((m) => ({ sourceId: m.sourceId, file: m.file }))
+                    );
+                } finally {
+                    // Let the trailing setSources renders flush through the
+                    // autosave effect before dirty tracking resumes.
+                    setTimeout(() => {
+                        suppressDirtyRef.current = false;
+                    }, 0);
+                }
+                return;
+            }
+            setMediaResolution(resolution);
+            setRelinkDialogOpen(true);
+        },
+        [handleRelinkMany]
+    );
+
+    const didRestoreMedia = useRef(false);
+    useEffect(() => {
+        if (didRestoreMedia.current) return;
+        didRestoreMedia.current = true;
+        const restored = savedStateInit?.sources;
+        if (!restored?.length) return;
+        void runMediaResolve(
+            projectIdRef.current,
+            restored.map((s) => ({ ...s, duration: s.duration ?? 0 }) as MediaSource)
+        );
+    }, [savedStateInit, runMediaResolve]);
+
     const handleExport = useCallback(async () => {
         await exportProject(
             playersRef.current,
@@ -483,7 +611,9 @@ function App() {
             clipsByTrackRef.current,
             trackOverridesRef.current,
             sourcesRef.current,
-            markersRef.current
+            markersRef.current,
+            projectIdRef.current,
+            mediaRootRef.current
         );
         setIsDirty(false);
     }, []);
@@ -492,6 +622,13 @@ function App() {
         async (file: File) => {
             const { manifest, config, offlineSources } =
                 await importProject(file);
+            // Projects saved before media roots existed have no id; minting one
+            // here lets the user pick a folder now and get silent relinks after.
+            const id = manifest.id ?? crypto.randomUUID();
+            setProjectId(id);
+            projectIdRef.current = id;
+            setMediaRootName(manifest.mediaRoot);
+            mediaRootRef.current = manifest.mediaRoot;
             skipDirtyRef.current = true;
             clearAutosaveRef.current = true;
             isFirstConfigRender.current = true;
@@ -515,10 +652,10 @@ function App() {
                     ? { ...DEFAULT_PROJECT_CONFIG, ...config }
                     : DEFAULT_PROJECT_CONFIG
             );
-            if (offlineSources.length > 0) setRelinkDialogOpen(true);
             setMode('timeline');
+            void runMediaResolve(id, offlineSources);
         },
-        [resetPlayers]
+        [resetPlayers, runMediaResolve]
     );
 
     const resetToFresh = useCallback(() => {
@@ -527,6 +664,14 @@ function App() {
         isFirstConfigRender.current = true;
         resetPlayers(makeFreshPlayers());
         localStorage.removeItem(PROJECT_KEY);
+        void deleteMediaRoot(projectIdRef.current);
+        const freshId = crypto.randomUUID();
+        setProjectId(freshId);
+        projectIdRef.current = freshId;
+        setMediaRootName(undefined);
+        mediaRootRef.current = undefined;
+        setMediaResolution(null);
+        setRelinkDialogOpen(false);
         setVideo(null);
         setSources([]);
         setSelectedEvents([]);
@@ -554,37 +699,6 @@ function App() {
         setMode('welcome');
     }, [mode, resetToFresh]);
 
-    const handleRelinkSource = useCallback(
-        async (sourceId: string, file: File) => {
-            setSources((prev) =>
-                prev.map((s) =>
-                    s.id === sourceId
-                        ? { ...s, file, loading: true, thumbnailUrl: undefined }
-                        : s
-                )
-            );
-            const meta = await getMediaMetadata(file).catch(() => ({ duration: 0, width: 0, height: 0 }));
-            const thumbnailUrl = file.type.startsWith('audio')
-                ? undefined
-                : await generateThumbnail(file).catch(() => undefined);
-            setSources((prev) =>
-                prev.map((s) =>
-                    s.id === sourceId
-                        ? {
-                              ...s,
-                              file,
-                              duration: meta.duration,
-                              width: meta.width || undefined,
-                              height: meta.height || undefined,
-                              thumbnailUrl,
-                              loading: false,
-                          }
-                        : s
-                )
-            );
-        },
-        []
-    );
 
     const handleDeleteSource = useCallback((sourceId: string) => {
         const source = sourcesRef.current.find((s) => s.id === sourceId);
@@ -1422,9 +1536,12 @@ function App() {
             <RelinkDialog
                 open={relinkDialogOpen}
                 onOpenChange={setRelinkDialogOpen}
+                projectId={projectId}
                 sources={sources}
                 clipsByTrack={clipsByTrack}
                 onRelink={handleRelinkSource}
+                onRelinkMany={handleRelinkMany}
+                resolution={mediaResolution}
                 onDelete={handleDeleteSource}
                 onRelinkClips={handleRelinkClips}
                 onDeleteOrphanedClips={handleDeleteOrphanedClips}

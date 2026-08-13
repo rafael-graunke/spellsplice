@@ -111,6 +111,11 @@ export interface TrackEvent {
     layer: number;
     type: EventType;
     resizable: boolean;
+    /**
+     * Windowed events only. Instant events fire at a point in time and have no
+     * span, so they carry no duration — a placeholder value here would be a
+     * lie that leaks into snapping (a phantom "end" target) and collision.
+     */
     duration?: number;
     meta?: EventMeta;
 }

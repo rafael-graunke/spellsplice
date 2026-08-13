@@ -32,7 +32,20 @@ type TracksState = {
     markers: Marker[];
 };
 
-const COLLISION_THRESHOLD = 2.0;
+/**
+ * Half-width of an instant event's collision span. An instant event is a point,
+ * but its icon is drawn centred on that point, so it needs clearance on BOTH
+ * sides. Two instants therefore collide within 2s of each other, matching the
+ * old single-sided threshold.
+ */
+const INSTANT_COLLISION_PAD = 1.0;
+
+/** [start, end] a layer must keep clear for this event. */
+function collisionSpan(time: number, duration: number | undefined, resizable: boolean): [number, number] {
+    return resizable
+        ? [time, time + (duration ?? 0)]
+        : [time - INSTANT_COLLISION_PAD, time + INSTANT_COLLISION_PAD];
+}
 
 /** Rows explicitly opted out of ripple. Everything else rides along. */
 function unlockedRowIds(state: TracksState): Set<string> {
@@ -128,18 +141,15 @@ function withLinked(state: TracksState, clipId: string): Array<{ trackId: string
 function findAvailableLayer(
     events: TrackEvent[],
     time: number,
-    duration: number,
+    duration: number | undefined,
     resizable: boolean,
 ): number {
+    const [start, end] = collisionSpan(time, duration, resizable);
     for (let layer = 0; ; layer++) {
         const collides = events.some((e) => {
             if (e.layer !== layer) return false;
-            if (resizable || e.resizable) {
-                const newEnd = time + duration;
-                const eEnd = e.time + (e.duration ?? 1);
-                return time < eEnd && newEnd > e.time;
-            }
-            return Math.abs(e.time - time) < COLLISION_THRESHOLD;
+            const [eStart, eEnd] = collisionSpan(e.time, e.duration, e.resizable);
+            return start < eEnd && end > eStart;
         });
         if (!collides) return layer;
     }
@@ -205,7 +215,7 @@ export function usePlayerTracks(
         const player = playersRef.current.find((p) => p.id === targetId);
         const time = currentTimeRef.current;
         const resizable = partial.resizable ?? false;
-        const duration = partial.duration ?? 1;
+        const duration = resizable ? (partial.duration ?? 1) : undefined;
         const layer = player
             ? findAvailableLayer(player.track.events, time, duration, resizable)
             : 0;
@@ -213,9 +223,9 @@ export function usePlayerTracks(
             id: nextEventId.current++,
             time,
             layer,
-            duration,
             resizable,
             ...partial,
+            duration,
         };
         record((draft) => {
             const player = draft.players.find((p) => p.id === targetId);
@@ -636,16 +646,16 @@ export function usePlayerTracks(
         if (!player) return undefined;
         const time = currentTimeRef.current;
         const resizable = partial.resizable ?? false;
-        const duration = partial.duration ?? 1;
+        const duration = resizable ? (partial.duration ?? 1) : undefined;
         const layer = findAvailableLayer(player.track.events, time, duration, resizable);
-        const { layer: _ignored, ...rest } = partial as any;
+        const { layer: _ignored, ...rest } = partial;
         const newEvent: TrackEvent = {
             id: nextEventId.current++,
             time,
             layer,
-            duration,
             resizable,
             ...rest,
+            duration,
         };
         record((draft) => {
             const p = draft.players.find((p) => p.id === targetId);

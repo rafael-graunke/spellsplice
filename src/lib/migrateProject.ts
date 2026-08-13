@@ -12,8 +12,29 @@ const LEGACY_UNSTACK = 'UNSTACK_DECK';
 // additive annotation model it becomes a clear (UNANNOTATE, empty) followed by
 // an append (ANNOTATE); the tiny time epsilon keeps them ordered in the
 // time-sorted replay. UNSTACK_DECK becomes a clear.
-export function migrateLegacyEvents(players: Player[]): Player[] {
+/**
+ * Every event used to be created with `duration: 1`, including instant ones,
+ * which have no span. That placeholder is visible: snapping offered a phantom
+ * "end" target a second after the icon, and layer collision measured it.
+ * Strip it so stored projects match the current contract.
+ */
+function stripInstantDurations(players: Player[]): Player[] {
     return players.map((player) => {
+        if (!player.track.events.some((e) => !e.resizable && e.duration !== undefined)) {
+            return player;
+        }
+        const events = player.track.events.map((e) => {
+            if (e.resizable || e.duration === undefined) return e;
+            const next = { ...e };
+            delete next.duration;
+            return next;
+        });
+        return { ...player, track: { ...player.track, events } };
+    });
+}
+
+export function migrateLegacyEvents(players: Player[]): Player[] {
+    return stripInstantDurations(players).map((player) => {
         const events = player.track.events;
         if (!events.some((e) => (e.type as string) === LEGACY_STACK || (e.type as string) === LEGACY_UNSTACK)) {
             return player;
@@ -30,7 +51,6 @@ export function migrateLegacyEvents(players: Player[]): Player[] {
                     layer: e.layer,
                     type: 'UNANNOTATE_CARD',
                     resizable: false,
-                    duration: 1,
                     meta: { annotationId: DEFAULT_ANNOTATION_SLOT_ID, cards: [] },
                 });
                 migrated.push({
@@ -39,7 +59,6 @@ export function migrateLegacyEvents(players: Player[]): Player[] {
                     layer: e.layer,
                     type: 'ANNOTATE_CARD',
                     resizable: false,
-                    duration: 1,
                     meta: {
                         annotationId: DEFAULT_ANNOTATION_SLOT_ID,
                         cards: e.meta?.cards ?? [],
@@ -52,7 +71,6 @@ export function migrateLegacyEvents(players: Player[]): Player[] {
                     layer: e.layer,
                     type: 'UNANNOTATE_CARD',
                     resizable: false,
-                    duration: 1,
                     meta: { annotationId: DEFAULT_ANNOTATION_SLOT_ID, cards: [] },
                 });
             } else {

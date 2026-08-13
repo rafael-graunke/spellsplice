@@ -100,7 +100,7 @@ export function collectSnapTargets({
         for (const ev of track.events) {
             if (excludeEventIds?.has(ev.id)) continue;
             out.push(ev.time);
-            if (ev.duration) out.push(ev.time + ev.duration);
+            if (ev.resizable && ev.duration) out.push(ev.time + ev.duration);
         }
     }
     if (playhead !== undefined) out.push(playhead);

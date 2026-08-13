@@ -2,7 +2,8 @@ import React, { useRef, useEffect, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import type { WaveformData } from '@/hooks/useWaveformPeaks';
 import type { ClipThumbnails } from '@/hooks/useVideoThumbnails';
-import { ChevronDown, ChevronRight, Eye, EyeOff, Link, Link2Off, Lock, Volume2, VolumeOff } from 'lucide-react';
+import { ChevronDown, Eye, EyeOff, Link, Link2Off, Lock, Volume2, VolumeOff } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { TimelineTrack } from './types';
 import { TrackType, TrackTypeColorMap } from './types';
 import type { TrackEvent } from '../../types/event';
@@ -48,11 +49,13 @@ interface TrackGroupProps {
     icon?: SvgIcon;
     isTarget?: boolean;
     collapsed?: boolean;
+    expandedHeight: number;
+    animateHeight?: boolean;
     onSelect?: () => void;
     onToggleCollapse?: () => void;
 }
 
-export function TrackGroup({ children, label, icon, isTarget, collapsed, onSelect, onToggleCollapse }: TrackGroupProps) {
+export function TrackGroup({ children, label, icon, isTarget, collapsed, expandedHeight, animateHeight = true, onSelect, onToggleCollapse }: TrackGroupProps) {
     const innerRef = useRef<HTMLDivElement>(null);
     const measureRef = useRef<HTMLParagraphElement>(null);
     const [overflows, setOverflows] = useState(false);
@@ -70,84 +73,87 @@ export function TrackGroup({ children, label, icon, isTarget, collapsed, onSelec
         return () => obs.disconnect();
     }, []);
 
-    if (collapsed) {
-        return (
-            <div
-                className="flex flex-row items-center gap-1.5 bg-zinc-800 border-y border-zinc-600 px-1 text-zinc-400"
-                style={{ height: COLLAPSED_GROUP_HEIGHT }}
-            >
+    return (
+        <div
+            className={cn(
+                'relative overflow-hidden',
+                animateHeight && 'transition-[height] duration-150 ease-out',
+            )}
+            style={{ height: collapsed ? COLLAPSED_GROUP_HEIGHT : expandedHeight }}
+        >
+            {onToggleCollapse && (
                 <button
-                    className="hover:text-zinc-200 transition-colors"
-                    aria-label={`Expand ${label}`}
-                    onClick={onToggleCollapse}
+                    className="absolute left-0 top-0 z-10 flex items-center justify-center text-zinc-500 hover:text-zinc-200 transition-colors"
+                    style={{ width: TRACK_GROUP_LABEL_WIDTH, height: COLLAPSED_GROUP_HEIGHT }}
+                    aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
+                    aria-expanded={!collapsed}
+                    onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}
                 >
-                    <ChevronRight className="size-3.5" />
+                    <ChevronDown
+                        className={cn('size-3.5 transition-transform duration-150 ease-out', collapsed && '-rotate-90')}
+                    />
                 </button>
+            )}
+            {collapsed ? (
+            <div
+                className={cn(
+                    'flex h-full flex-row items-center gap-1.5 pr-1.5 text-zinc-400',
+                    'bg-zinc-800 border-y border-l border-zinc-600',
+                    isTarget && 'bg-zinc-700 border-zinc-500 text-zinc-200',
+                )}
+                style={{ paddingLeft: TRACK_GROUP_LABEL_WIDTH }}
+            >
                 {Icon && <Icon className="size-3.5 shrink-0" />}
                 <span className="truncate text-xs">{label}</span>
             </div>
-        );
-    }
-
-    return (
-            <div className="flex flex-row overflow-hidden">
+            ) : (
+            <div className="flex flex-row h-full overflow-hidden">
                 <div
-                    style={{ width: TRACK_GROUP_LABEL_WIDTH }}
+                    style={{ width: TRACK_GROUP_LABEL_WIDTH, paddingTop: COLLAPSED_GROUP_HEIGHT }}
                     className={cn(
-                        "bg-zinc-800 text-zinc-300 relative flex flex-col items-center justify-center gap-1 text-sm py-1",
-                        "rounded-l-md border",
-                        isTarget && "bg-zinc-700 border-zinc-500",
+                        "bg-zinc-800 text-zinc-400 relative flex flex-col items-center gap-1.5 text-xs pb-1.5",
+                        "border",
+                        isTarget && "bg-zinc-700 border-zinc-500 text-zinc-200",
                         onSelect && "cursor-pointer",
                     )}
                     onClick={onSelect}
                 >
-                    {onToggleCollapse && (
-                        <button
-                            className="shrink-0 text-zinc-500 hover:text-zinc-200 transition-colors"
-                            aria-label={`Collapse ${label}`}
-                            onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}
-                        >
-                            <ChevronDown className="size-3.5" />
-                        </button>
-                    )}
-                    {/* measurement element — outside overflow:hidden so clientHeight is unclamped */}
-                    <p ref={measureRef} aria-hidden className={
-                        cn(
-                            "absolute invisible whitespace-nowrap [writing-mode:sideways-lr]",
-                        )}
-                    >{label}</p>
-                    {/* inner wrapper lives inside the padding area; clientHeight = usable space */}
-                    {/* flex-1, not h-full: the collapse chevron above it now
-                        takes part of the strip, so 100% would overflow. */}
-                    <div ref={innerRef} className="flex-1 min-h-0 w-full overflow-hidden flex items-center justify-center">
-                        {overflows ? (
-                            Icon ? (
-                                <TooltipProvider>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <span className="flex items-center justify-center">
-                                                <Icon className={cn("size-4", isTarget ? "stroke-3" : "")} />
-                                            </span>
-                                        </TooltipTrigger>
-                                        <TooltipContent side="right">{label}</TooltipContent>
-                                    </Tooltip>
-                                </TooltipProvider>
-                            ) : (
-                                <></>
-                            )
-                        ) : (
-                            <p className={
-                                cn(
-                            "whitespace-nowrap [writing-mode:sideways-lr]",
-                        )
-                            }>{label}</p>
+                    {/* measured at the same size as the real label, outside the
+                        clipped box, so `overflows` reflects what will render */}
+                    <p ref={measureRef} aria-hidden className="absolute invisible whitespace-nowrap [writing-mode:sideways-lr] text-xs">
+                        {label}
+                    </p>
+                    <div ref={innerRef} className="flex-1 min-h-0 w-full overflow-hidden flex justify-center">
+                        {!overflows && (
+                            <p className="whitespace-nowrap [writing-mode:sideways-lr]">{label}</p>
                         )}
                     </div>
+                    {/* Last in the column so it sits at the bottom, which is where
+                        `sideways-lr` text starts reading. Rotated to match it. */}
+                    {Icon && (
+                        overflows ? (
+                            // Only the icon fits, so the label moves to a tooltip.
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <span className="flex shrink-0 items-center justify-center">
+                                            <Icon className="size-3.5 -rotate-90" />
+                                        </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right">{label}</TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        ) : (
+                            <Icon className="size-3.5 shrink-0 -rotate-90" />
+                        )
+                    )}
                 </div>
                 <div className="flex flex-col-reverse flex-1 bg-zinc-800 border-y border-zinc-600">
                     {children}
                 </div>
             </div>
+            )}
+        </div>
     );
 }
 
@@ -161,9 +167,7 @@ interface TrackInfoProps {
     type: TimelineTrack['type'];
     index: number;
     height: number;
-    /** Live preview during the drag; must not touch project state. */
     onResizeHeight?: (height: number) => void;
-    /** Final height on mouse-up; this is the one that records history. */
     onResizeCommit?: (height: number) => void;
     isBlocked: boolean;
     isHidden?: boolean;
@@ -173,6 +177,63 @@ interface TrackInfoProps {
     onToggleHidden?: () => void;
     onToggleMuted?: () => void;
     onToggleSyncLock?: () => void;
+}
+
+interface TrackToggleProps {
+    icon: LucideIcon;
+    label: string;
+    /** Tints the icon when the toggle is in its non-default state. */
+    activeClass?: string;
+    onClick?: () => void;
+}
+
+function TrackToggle({ icon: Icon, label, activeClass, onClick }: TrackToggleProps) {
+    return (
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <button
+                    aria-label={label}
+                    className="text-zinc-500 hover:text-zinc-300 transition-colors"
+                    onClick={onClick}
+                >
+                    <Icon className={cn('size-3.5', activeClass)} />
+                </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">{label}</TooltipContent>
+        </Tooltip>
+    );
+}
+
+/**
+ * Dragging the bottom edge of the header resizes the track, which is where
+ * Premiere and Resolve put it. Moves only preview; the commit on mouse-up is
+ * what reaches project state and history.
+ */
+function createHeightDrag(
+    height: number,
+    onResizeHeight?: (height: number) => void,
+    onResizeCommit?: (height: number) => void,
+) {
+    return (e: React.MouseEvent) => {
+        if (!onResizeHeight) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const startY = e.clientY;
+        let latest = height;
+        const onMove = (ev: MouseEvent) => {
+            latest = Math.round(
+                Math.max(MIN_TRACK_HEIGHT, Math.min(MAX_TRACK_HEIGHT, height + (ev.clientY - startY))),
+            );
+            onResizeHeight(latest);
+        };
+        const onUp = () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+            if (latest !== height) onResizeCommit?.(latest);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    };
 }
 
 function TrackInfoInner({
@@ -190,104 +251,56 @@ function TrackInfoInner({
     onToggleMuted,
     onToggleSyncLock,
 }: TrackInfoProps) {
-    const showVisibility = type === TrackType.Video;
-    const showMute = type === TrackType.Audio;
-
-    // Dragging the bottom edge of the header resizes the track, which is where
-    // Premiere and Resolve put it. Moves only preview; the commit on mouse-up
-    // is what reaches project state and history.
-    const startHeightDrag = (e: React.MouseEvent) => {
-        if (!onResizeHeight) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const startY = e.clientY;
-        const startHeight = height;
-        let latest = startHeight;
-        const onMove = (ev: MouseEvent) => {
-            latest = Math.round(
-                Math.max(MIN_TRACK_HEIGHT, Math.min(MAX_TRACK_HEIGHT, startHeight + (ev.clientY - startY))),
-            );
-            onResizeHeight(latest);
-        };
-        const onUp = () => {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-            if (latest !== startHeight) onResizeCommit?.(latest);
-        };
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-    };
-    // Undefined means "never configured", which is locked — ripple edits move
+    const startHeightDrag = createHeightDrag(height, onResizeHeight, onResizeCommit);
+    // Undefined means "never configured", which is locked: ripple edits move
     // every track unless one is explicitly opted out.
     const locked = syncLock !== false;
 
     return (
         <div
-            className="relative shrink-0 flex items-center justify-between bg-zinc-900"
+            className="relative shrink-0 flex bg-zinc-900"
             style={{ width: TRACK_INFO_WIDTH, height }}
         >
             <span
                 className={cn(
                     'text-sm font-bold text-zinc-200 w-10 h-full flex items-center justify-center',
-                    TrackTypeColorMap[type]
+                    TrackTypeColorMap[type],
                 )}
             >
                 {`${TRACK_TYPE_PREFIX[type] ?? '?'}${index}`}
             </span>
-            <div className="h-full w-full border-t border-zinc-600 flex items-center justify-end">
-                <div className="flex items-center gap-1 px-2">
+            <TooltipProvider>
+                <div className="flex-1 flex items-center justify-end gap-1 px-2 border-t border-zinc-600">
                     {onToggleSyncLock && (
-                        <TooltipProvider>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <button
-                                        className="text-zinc-500 hover:text-zinc-300 transition-colors"
-                                        onClick={onToggleSyncLock}
-                                    >
-                                        {locked ? <Link size={14} /> : <Link2Off size={14} className="text-zinc-600" />}
-                                    </button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top">
-                                    {locked ? 'Sync lock on — ripple edits move this track' : 'Sync lock off'}
-                                </TooltipContent>
-                            </Tooltip>
-                        </TooltipProvider>
-                    )}
-                    {showVisibility && (
-                        <button
-                            className="text-zinc-500 hover:text-zinc-300 transition-colors"
-                            onClick={onToggleHidden}
-                        >
-                            {isHidden ? (
-                                <EyeOff size={14} />
-                            ) : (
-                                <Eye size={14} />
-                            )}
-                        </button>
-                    )}
-                    {showMute && (
-                        <button
-                            className="text-zinc-500 hover:text-zinc-300 transition-colors"
-                            onClick={onToggleMuted}
-                        >
-                            {isMuted ? (
-                                <VolumeOff size={14} />
-                            ) : (
-                                <Volume2 size={14} />
-                            )}
-                        </button>
-                    )}
-                    <button
-                        className="text-zinc-500 hover:text-zinc-300 transition-colors"
-                        onClick={onToggleBlocked}
-                    >
-                        <Lock
-                            size={14}
-                            className={isBlocked ? 'text-amber-400' : ''}
+                        <TrackToggle
+                            icon={locked ? Link : Link2Off}
+                            label={locked ? 'Sync lock on' : 'Sync lock off'}
+                            activeClass={locked ? undefined : 'text-zinc-600'}
+                            onClick={onToggleSyncLock}
                         />
-                    </button>
+                    )}
+                    {type === TrackType.Video && (
+                        <TrackToggle
+                            icon={isHidden ? EyeOff : Eye}
+                            label={isHidden ? 'Track hidden' : 'Track visible'}
+                            onClick={onToggleHidden}
+                        />
+                    )}
+                    {type === TrackType.Audio && (
+                        <TrackToggle
+                            icon={isMuted ? VolumeOff : Volume2}
+                            label={isMuted ? 'Track muted' : 'Track audible'}
+                            onClick={onToggleMuted}
+                        />
+                    )}
+                    <TrackToggle
+                        icon={Lock}
+                        label={isBlocked ? 'Track locked' : 'Track unlocked'}
+                        activeClass={isBlocked ? 'text-amber-400' : undefined}
+                        onClick={onToggleBlocked}
+                    />
                 </div>
-            </div>
+            </TooltipProvider>
             {onResizeHeight && (
                 <div
                     className="absolute inset-x-0 bottom-0 h-1 cursor-ns-resize hover:bg-white/30"

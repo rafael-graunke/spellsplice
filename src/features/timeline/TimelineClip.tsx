@@ -53,6 +53,7 @@ function TimelineClipInner({ clip, sourceName, sourceMissing, sourceOffline, zoo
     const thumbH = canvasHeight - 10;
     const thumbW = Math.round(thumbH * (16 / 9));
     const [dragDb, setDragDb] = useState<number | null>(null);
+    const [razorX, setRazorX] = useState<number | null>(null);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -148,6 +149,11 @@ function TimelineClipInner({ clip, sourceName, sourceMissing, sourceOffline, zoo
                         isSelected && (sourceMissing ? 'ring-red-400' : sourceOffline ? 'ring-amber-400' : 'ring-white'),
                     )}
                     style={{ left: clip.time * zoom, width: clip.duration * zoom }}
+                    onMouseMove={onRazorCut ? (e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setRazorX(e.clientX - rect.left);
+                    } : undefined}
+                    onMouseLeave={onRazorCut ? () => setRazorX(null) : undefined}
                     onMouseDown={(e) => {
                         if (onRazorCut) {
                             e.stopPropagation();
@@ -233,6 +239,12 @@ function TimelineClipInner({ clip, sourceName, sourceMissing, sourceOffline, zoo
                                     : sourceName}
                         </span>
                     </span>
+                    {onRazorCut && razorX !== null && (
+                        <div
+                            className="absolute inset-y-0 w-px bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.6)] pointer-events-none z-30"
+                            style={{ left: razorX }}
+                        />
+                    )}
                     {showTrimHandles && (
                         <>
                             <div

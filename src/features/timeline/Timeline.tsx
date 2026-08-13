@@ -42,6 +42,7 @@ import {
     TRACK_INFO_WIDTH,
     MIN_ZOOM,
     MAX_ZOOM,
+    TRACK_HEIGHT,
 } from './constants';
 import {
     Command,
@@ -90,7 +91,7 @@ function CreateEventDialog({ open, onOpenChange, setIsPlaying, onCreateEvent, di
                 <CommandList>
                     <CommandEmpty>No actions found.</CommandEmpty>
                     <CommandGroup heading="Player Actions">
-                        <CommandItem onSelect={() => handleSelect({ type: EventType.AddToHand, duration: 1 })}>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.AddToHand })}>
                             Draw
                         </CommandItem>
                         <CommandItem onSelect={() => handleSelect({ type: EventType.RemoveFromHand })}>
@@ -110,7 +111,7 @@ function CreateEventDialog({ open, onOpenChange, setIsPlaying, onCreateEvent, di
                         </CommandItem>
                     </CommandGroup>
                     <CommandGroup heading="Basic Actions">
-                        <CommandItem onSelect={() => handleSelect({ type: EventType.AddToHand, duration: 1 })}>
+                        <CommandItem onSelect={() => handleSelect({ type: EventType.AddToHand })}>
                             Add to Hand
                         </CommandItem>
                         <CommandItem onSelect={() => handleSelect({ type: EventType.RemoveFromHand })}>
@@ -405,6 +406,34 @@ function TimelineInner({
     useEffect(() => {
         onViewModeChange?.(viewMode);
     }, [viewMode, onViewModeChange]);
+
+    /**
+     * Live height while a resize drag is in flight. Local to the timeline on
+     * purpose: routing it through project state re-rendered App (and therefore
+     * every clip memo, the preview, the duration calc…) on every mousemove.
+     * Only the commit on mouse-up reaches `trackOverrides` and history.
+     */
+    const [draftHeight, setDraftHeight] = useState<{ trackId: string; height: number } | null>(null);
+
+    /**
+     * Exact expanded height per group, so the collapse transition runs between
+     * two known values instead of `auto`. Rows are border-box, so their heights
+     * already include their borders; the +2 is the group body's own border-y.
+     *
+     * Includes the in-flight draft height, or the group would clip the row being
+     * resized until the drag committed.
+     */
+    const groupHeights = useMemo(() => {
+        const map = new Map<string, number>();
+        for (const g of trackGroups) {
+            let sum = 2;
+            for (const t of g.tracks) {
+                sum += (draftHeight?.trackId === t.id ? draftHeight.height : t.height) ?? TRACK_HEIGHT;
+            }
+            map.set(g.id, sum);
+        }
+        return map;
+    }, [trackGroups, draftHeight]);
 
     /** Groups the view mode admits. Collapsed ones still render, as a bar. */
     const groupsInView = useMemo(() => {
@@ -713,14 +742,6 @@ function TimelineInner({
     // Deliberately not persisted: reopening the app in razor mode would turn the
     // first click on a clip into a cut.
     const [tool, setTool] = useState<TimelineTool>(TimelineTool.Select);
-
-    /**
-     * Live height while a resize drag is in flight. Local to the timeline on
-     * purpose: routing it through project state re-rendered App (and therefore
-     * every clip memo, the preview, the duration calc…) on every mousemove.
-     * Only the commit on mouse-up reaches `trackOverrides` and history.
-     */
-    const [draftHeight, setDraftHeight] = useState<{ trackId: string; height: number } | null>(null);
 
     // Target player state — which Event group receives Ctrl+K events
     const [targetGroupId, setTargetGroupId] = useState<string | undefined>(undefined);
@@ -1065,6 +1086,8 @@ function TimelineInner({
                                     label={group.label}
                                     isTarget={group.id === targetGroupId}
                                     collapsed={collapsedGroups.includes(group.id)}
+                                    expandedHeight={groupHeights.get(group.id) ?? 0}
+                                    animateHeight={!draftHeight}
                                     onSelect={group.type === TrackType.Event ? () => setTargetGroupId(group.id) : undefined}
                                     onToggleCollapse={() => onToggleGroupCollapse(group.id)}
                                 >
